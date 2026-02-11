@@ -142,7 +142,7 @@ export interface OpusAudit {
 
 export interface ScanOptions {
   readonly path: string;
-  readonly format: "terminal" | "json" | "markdown";
+  readonly format: "terminal" | "json" | "markdown" | "html";
   readonly fix: boolean;
   readonly opus: boolean;
   readonly verbose: boolean;
