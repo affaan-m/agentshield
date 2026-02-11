@@ -1,6 +1,6 @@
 {
   "name": "agentshield",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "description": "Security auditor for AI agent configurations. Scans Claude Code setups for vulnerabilities, misconfigs, and injection risks.",
   "type": "module",
   "bin": {
@@ -20,14 +20,15 @@
   "keywords": [
     "claude-code",
     "security",
-    "audit",
     "ai-agent",
     "mcp",
-    "hooks",
-    "skills",
-    "configuration"
+    "hackathon",
+    "opus",
+    "anthropic",
+    "scanner",
+    "audit"
   ],
-  "author": "affaan-m",
+  "author": "Affaan Mustafa",
   "license": "MIT",
   "repository": {
     "type": "git",
