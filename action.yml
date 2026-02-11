@@ -1,0 +1,39 @@
+name: "AgentShield Security Scan"
+description: "Scan Claude Code configurations for security issues"
+author: "affaan-m"
+
+branding:
+  icon: "shield"
+  color: "blue"
+
+inputs:
+  path:
+    description: "Path to scan for Claude Code configurations"
+    required: false
+    default: "."
+  min-severity:
+    description: "Minimum severity to report: critical, high, medium, low, info"
+    required: false
+    default: "medium"
+  fail-on-findings:
+    description: "Fail the action if findings are detected at or above min-severity"
+    required: false
+    default: "true"
+  format:
+    description: "Output format: terminal, json, markdown"
+    required: false
+    default: "terminal"
+
+outputs:
+  score:
+    description: "Numeric security score (0-100)"
+  grade:
+    description: "Letter grade (A-F)"
+  total-findings:
+    description: "Total number of findings"
+  critical-count:
+    description: "Number of critical findings"
+
+runs:
+  using: "node20"
+  main: "dist/action.js"

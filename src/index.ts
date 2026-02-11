@@ -7,7 +7,10 @@ import { scan } from "./scanner/index.js";
 import { calculateScore } from "./reporter/score.js";
 import { renderTerminalReport } from "./reporter/terminal.js";
 import { renderJsonReport, renderMarkdownReport } from "./reporter/json.js";
+import { renderHtmlReport } from "./reporter/html.js";
 import { runOpusPipeline, renderOpusAnalysis } from "./opus/index.js";
+import { applyFixes, renderFixSummary } from "./fixer/index.js";
+import { runInit, renderInitSummary } from "./init/index.js";
 
 const program = new Command();
 
@@ -20,7 +23,7 @@ program
   .command("scan")
   .description("Scan a Claude Code configuration directory for security issues")
   .option("-p, --path <path>", "Path to scan (default: ~/.claude or current dir)")
-  .option("-f, --format <format>", "Output format: terminal, json, markdown", "terminal")
+  .option("-f, --format <format>", "Output format: terminal, json, markdown, html", "terminal")
   .option("--fix", "Auto-apply safe fixes", false)
   .option("--opus", "Enable Opus 4.6 multi-agent deep analysis", false)
   .option("--stream", "Stream Opus analysis in real-time", false)
@@ -58,11 +61,20 @@ program
       case "markdown":
         console.log(renderMarkdownReport(report));
         break;
+      case "html":
+        console.log(renderHtmlReport(report));
+        break;
       default:
         console.log(renderTerminalReport(report));
     }
 
-    // Phase 2: Opus multi-agent analysis (if enabled)
+    // Phase 2: Auto-fix (if enabled)
+    if (options.fix) {
+      const fixResult = applyFixes(filteredResult);
+      console.log(renderFixSummary(fixResult));
+    }
+
+    // Phase 3: Opus multi-agent analysis (if enabled)
     if (options.opus) {
       if (!process.env.ANTHROPIC_API_KEY) {
         console.error(
@@ -95,13 +107,10 @@ program
 program
   .command("init")
   .description("Generate a secure baseline Claude Code configuration")
-  .action(() => {
-    console.log("TODO: Generate secure baseline config");
-    console.log("This will create a hardened ~/.claude/ setup with:");
-    console.log("  - Restrictive permissions");
-    console.log("  - Security-focused hooks");
-    console.log("  - Safe MCP server configs");
-    console.log("  - Agent definitions with minimal privileges");
+  .option("-p, --path <path>", "Target directory (default: current directory)")
+  .action((options) => {
+    const initResult = runInit(options.path);
+    console.log(renderInitSummary(initResult));
   });
 
 program.parse();
