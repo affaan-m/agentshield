@@ -214,8 +214,8 @@ src/
 │   ├── secrets.ts        Secret detection (11 patterns)
 │   ├── permissions.ts    Permission audit (3 rules)
 │   ├── mcp.ts            MCP server security (4 rules)
-│   ├── hooks.ts          Hook security analysis
-│   └── agents.ts         Agent config review
+│   ├── hooks.ts          Hook security analysis (4 rules)
+│   └── agents.ts         Agent config review (3 rules)
 ├── reporter/
 │   ├── score.ts          Scoring engine (A-F grades)
 │   ├── terminal.ts       Color terminal output
