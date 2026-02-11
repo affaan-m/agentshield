@@ -62,9 +62,11 @@ Existing files are never overwritten.
 
 Three-agent adversarial pipeline powered by Claude Opus 4.6:
 
-1. **Red Team (Attacker)** — finds exploitable attack vectors
-2. **Blue Team (Defender)** — recommends concrete hardening measures
-3. **Auditor** — synthesizes both perspectives into a final risk assessment
+1. **Red Team (Attacker)** — finds exploitable attack vectors and multi-step attack chains
+2. **Blue Team (Defender)** — recommends concrete hardening measures with exact config changes
+3. **Auditor** — synthesizes both perspectives into a final risk assessment with a numeric score
+
+In non-streaming mode, Red Team and Blue Team run in **parallel** via `Promise.all` for speed. In streaming mode (`--stream`), agents run sequentially with real-time token output — live spinners show progress, verbose mode (`-v`) streams every token to stdout.
 
 ```bash
 # Run with Opus analysis
@@ -72,6 +74,9 @@ agentshield scan --opus
 
 # Stream Opus analysis in real-time
 agentshield scan --opus --stream
+
+# Verbose streaming (see full agent reasoning)
+agentshield scan --opus --stream -v
 ```
 
 Requires `ANTHROPIC_API_KEY` environment variable.
@@ -82,7 +87,7 @@ Add AgentShield to your CI pipeline:
 
 ```yaml
 - name: AgentShield Security Scan
-  uses: affaan-m/agentshield@main
+  uses: affaan-m/agentshield@v1
   with:
     path: "."
     min-severity: "medium"
@@ -136,7 +141,8 @@ The action writes a markdown job summary and emits GitHub annotations (warnings/
 - Missing PreToolUse security hooks
 
 ### Agent Config Review
-- Agents with unnecessary Bash access
+- Agents with unnecessary Bash access or write permissions
+- Prompt injection surface in agent definitions that process external content
 - Auto-run instructions in CLAUDE.md (prompt injection vector)
 
 ## Example Output
@@ -167,7 +173,16 @@ The action writes a markdown job summary and emits GitHub annotations (warnings/
 | Terminal | `--format terminal` (default) | Interactive use, demos |
 | JSON | `--format json` | CI pipelines, programmatic use |
 | Markdown | `--format markdown` | Documentation, PRs |
-| HTML | `--format html` | Self-contained dark-themed report |
+| HTML | `--format html` | Shareable self-contained report |
+
+### HTML Report (`--format html`)
+
+Generates a single self-contained HTML file with all CSS inlined — no external dependencies. Dark theme inspired by GitHub dark mode. Includes grade badge, score breakdown bars, categorized findings with severity indicators, and auto-fix status.
+
+```bash
+agentshield scan --format html > report.html
+open report.html
+```
 
 ## CLI Reference
 
@@ -225,7 +240,8 @@ src/
 | Permissions | 3 | Critical - Medium |
 | MCP Servers | 4 | Critical - Info |
 | Hooks | 4 | Critical - Medium |
-| Agents | 2 | High - Info |
+| Agents | 3 | High - Info |
+| **Total** | **16** | |
 
 ## Development
 
