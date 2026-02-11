@@ -4,7 +4,7 @@ Security auditor for AI agent configurations. Scans Claude Code setups for vulne
 
 The AI agent ecosystem is growing fast — but security isn't keeping pace. 12% of one major agent marketplace contains malicious skills. A CVSS 8.8 CVE affected 17,500+ internet-facing instances. Developers install community skills, connect MCP servers, and configure hooks without any automated way to audit the security of their setup.
 
-AgentShield scans your `.claude/` directory and agent configuration files to detect vulnerabilities before they become exploits.
+AgentShield scans your `.claude/` directory and agent configuration files to detect vulnerabilities before they become exploits. It also includes **MiniClaw** — a minimal, sandboxed AI agent runtime that demonstrates what a secure-by-default agent looks like.
 
 Built at the [Claude Code Hackathon](https://cerebralvalley.ai/e/claude-code-hackathon) (Cerebral Valley x Anthropic, Feb 2026).
 
@@ -80,6 +80,17 @@ agentshield scan --opus --stream -v
 ```
 
 Requires `ANTHROPIC_API_KEY` environment variable.
+
+### MiniClaw — Secure Agent Runtime
+
+A minimal, sandboxed AI agent that demonstrates secure-by-default design. Single HTTP endpoint, isolated filesystem, whitelist-based tool authorization, prompt injection filtering. See the [MiniClaw section](#miniclaw) below for full documentation.
+
+```typescript
+import { startMiniClaw } from 'ecc-agentshield/miniclaw';
+
+const { server, stop } = startMiniClaw();
+// Listening on http://localhost:3847
+```
 
 ### GitHub Action
 
@@ -226,10 +237,18 @@ src/
 │   └── index.ts          Fix engine orchestrator
 ├── init/
 │   └── index.ts          Secure config generator
-└── opus/
-    ├── prompts.ts        Attacker/Defender/Auditor system prompts
-    ├── pipeline.ts       Three-agent Opus 4.6 pipeline
-    └── render.ts         Opus analysis rendering
+├── opus/
+│   ├── prompts.ts        Attacker/Defender/Auditor system prompts
+│   ├── pipeline.ts       Three-agent Opus 4.6 pipeline
+│   └── render.ts         Opus analysis rendering
+└── miniclaw/
+    ├── types.ts          Core type system (immutable, readonly)
+    ├── sandbox.ts        Sandbox lifecycle + path validation
+    ├── router.ts         Prompt sanitization + output filtering
+    ├── tools.ts          Whitelist-based tool authorization
+    ├── server.ts         HTTP server with rate limiting + CORS
+    ├── dashboard.tsx     React dashboard component
+    └── index.ts          Entry point and re-exports
 ```
 
 ## Security Rules
@@ -242,6 +261,98 @@ src/
 | Hooks | 4 | Critical - Medium |
 | Agents | 3 | High - Info |
 | **Total** | **16** | |
+
+## MiniClaw
+
+MiniClaw is a minimal, secure, sandboxed AI agent runtime — the antithesis of multi-channel orchestration platforms. Where platforms like OpenClaw expose many attack surfaces (Telegram, Discord, email, community plugins), MiniClaw presents a **single HTTP endpoint** backed by an **isolated sandbox**.
+
+**Design mantra**: Minimal attack surface, maximum security, simple to deploy.
+
+| Principle | Typical Agent Platform | MiniClaw |
+|-----------|----------------------|----------|
+| Access points | Many (Telegram, X, Discord, email) | One (single HTTP endpoint) |
+| Execution | Host machine, broad access | Containerized, sandboxed |
+| Skills | Unvetted community marketplace | Manually audited, local only |
+| Network exposure | Multiple ports, services | Minimal, single entry point |
+| Blast radius | Everything agent can access | Sandboxed to session directory |
+
+### Quick Start
+
+```typescript
+import { startMiniClaw } from 'ecc-agentshield/miniclaw';
+
+// Start with secure defaults (localhost:3847, no network, safe tools only)
+const { server, stop } = startMiniClaw();
+
+// Or customize configuration
+const { server, stop } = startMiniClaw({
+  sandbox: { networkPolicy: 'localhost' },
+  server: { port: 4000, rateLimit: 20 },
+});
+
+// Embed in an existing app (no HTTP server)
+import { createMiniClawSession, routePrompt } from 'ecc-agentshield/miniclaw';
+const session = await createMiniClawSession();
+const response = await routePrompt({ sessionId: session.id, prompt: 'Read index.ts' }, session);
+```
+
+### Security Model
+
+**Defense in depth** — four layers, each independently enforced:
+
+1. **Server Layer** — Rate limiting (10 req/min per IP), CORS restriction, request size cap (10KB), security headers, localhost-only binding
+2. **Prompt Router** — Strips 12+ injection pattern categories: system prompt overrides, identity reassignment, jailbreak attempts, tool invocation syntax, data exfiltration URLs, zero-width Unicode, base64-encoded payloads. Output filtering removes leaked system prompt content.
+3. **Tool Whitelist** — Three-tier authorization:
+   - **Safe** (auto-approved): read, search, list
+   - **Guarded** (session opt-in): write, edit, glob
+   - **Restricted** (disabled by default): bash, network, external API
+   - Unknown tools are **blocked by default** (fail-closed)
+4. **Sandbox** — Isolated filesystem per session. Path traversal blocked, symlink escape detection, allowed extensions whitelist, 10MB file size limit, 5-minute session timeout. No network access by default.
+
+### API Endpoints
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `POST` | `/api/prompt` | Send a prompt, receive a response |
+| `POST` | `/api/session` | Create a new sandboxed session |
+| `GET` | `/api/session` | Get current session info |
+| `DELETE` | `/api/session/:id` | Destroy session and cleanup sandbox |
+| `GET` | `/api/events/:sessionId` | Retrieve security audit events |
+| `GET` | `/api/health` | Health check |
+
+### Dashboard
+
+MiniClaw includes a React dashboard component for interactive use:
+
+```tsx
+import { MiniClawDashboard } from 'ecc-agentshield/miniclaw/dashboard';
+
+<MiniClawDashboard endpoint="http://localhost:3847" />
+```
+
+Features: dark theme, prompt input, streaming response display, session status indicator, security events panel, tool whitelist categorized by risk level. Requires React 18+ as a peer dependency.
+
+### Configuration Defaults
+
+```typescript
+// Sandbox defaults — maximum security posture
+{
+  rootPath: '/tmp/miniclaw-sandboxes',
+  maxFileSize: 10_485_760,          // 10MB
+  allowedExtensions: ['.ts', '.tsx', '.js', '.jsx', '.json', '.md', '.txt', ...],
+  networkPolicy: 'none',            // No network access
+  maxDuration: 300_000,             // 5 minutes
+}
+
+// Server defaults — locked to localhost
+{
+  port: 3847,
+  hostname: 'localhost',            // Never 0.0.0.0 by default
+  corsOrigins: ['http://localhost:3847', 'http://localhost:3000'],
+  rateLimit: 10,                    // 10 req/min per IP
+  maxRequestSize: 10_240,           // 10KB
+}
+```
 
 ## Development
 
