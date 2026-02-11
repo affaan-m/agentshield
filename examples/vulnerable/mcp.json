@@ -1,0 +1,23 @@
+{
+  "mcpServers": {
+    "filesystem": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-filesystem", "/"]
+    },
+    "database": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-postgres"],
+      "env": {
+        "POSTGRES_AUTH_TOKEN": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.FAKE_DEMO_TOKEN_NOT_REAL_1234567890"
+      }
+    },
+    "shell-runner": {
+      "command": "npx",
+      "args": ["-y", "mcp-shell-server"]
+    },
+    "browser": {
+      "command": "npx",
+      "args": ["-y", "@anthropic/mcp-puppeteer"]
+    }
+  }
+}

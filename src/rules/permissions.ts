@@ -1,0 +1,289 @@
+import type { ConfigFile, Finding, Rule } from "../types.js";
+
+/**
+ * Dangerous permission patterns that grant excessive access.
+ * These are only dangerous when they appear in the ALLOW list.
+ */
+const OVERLY_PERMISSIVE: ReadonlyArray<{
+  readonly pattern: RegExp;
+  readonly description: string;
+  readonly severity: "critical" | "high" | "medium";
+  readonly suggestion: string;
+}> = [
+  {
+    pattern: /^Bash\(\*\)$/,
+    description: "Unrestricted Bash access — any command can run",
+    severity: "critical",
+    suggestion: "Bash(git *), Bash(npm *), Bash(node *)",
+  },
+  {
+    pattern: /^Bash\(sudo\s/,
+    description: "Sudo access allowed — agent can escalate privileges",
+    severity: "critical",
+    suggestion: "Remove sudo permissions entirely",
+  },
+  {
+    pattern: /^Write\(\*\)$/,
+    description: "Unrestricted Write access — agent can write to any file",
+    severity: "high",
+    suggestion: "Write(src/*), Write(tests/*)",
+  },
+  {
+    pattern: /^Edit\(\*\)$/,
+    description: "Unrestricted Edit access — agent can edit any file",
+    severity: "high",
+    suggestion: "Edit(src/*), Edit(tests/*)",
+  },
+  {
+    pattern: /^Bash\(rm\s/,
+    description: "Delete operations explicitly allowed in Bash",
+    severity: "high",
+    suggestion: "Move rm commands to deny list instead",
+  },
+  {
+    pattern: /^Bash\(curl\s/,
+    description: "Unrestricted curl access — agent can make arbitrary HTTP requests",
+    severity: "medium",
+    suggestion: "Restrict to specific domains or move to deny list",
+  },
+  {
+    pattern: /^Bash\(wget\s/,
+    description: "Unrestricted wget access — agent can download arbitrary files",
+    severity: "medium",
+    suggestion: "Restrict to specific domains or move to deny list",
+  },
+];
+
+/**
+ * Permissions that should be in the deny list but are commonly missing.
+ */
+const MISSING_DENIALS: ReadonlyArray<{
+  readonly pattern: string;
+  readonly description: string;
+}> = [
+  { pattern: "rm -rf", description: "Recursive force delete" },
+  { pattern: "sudo", description: "Privilege escalation" },
+  { pattern: "chmod 777", description: "World-writable permissions" },
+  { pattern: "ssh", description: "SSH connections from agent" },
+  { pattern: "> /dev/", description: "Writing to device files" },
+];
+
+/**
+ * Parse the allow and deny arrays from a settings.json file.
+ * Returns null if the file is not valid JSON or has no permissions.
+ */
+function parsePermissionLists(content: string): {
+  allow: ReadonlyArray<string>;
+  deny: ReadonlyArray<string>;
+} | null {
+  try {
+    const config = JSON.parse(content);
+    return {
+      allow: config?.permissions?.allow ?? [],
+      deny: config?.permissions?.deny ?? [],
+    };
+  } catch {
+    return null;
+  }
+}
+
+export const permissionRules: ReadonlyArray<Rule> = [
+  {
+    id: "permissions-overly-permissive",
+    name: "Overly Permissive Access",
+    description: "Checks the ALLOW list for permission rules that grant excessive access",
+    severity: "high",
+    category: "permissions",
+    check(file: ConfigFile): ReadonlyArray<Finding> {
+      if (file.type !== "settings-json") return [];
+
+      const perms = parsePermissionLists(file.content);
+      if (!perms) return [];
+
+      const findings: Finding[] = [];
+
+      // Only check patterns against the ALLOW list, not the deny list
+      for (const entry of perms.allow) {
+        for (const check of OVERLY_PERMISSIVE) {
+          if (check.pattern.test(entry)) {
+            findings.push({
+              id: `permissions-permissive-${entry}`,
+              severity: check.severity,
+              category: "permissions",
+              title: `Overly permissive allow rule: ${entry}`,
+              description: check.description,
+              file: file.path,
+              evidence: entry,
+              fix: {
+                description: `Restrict to specific commands: ${check.suggestion}`,
+                before: entry,
+                after: check.suggestion,
+                auto: false,
+              },
+            });
+            break; // One finding per allow entry is enough
+          }
+        }
+      }
+
+      // Bonus: flag deny entries that also appear in allow (contradictions)
+      for (const denyEntry of perms.deny) {
+        for (const allowEntry of perms.allow) {
+          if (allowEntry === denyEntry) {
+            findings.push({
+              id: `permissions-contradiction-${denyEntry}`,
+              severity: "medium",
+              category: "misconfiguration",
+              title: `Contradictory permission: "${denyEntry}" in both allow and deny`,
+              description: `The permission "${denyEntry}" appears in both the allow and deny lists. Deny takes precedence, but this is confusing and should be cleaned up.`,
+              file: file.path,
+              evidence: denyEntry,
+            });
+          }
+        }
+      }
+
+      return findings;
+    },
+  },
+  {
+    id: "permissions-no-deny-list",
+    name: "Missing Deny List",
+    description: "Checks if the settings.json has a deny list for dangerous operations",
+    severity: "high",
+    category: "permissions",
+    check(file: ConfigFile): ReadonlyArray<Finding> {
+      if (file.type !== "settings-json") return [];
+
+      const perms = parsePermissionLists(file.content);
+      if (!perms) return [];
+
+      const findings: Finding[] = [];
+
+      if (perms.deny.length === 0) {
+        findings.push({
+          id: "permissions-no-deny-list",
+          severity: "high",
+          category: "permissions",
+          title: "No deny list configured",
+          description:
+            "settings.json has no deny list. Without explicit denials, the agent may run dangerous operations if the allow list is too broad.",
+          file: file.path,
+          fix: {
+            description: "Add a deny list for dangerous operations",
+            before: '"permissions": { "allow": [...] }',
+            after:
+              '"permissions": { "allow": [...], "deny": ["Bash(rm -rf *)", "Bash(sudo *)", "Bash(chmod 777 *)"] }',
+            auto: false,
+          },
+        });
+      }
+
+      // Check for specific missing denials
+      for (const denial of MISSING_DENIALS) {
+        const hasDenial = perms.deny.some((d) => d.includes(denial.pattern));
+        if (!hasDenial && perms.deny.length > 0) {
+          findings.push({
+            id: `permissions-missing-deny-${denial.pattern.replace(/\s/g, "-")}`,
+            severity: "medium",
+            category: "permissions",
+            title: `Missing deny rule: ${denial.description}`,
+            description: `The deny list does not block "${denial.pattern}". Consider adding it to prevent ${denial.description.toLowerCase()}.`,
+            file: file.path,
+          });
+        }
+      }
+
+      return findings;
+    },
+  },
+  {
+    id: "permissions-dangerous-skip",
+    name: "Dangerous Permission Bypass",
+    description: "Checks for dangerously-skip-permissions or no-verify flags used affirmatively",
+    severity: "critical",
+    category: "permissions",
+    check(file: ConfigFile): ReadonlyArray<Finding> {
+      const findings: Finding[] = [];
+
+      const dangerousPatterns = [
+        {
+          pattern: /dangerously-?skip-?permissions/gi,
+          desc: "Permission system bypass",
+        },
+        {
+          pattern: /--no-verify/g,
+          desc: "Git hook verification bypass",
+        },
+      ];
+
+      // Negation words that indicate the pattern is being PROHIBITED, not used
+      const negationPatterns = [
+        /\bnever\b/i,
+        /\bdon'?t\b/i,
+        /\bdo\s+not\b/i,
+        /\bnot\b/i,
+        /\bavoid\b/i,
+        /\bprohibit/i,
+        /\bforbid/i,
+        /\bdisable/i,
+        /\bban/i,
+        /\bblock/i,
+      ];
+
+      for (const { pattern, desc } of dangerousPatterns) {
+        const matches = [...file.content.matchAll(
+          new RegExp(pattern.source, pattern.flags.includes("g") ? pattern.flags : pattern.flags + "g")
+        )];
+
+        for (const match of matches) {
+          const idx = match.index ?? 0;
+
+          // Check surrounding context (100 chars before) for negation
+          const contextStart = Math.max(0, idx - 100);
+          const context = file.content.substring(contextStart, idx).toLowerCase();
+
+          const isNegated = negationPatterns.some((neg) => neg.test(context));
+
+          if (isNegated) {
+            // This is a prohibition, not a usage — skip or downgrade to info
+            findings.push({
+              id: `permissions-negated-${idx}`,
+              severity: "info",
+              category: "permissions",
+              title: `Prohibition of ${match[0]} (good practice)`,
+              description: `Found "${match[0]}" in a negated/prohibitive context. This is correct — the config is telling the agent NOT to use this flag.`,
+              file: file.path,
+              line: findLineNumber(file.content, idx),
+              evidence: match[0],
+            });
+            continue;
+          }
+
+          findings.push({
+            id: `permissions-dangerous-${idx}`,
+            severity: "critical",
+            category: "permissions",
+            title: `Dangerous flag: ${match[0]}`,
+            description: `${desc}. The flag "${match[0]}" disables safety mechanisms.`,
+            file: file.path,
+            line: findLineNumber(file.content, idx),
+            evidence: match[0],
+            fix: {
+              description: "Remove dangerous bypass flag",
+              before: match[0],
+              after: "# [REMOVED: dangerous bypass flag]",
+              auto: false,
+            },
+          });
+        }
+      }
+
+      return findings;
+    },
+  },
+];
+
+function findLineNumber(content: string, matchIndex: number): number {
+  return content.substring(0, matchIndex).split("\n").length;
+}

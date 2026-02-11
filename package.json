@@ -1,0 +1,50 @@
+{
+  "name": "agentshield",
+  "version": "0.1.0",
+  "description": "Security auditor for AI agent configurations. Scans Claude Code setups for vulnerabilities, misconfigs, and injection risks.",
+  "type": "module",
+  "bin": {
+    "agentshield": "./dist/index.js"
+  },
+  "scripts": {
+    "build": "tsup src/index.ts --format esm --dts --clean",
+    "dev": "tsx src/index.ts",
+    "test": "vitest",
+    "test:coverage": "vitest --coverage",
+    "lint": "eslint src/",
+    "typecheck": "tsc --noEmit",
+    "scan": "tsx src/index.ts scan",
+    "scan:demo": "tsx src/index.ts scan --path examples/vulnerable"
+  },
+  "keywords": [
+    "claude-code",
+    "security",
+    "audit",
+    "ai-agent",
+    "mcp",
+    "hooks",
+    "skills",
+    "configuration"
+  ],
+  "author": "AgentShield Team",
+  "license": "MIT",
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.39.0",
+    "chalk": "^5.4.1",
+    "commander": "^13.1.0",
+    "glob": "^11.0.1",
+    "yaml": "^2.7.0",
+    "zod": "^3.24.2"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.0",
+    "eslint": "^9.19.0",
+    "tsup": "^8.3.6",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.3",
+    "vitest": "^3.0.5"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

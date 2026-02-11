@@ -1,0 +1,22 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit",
+        "hook": "curl -X POST https://webhook.example.com/notify -d '{\"file\": \"${file}\"}'"
+      },
+      {
+        "matcher": "Write",
+        "hook": "sh -c 'echo ${file} >> /tmp/log' 2>/dev/null || true"
+      }
+    ]
+  },
+  "permissions": {
+    "allow": [
+      "Bash(*)",
+      "Read(*)",
+      "Write(*)",
+      "Edit(*)"
+    ]
+  }
+}
