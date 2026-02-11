@@ -11,21 +11,103 @@ Built at the [Claude Code Hackathon](https://cerebralvalley.ai/e/claude-code-hac
 ## Quick Start
 
 ```bash
-# Install
-npm install -g agentshield
+# Scan your Claude Code config (no install required)
+npx agentshield scan
 
-# Scan your Claude Code config
+# Or install globally
+npm install -g agentshield
 agentshield scan
 
 # Scan a specific directory
 agentshield scan --path /path/to/.claude
 
-# Output as JSON
-agentshield scan --format json
-
 # Auto-fix safe issues
 agentshield scan --fix
+
+# Generate an HTML security report
+agentshield scan --format html > report.html
+
+# Run Opus 4.6 adversarial analysis with real-time streaming
+agentshield scan --opus --stream
+
+# Generate a secure baseline config
+agentshield init
 ```
+
+## Features
+
+### Static Analysis (`agentshield scan`)
+
+Rule-based scanning with 16 rules across 5 categories, graded A-F with a 0-100 numeric score.
+
+### Auto-Fix Engine (`--fix`)
+
+Automatically applies safe fixes for detected issues:
+- Replaces hardcoded secrets with `${ENV_VAR}` references
+- Tightens wildcard permissions (`Bash(*)` → scoped `Bash(git *)`, `Bash(npm *)`)
+- Generic string-replacement transforms for other fixable patterns
+
+Only `auto: true` fixes are applied. Files are never overwritten without a matching pattern.
+
+### Secure Init (`agentshield init`)
+
+Generates a hardened `.claude/` directory with:
+- **settings.json** — scoped permissions (no `Bash(*)`) and safety hooks
+- **CLAUDE.md** — security best practices for the AI agent
+- **mcp.json** — empty MCP config placeholder
+
+Existing files are never overwritten.
+
+### Opus 4.6 Deep Analysis (`--opus`)
+
+Three-agent adversarial pipeline powered by Claude Opus 4.6:
+
+1. **Red Team (Attacker)** — finds exploitable attack vectors
+2. **Blue Team (Defender)** — recommends concrete hardening measures
+3. **Auditor** — synthesizes both perspectives into a final risk assessment
+
+```bash
+# Run with Opus analysis
+agentshield scan --opus
+
+# Stream Opus analysis in real-time
+agentshield scan --opus --stream
+```
+
+Requires `ANTHROPIC_API_KEY` environment variable.
+
+### GitHub Action
+
+Add AgentShield to your CI pipeline:
+
+```yaml
+- name: AgentShield Security Scan
+  uses: affaan-m/agentshield@main
+  with:
+    path: "."
+    min-severity: "medium"
+    fail-on-findings: "true"
+```
+
+**Inputs:**
+
+| Input | Default | Description |
+|-------|---------|-------------|
+| `path` | `.` | Path to scan |
+| `min-severity` | `medium` | Minimum severity: critical, high, medium, low, info |
+| `fail-on-findings` | `true` | Fail the action if findings are detected |
+| `format` | `terminal` | Output format |
+
+**Outputs:**
+
+| Output | Description |
+|--------|-------------|
+| `score` | Numeric security score (0-100) |
+| `grade` | Letter grade (A-F) |
+| `total-findings` | Total number of findings |
+| `critical-count` | Number of critical findings |
+
+The action writes a markdown job summary and emits GitHub annotations (warnings/errors) inline on affected files.
 
 ## What It Catches
 
@@ -85,14 +167,21 @@ agentshield scan --fix
 | Terminal | `--format terminal` (default) | Interactive use, demos |
 | JSON | `--format json` | CI pipelines, programmatic use |
 | Markdown | `--format markdown` | Documentation, PRs |
+| HTML | `--format html` | Self-contained dark-themed report |
 
-## CI Integration
+## CLI Reference
 
-AgentShield exits with code 2 when critical findings are detected, making it easy to integrate into CI pipelines:
+```
+agentshield scan [options]      Scan a configuration directory
+  -p, --path <path>             Path to scan (default: ~/.claude or cwd)
+  -f, --format <format>         Output: terminal, json, markdown, html
+  --fix                         Auto-apply safe fixes
+  --opus                        Enable Opus 4.6 multi-agent analysis
+  --stream                      Stream Opus analysis in real-time
+  --min-severity <severity>     Filter: critical, high, medium, low, info
+  -v, --verbose                 Show detailed output
 
-```yaml
-- name: Security audit
-  run: npx agentshield scan --min-severity high
+agentshield init [options]      Generate secure baseline config
 ```
 
 ## Architecture
@@ -100,22 +189,32 @@ AgentShield exits with code 2 when critical findings are detected, making it eas
 ```
 src/
 ├── index.ts              CLI entry point (commander)
-├── types.ts              Type system (Finding, Rule, Report, Score)
+├── action.ts             GitHub Action entry point
+├── types.ts              Type system + Zod schemas
 ├── scanner/
 │   ├── discovery.ts      Config file discovery
-│   └── index.ts          Main scan orchestrator
+│   └── index.ts          Scan orchestrator
 ├── rules/
 │   ├── index.ts          Rule registry
 │   ├── secrets.ts        Secret detection (11 patterns)
-│   ├── mcp.ts            MCP server security (4 rules)
 │   ├── permissions.ts    Permission audit (3 rules)
-│   ├── agents.ts         Agent config review
-│   └── hooks.ts          Hook security analysis
-└── reporter/
-    ├── index.ts           Report orchestrator
-    ├── terminal.ts        Color terminal output
-    ├── json.ts            JSON + Markdown output
-    └── score.ts           Security scoring (A-F grades)
+│   ├── mcp.ts            MCP server security (4 rules)
+│   ├── hooks.ts          Hook security analysis
+│   └── agents.ts         Agent config review
+├── reporter/
+│   ├── score.ts          Scoring engine (A-F grades)
+│   ├── terminal.ts       Color terminal output
+│   ├── json.ts           JSON + Markdown output
+│   └── html.ts           Self-contained HTML report
+├── fixer/
+│   ├── transforms.ts     Fix transforms (secret, permission, generic)
+│   └── index.ts          Fix engine orchestrator
+├── init/
+│   └── index.ts          Secure config generator
+└── opus/
+    ├── prompts.ts        Attacker/Defender/Auditor system prompts
+    ├── pipeline.ts       Three-agent Opus 4.6 pipeline
+    └── render.ts         Opus analysis rendering
 ```
 
 ## Security Rules
@@ -137,14 +236,17 @@ npm install
 # Development mode
 npm run dev scan --path examples/vulnerable
 
+# Run tests (202 tests)
+npm test
+
+# Run tests with coverage
+npm run test:coverage
+
 # Type check
 npm run typecheck
 
 # Build
 npm run build
-
-# Run tests
-npm test
 
 # Demo scan (vulnerable examples)
 npm run scan:demo
