@@ -1,5 +1,5 @@
 {
-  "name": "agentshield",
+  "name": "agent-shield",
   "version": "1.0.0",
   "description": "Security auditor for AI agent configurations. Scans Claude Code setups for vulnerabilities, misconfigs, and injection risks.",
   "type": "module",
