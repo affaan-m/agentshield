@@ -1,4 +1,5 @@
 import { readFileSync, writeFileSync } from "node:fs";
+import { resolve } from "node:path";
 import type { Finding } from "../types.js";
 import type { ScanResult } from "../scanner/index.js";
 import { applyTransform } from "./transforms.js";
@@ -85,7 +86,8 @@ export function applyFixes(scanResult: ScanResult): FixResult {
   const applied: AppliedFix[] = [];
   const skipped: SkippedFix[] = [];
 
-  for (const [filePath, findings] of grouped) {
+  for (const [relPath, findings] of grouped) {
+    const filePath = resolve(scanResult.target.path, relPath);
     let content: string;
     try {
       content = readFileSync(filePath, "utf-8");
