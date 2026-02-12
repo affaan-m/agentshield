@@ -17,7 +17,8 @@ import type { Finding, Severity } from "./types.js";
 // ─── GitHub Actions Helpers ──────────────────────────────────
 
 function getInput(name: string, fallback: string): string {
-  const envKey = `INPUT_${name.toUpperCase().replace(/-/g, "_")}`;
+  // GitHub Actions preserves hyphens in INPUT_ env vars (only spaces → underscores)
+  const envKey = `INPUT_${name.replace(/ /g, "_").toUpperCase()}`;
   return process.env[envKey]?.trim() ?? fallback;
 }
 

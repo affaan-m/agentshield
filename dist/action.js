@@ -9,7 +9,7 @@ import { resolve } from "path";
 import { existsSync } from "fs";
 import { appendFileSync } from "fs";
 function getInput(name, fallback) {
-  const envKey = `INPUT_${name.toUpperCase().replace(/-/g, "_")}`;
+  const envKey = `INPUT_${name.replace(/ /g, "_").toUpperCase()}`;
   return process.env[envKey]?.trim() ?? fallback;
 }
 function setOutput(name, value) {
