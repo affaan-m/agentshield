@@ -1912,13 +1912,16 @@ function mapToScoreCategory(category) {
     secrets: "secrets",
     permissions: "permissions",
     hooks: "hooks",
-    injection: "hooks",
     mcp: "mcp",
     agents: "agents",
+    injection: "agents",
+    // prompt injection → agents category
     exposure: "hooks",
+    // data exposure via hooks/exfiltration
     misconfiguration: "permissions"
+    // config issues → permissions
   };
-  return mapping[category] ?? "permissions";
+  return mapping[category] ?? "agents";
 }
 function scoreToGrade(score) {
   if (score >= 90) return "A";
@@ -1954,15 +1957,21 @@ function renderMarkdownReport(report) {
   lines.push(`| Info | ${s.info} |`);
   lines.push(`| Auto-fixable | ${s.autoFixable} |`);
   lines.push("");
+  const categoryLabels = {
+    secrets: "Secrets",
+    permissions: "Permissions",
+    hooks: "Hooks",
+    mcp: "MCP Servers",
+    agents: "Agents"
+  };
   lines.push("## Score Breakdown");
   lines.push("");
   lines.push("| Category | Score |");
   lines.push("|----------|-------|");
-  lines.push(`| Secrets | ${report.score.breakdown.secrets}/100 |`);
-  lines.push(`| Permissions | ${report.score.breakdown.permissions}/100 |`);
-  lines.push(`| Hooks | ${report.score.breakdown.hooks}/100 |`);
-  lines.push(`| MCP Servers | ${report.score.breakdown.mcp}/100 |`);
-  lines.push(`| Agents | ${report.score.breakdown.agents}/100 |`);
+  for (const [key, score] of Object.entries(report.score.breakdown)) {
+    const label = categoryLabels[key] ?? key;
+    lines.push(`| ${label} | ${score}/100 |`);
+  }
   lines.push("");
   if (report.findings.length > 0) {
     lines.push("## Findings");

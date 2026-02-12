@@ -83,17 +83,19 @@ function computeScore(findings: ReadonlyArray<Finding>): SecurityScore {
 }
 
 function mapToScoreCategory(category: string): string {
+  // Every FindingCategory must map to one of the 5 score categories.
+  // Keep in sync with FindingCategory type in types.ts.
   const mapping: Record<string, string> = {
     secrets: "secrets",
     permissions: "permissions",
     hooks: "hooks",
-    injection: "hooks",
     mcp: "mcp",
     agents: "agents",
-    exposure: "hooks",
-    misconfiguration: "permissions",
+    injection: "agents",    // prompt injection → agents category
+    exposure: "hooks",      // data exposure via hooks/exfiltration
+    misconfiguration: "permissions",  // config issues → permissions
   };
-  return mapping[category] ?? "permissions";
+  return mapping[category] ?? "agents";
 }
 
 function scoreToGrade(score: number): Grade {
