@@ -769,4 +769,112 @@ export const hookRules: ReadonlyArray<Rule> = [
       return findings;
     },
   },
+  {
+    id: "hooks-file-deletion",
+    name: "Hook Deletes Files",
+    description: "Checks for hooks that delete files, which could destroy work or cover tracks",
+    severity: "high",
+    category: "hooks",
+    check(file: ConfigFile): ReadonlyArray<Finding> {
+      if (file.type !== "settings-json" && file.type !== "hook-script") return [];
+
+      const findings: Finding[] = [];
+
+      const deletePatterns: ReadonlyArray<{
+        readonly pattern: RegExp;
+        readonly description: string;
+      }> = [
+        {
+          pattern: /\brm\s+-[a-zA-Z]*r[a-zA-Z]*f?\b/g,
+          description: "Recursive file deletion (rm -rf) — can destroy entire directories",
+        },
+        {
+          pattern: /\brm\s+-[a-zA-Z]*f\b/g,
+          description: "Force file deletion (rm -f) — deletes without confirmation",
+        },
+        {
+          pattern: /\bshred\b/g,
+          description: "Secure file erasure (shred) — irrecoverable deletion used to cover tracks",
+        },
+        {
+          pattern: /\bunlink\b/g,
+          description: "File deletion via unlink",
+        },
+      ];
+
+      for (const { pattern, description } of deletePatterns) {
+        const matches = findAllMatches(file.content, pattern);
+        for (const match of matches) {
+          findings.push({
+            id: `hooks-file-delete-${match.index}`,
+            severity: "high",
+            category: "hooks",
+            title: `Hook deletes files: ${match[0].trim()}`,
+            description: `${description}. A hook that deletes files could destroy source code, logs, or evidence of compromise.`,
+            file: file.path,
+            line: findLineNumber(file.content, match.index ?? 0),
+            evidence: match[0].trim(),
+          });
+        }
+      }
+
+      return findings;
+    },
+  },
+  {
+    id: "hooks-cron-persistence",
+    name: "Hook Installs Cron Job",
+    description: "Checks for hooks that install cron jobs for persistent access",
+    severity: "critical",
+    category: "hooks",
+    check(file: ConfigFile): ReadonlyArray<Finding> {
+      if (file.type !== "settings-json" && file.type !== "hook-script") return [];
+
+      const findings: Finding[] = [];
+
+      const cronPatterns: ReadonlyArray<{
+        readonly pattern: RegExp;
+        readonly description: string;
+      }> = [
+        {
+          pattern: /\bcrontab\b/g,
+          description: "Modifies crontab — installs persistent scheduled tasks",
+        },
+        {
+          pattern: /\/etc\/cron/g,
+          description: "Writes to system cron directory — installs persistent scheduled tasks",
+        },
+        {
+          pattern: /\bat\s+-[a-z]/g,
+          description: "Schedules deferred command execution via at",
+        },
+        {
+          pattern: /\bsystemctl\s+(?:enable|start)/g,
+          description: "Enables/starts a systemd service — potential persistence mechanism",
+        },
+        {
+          pattern: /\blaunchctl\s+load/g,
+          description: "Loads a macOS launch agent — persistent background process",
+        },
+      ];
+
+      for (const { pattern, description } of cronPatterns) {
+        const matches = findAllMatches(file.content, pattern);
+        for (const match of matches) {
+          findings.push({
+            id: `hooks-cron-persist-${match.index}`,
+            severity: "critical",
+            category: "hooks",
+            title: `Hook installs persistence mechanism: ${match[0].trim()}`,
+            description: `${description}. Hooks should not install persistence mechanisms. This could allow a compromised hook to maintain access even after the session ends.`,
+            file: file.path,
+            line: findLineNumber(file.content, match.index ?? 0),
+            evidence: match[0].trim(),
+          });
+        }
+      }
+
+      return findings;
+    },
+  },
 ];

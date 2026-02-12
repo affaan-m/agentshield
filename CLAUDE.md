@@ -6,7 +6,7 @@ Security auditor for AI agent configurations (Claude Code, MCP servers, hooks, a
 
 ```bash
 npm run build      # tsc + tsup → dist/
-npm test           # vitest (593 tests)
+npm test           # vitest (602 tests)
 npm run dev        # tsx watch mode
 ```
 
@@ -23,7 +23,7 @@ src/
     index.ts        # Barrel export of all rule modules
     secrets.ts      # 4 rules, 23 patterns — API keys, tokens, passwords, env exposure, CLAUDE.md secrets
     permissions.ts  # 7 rules — allow/deny analysis, dangerous flags, destructive git, mutable tools, sensitive paths, wildcard roots
-    hooks.ts        # 14 rules — injection, exfiltration, background processes, error suppression, world-readable output, env sourcing
+    hooks.ts        # 16 rules — injection, exfiltration, background processes, error suppression, world-readable output, cron persistence, file deletion
     mcp.ts          # 13 rules — risky servers, env override, npx supply chain, url transport, root paths, shell wrappers, git deps
     agents.ts       # 10 rules — tool restrictions, prompt injection, unicode tricks, CLAUDE.md injection, escalation chain, model cost
   reporter/
