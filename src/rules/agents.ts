@@ -519,4 +519,53 @@ export const agentRules: ReadonlyArray<Rule> = [
       return [];
     },
   },
+  {
+    id: "agents-data-exfil-instructions",
+    name: "Agent Contains Data Exfiltration Instructions",
+    description: "Checks agent definitions for instructions that direct data to be sent externally",
+    severity: "critical",
+    category: "injection",
+    check(file: ConfigFile): ReadonlyArray<Finding> {
+      if (file.type !== "agent-md") return [];
+
+      const findings: Finding[] = [];
+
+      const exfilPatterns = [
+        {
+          pattern: /(?:send|post|upload|exfiltrate|transmit)\s+(?:.*\s+)?(?:to|at)\s+https?:\/\//gi,
+          desc: "Instructs agent to send data to an external URL",
+        },
+        {
+          pattern: /output\s+(?:the\s+)?contents?\s+of\s+(?:~\/\.ssh|\/etc\/|\.env|credentials)/gi,
+          desc: "Instructs agent to output sensitive file contents",
+        },
+        {
+          pattern: /(?:read|cat|dump|extract)\s+(?:.*\s+)?(?:private\s+key|credentials?|secrets?|passwords?)\s+(?:and\s+)?(?:send|post|share)/gi,
+          desc: "Instructs agent to extract and share secrets",
+        },
+        {
+          pattern: /(?:encode|base64)\s+(?:.*\s+)?(?:and\s+)?(?:send|post|embed)/gi,
+          desc: "Instructs agent to encode and exfiltrate data",
+        },
+      ];
+
+      for (const { pattern, desc } of exfilPatterns) {
+        const matches = findAllMatches(file.content, pattern);
+        for (const match of matches) {
+          findings.push({
+            id: `agents-exfil-instruction-${match.index}`,
+            severity: "critical",
+            category: "injection",
+            title: `Data exfiltration instruction in agent definition`,
+            description: `Found "${match[0].substring(0, 80)}" — ${desc}. If this agent definition is contributed by an external source, this could direct the agent to steal sensitive data.`,
+            file: file.path,
+            line: findLineNumber(file.content, match.index ?? 0),
+            evidence: match[0].substring(0, 100),
+          });
+        }
+      }
+
+      return findings;
+    },
+  },
 ];
