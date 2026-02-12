@@ -878,6 +878,62 @@ export const hookRules: ReadonlyArray<Rule> = [
     },
   },
   {
+    id: "hooks-git-config-modification",
+    name: "Hook Modifies Git Configuration",
+    description: "Checks for hooks that modify git config, which can alter commit authorship, disable signing, or change hooks",
+    severity: "high",
+    category: "hooks",
+    check(file: ConfigFile): ReadonlyArray<Finding> {
+      if (file.type !== "settings-json" && file.type !== "hook-script") return [];
+
+      const findings: Finding[] = [];
+
+      const gitConfigPatterns: ReadonlyArray<{
+        readonly pattern: RegExp;
+        readonly description: string;
+      }> = [
+        {
+          pattern: /\bgit\s+config\s+--global/g,
+          description: "Modifies global git config — affects all repositories on the system",
+        },
+        {
+          pattern: /\bgit\s+config\s+(?:--system)/g,
+          description: "Modifies system-level git config — affects all users",
+        },
+        {
+          pattern: /\bgit\s+config\s+(?:.*\s+)?(?:user\.email|user\.name)/g,
+          description: "Changes git commit author identity — could attribute commits to someone else",
+        },
+        {
+          pattern: /\bgit\s+config\s+(?:.*\s+)?(?:commit\.gpgsign|tag\.gpgsign)\s+false/g,
+          description: "Disables GPG commit signing — weakens commit verification",
+        },
+        {
+          pattern: /\bgit\s+config\s+(?:.*\s+)?core\.hooksPath/g,
+          description: "Changes git hooks directory — could redirect to malicious hooks",
+        },
+      ];
+
+      for (const { pattern, description } of gitConfigPatterns) {
+        const matches = findAllMatches(file.content, pattern);
+        for (const match of matches) {
+          findings.push({
+            id: `hooks-git-config-${match.index}`,
+            severity: "high",
+            category: "hooks",
+            title: `Hook modifies git config: ${match[0].trim()}`,
+            description: `${description}. Hooks should not modify git configuration as this can undermine version control integrity.`,
+            file: file.path,
+            line: findLineNumber(file.content, match.index ?? 0),
+            evidence: match[0].trim(),
+          });
+        }
+      }
+
+      return findings;
+    },
+  },
+  {
     id: "hooks-privilege-escalation",
     name: "Hook Uses Privilege Escalation",
     description: "Checks for hooks that use sudo, su, or other privilege escalation commands",

@@ -584,6 +584,56 @@ describe("mcpRules", () => {
     });
   });
 
+  describe("disabled security flags", () => {
+    it("detects --no-sandbox in args", () => {
+      const file = makeMcpConfig({
+        browser: { command: "node", args: ["server.js", "--no-sandbox"] },
+      });
+      const findings = runAllMcpRules(file);
+      expect(findings.some((f) => f.id.includes("disabled-security") && f.severity === "critical")).toBe(true);
+    });
+
+    it("detects --disable-web-security in args", () => {
+      const file = makeMcpConfig({
+        browser: { command: "chromium", args: ["--disable-web-security", "--remote-debugging-port=9222"] },
+      });
+      const findings = runAllMcpRules(file);
+      expect(findings.some((f) => f.id.includes("disabled-security"))).toBe(true);
+    });
+
+    it("detects --unsafe-perm in args", () => {
+      const file = makeMcpConfig({
+        installer: { command: "npm", args: ["install", "--unsafe-perm"] },
+      });
+      const findings = runAllMcpRules(file);
+      expect(findings.some((f) => f.id.includes("disabled-security"))).toBe(true);
+    });
+
+    it("detects --insecure flag", () => {
+      const file = makeMcpConfig({
+        curl: { command: "curl", args: ["--insecure", "https://api.example.com"] },
+      });
+      const findings = runAllMcpRules(file);
+      expect(findings.some((f) => f.id.includes("disabled-security"))).toBe(true);
+    });
+
+    it("does not flag safe args", () => {
+      const file = makeMcpConfig({
+        safe: { command: "node", args: ["server.js", "--port", "3000"] },
+      });
+      const findings = runAllMcpRules(file);
+      const securityFindings = findings.filter((f) => f.id.includes("disabled-security"));
+      expect(securityFindings).toHaveLength(0);
+    });
+
+    it("does not flag non-MCP files", () => {
+      const file: ConfigFile = { path: "settings.json", type: "settings-json", content: "--no-sandbox" };
+      const findings = runAllMcpRules(file);
+      const securityFindings = findings.filter((f) => f.id.includes("disabled-security"));
+      expect(securityFindings).toHaveLength(0);
+    });
+  });
+
   describe("dual transport detection", () => {
     it("flags server with both url and command", () => {
       const file: ConfigFile = {

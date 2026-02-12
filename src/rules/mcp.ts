@@ -691,6 +691,79 @@ export const mcpRules: ReadonlyArray<Rule> = [
     },
   },
   {
+    id: "mcp-disabled-security",
+    name: "MCP Server Has Security-Disabling Flags",
+    description: "Checks for MCP servers with arguments that disable security features",
+    severity: "critical",
+    category: "mcp",
+    check(file: ConfigFile): ReadonlyArray<Finding> {
+      if (file.type !== "mcp-json" && file.type !== "settings-json") return [];
+
+      const findings: Finding[] = [];
+
+      try {
+        const config = JSON.parse(file.content);
+        const servers = config.mcpServers ?? {};
+
+        const dangerousFlags: ReadonlyArray<{
+          readonly pattern: RegExp;
+          readonly description: string;
+        }> = [
+          {
+            pattern: /--no-sandbox/,
+            description: "Disables sandboxing — process runs with full system access",
+          },
+          {
+            pattern: /--disable-web-security/,
+            description: "Disables web security policies (CORS, same-origin) — enables cross-site attacks",
+          },
+          {
+            pattern: /--allow-running-insecure-content/,
+            description: "Allows loading HTTP content over HTTPS — enables MITM attacks",
+          },
+          {
+            pattern: /--unsafe-perm/,
+            description: "Runs npm scripts as root — privilege escalation risk",
+          },
+          {
+            pattern: /--trust-all-certificates|--insecure/,
+            description: "Disables TLS certificate verification — enables MITM attacks",
+          },
+        ];
+
+        for (const [name, server] of Object.entries(servers)) {
+          const serverConfig = server as Record<string, unknown>;
+          const args = (serverConfig.args ?? []) as string[];
+          const fullArgs = args.join(" ");
+
+          for (const { pattern, description } of dangerousFlags) {
+            if (pattern.test(fullArgs)) {
+              findings.push({
+                id: `mcp-disabled-security-${name}-${pattern.source}`,
+                severity: "critical",
+                category: "mcp",
+                title: `MCP server "${name}" has security-disabling flag`,
+                description: `The MCP server "${name}" uses a flag that ${description}. Removing security features from MCP servers dramatically increases the attack surface.`,
+                file: file.path,
+                evidence: fullArgs.substring(0, 100),
+                fix: {
+                  description: "Remove the security-disabling flag",
+                  before: pattern.source.replace(/[\\]/g, ""),
+                  after: "# Remove this flag and fix the root cause instead",
+                  auto: false,
+                },
+              });
+            }
+          }
+        }
+      } catch {
+        // Not valid JSON
+      }
+
+      return findings;
+    },
+  },
+  {
     id: "mcp-dual-transport",
     name: "MCP Server Has Both URL and Command",
     description: "Checks for MCP servers with both url and command fields, which is ambiguous and potentially dangerous",

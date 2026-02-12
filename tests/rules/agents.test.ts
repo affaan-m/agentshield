@@ -376,6 +376,33 @@ describe("agentRules", () => {
     });
   });
 
+  describe("oversized prompt", () => {
+    it("flags agent definitions over 5000 characters", () => {
+      const file = makeAgent("x".repeat(5001));
+      const findings = runAllAgentRules(file);
+      expect(findings.some((f) => f.id.includes("oversized-prompt"))).toBe(true);
+    });
+
+    it("does not flag normal-sized agents", () => {
+      const file = makeAgent("A normal agent description that helps with code review.");
+      const findings = runAllAgentRules(file);
+      expect(findings.some((f) => f.id.includes("oversized-prompt"))).toBe(false);
+    });
+
+    it("does not flag non-agent files", () => {
+      const file: ConfigFile = { path: "CLAUDE.md", type: "claude-md", content: "x".repeat(6000) };
+      const findings = runAllAgentRules(file);
+      expect(findings.some((f) => f.id.includes("oversized-prompt"))).toBe(false);
+    });
+
+    it("includes character count in evidence", () => {
+      const file = makeAgent("y".repeat(6000));
+      const findings = runAllAgentRules(file);
+      const finding = findings.find((f) => f.id.includes("oversized-prompt"));
+      expect(finding?.evidence).toContain("6000");
+    });
+  });
+
   describe("unrestricted delegation", () => {
     it("detects 'delegate to any agent' pattern", () => {
       const file = makeAgent("When stuck, delegate the task to any agent that can help.");

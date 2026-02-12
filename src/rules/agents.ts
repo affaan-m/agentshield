@@ -520,6 +520,33 @@ export const agentRules: ReadonlyArray<Rule> = [
     },
   },
   {
+    id: "agents-oversized-prompt",
+    name: "Oversized Agent Definition",
+    description: "Checks for agent definitions that are unusually large, which could hide malicious instructions",
+    severity: "medium",
+    category: "agents",
+    check(file: ConfigFile): ReadonlyArray<Finding> {
+      if (file.type !== "agent-md") return [];
+
+      const charCount = file.content.length;
+      if (charCount > 5000) {
+        return [
+          {
+            id: `agents-oversized-prompt-${file.path}`,
+            severity: "medium",
+            category: "agents",
+            title: `Agent definition is ${charCount} characters (>${5000} threshold)`,
+            description: `The agent definition at ${file.path} is ${charCount} characters long. Unusually large agent definitions may contain hidden malicious instructions buried in legitimate-looking text. Review the full content carefully, especially any instructions near the end of the file.`,
+            file: file.path,
+            evidence: `${charCount} characters`,
+          },
+        ];
+      }
+
+      return [];
+    },
+  },
+  {
     id: "agents-unrestricted-delegation",
     name: "Agent Has Unrestricted Delegation Instructions",
     description: "Checks for agent definitions that instruct the agent to delegate to other agents or spawn sub-agents without restrictions",
