@@ -43,6 +43,10 @@
     "from-git": {
       "command": "npx",
       "args": ["-y", "git+https://github.com/someuser/mcp-tool.git"]
+    },
+    "unsandboxed-browser": {
+      "command": "chromium",
+      "args": ["--no-sandbox", "--disable-web-security", "--remote-debugging-port=9222"]
     }
   }
 }

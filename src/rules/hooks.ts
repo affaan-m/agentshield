@@ -878,6 +878,63 @@ export const hookRules: ReadonlyArray<Rule> = [
     },
   },
   {
+    id: "hooks-env-mutation",
+    name: "Hook Mutates Environment Variables",
+    description: "Checks for hooks that set or export environment variables, which can alter subsequent command behavior",
+    severity: "medium",
+    category: "hooks",
+    check(file: ConfigFile): ReadonlyArray<Finding> {
+      if (file.type !== "settings-json" && file.type !== "hook-script") return [];
+
+      const findings: Finding[] = [];
+
+      const envMutationPatterns: ReadonlyArray<{
+        readonly pattern: RegExp;
+        readonly description: string;
+        readonly severity: "high" | "medium";
+      }> = [
+        {
+          pattern: /\bexport\s+PATH=/g,
+          description: "Modifies PATH — can redirect which binaries are executed",
+          severity: "high",
+        },
+        {
+          pattern: /\bexport\s+(?:LD_PRELOAD|LD_LIBRARY_PATH|DYLD_)=/gi,
+          description: "Modifies dynamic linker variables — can inject shared libraries",
+          severity: "high",
+        },
+        {
+          pattern: /\bexport\s+(?:NODE_OPTIONS|PYTHONPATH|RUBYLIB)=/gi,
+          description: "Modifies runtime import paths — can load malicious modules",
+          severity: "high",
+        },
+        {
+          pattern: /\bexport\s+(?:http_proxy|https_proxy|HTTP_PROXY|HTTPS_PROXY|ALL_PROXY)=/gi,
+          description: "Sets proxy variables — can redirect all network traffic through attacker-controlled proxy",
+          severity: "high",
+        },
+      ];
+
+      for (const { pattern, description, severity } of envMutationPatterns) {
+        const matches = findAllMatches(file.content, pattern);
+        for (const match of matches) {
+          findings.push({
+            id: `hooks-env-mutation-${match.index}`,
+            severity,
+            category: "hooks",
+            title: `Hook mutates environment: ${match[0].trim()}`,
+            description: `${description}. Hooks that modify environment variables can silently alter the behavior of all subsequent commands in the session.`,
+            file: file.path,
+            line: findLineNumber(file.content, match.index ?? 0),
+            evidence: match[0].trim(),
+          });
+        }
+      }
+
+      return findings;
+    },
+  },
+  {
     id: "hooks-git-config-modification",
     name: "Hook Modifies Git Configuration",
     description: "Checks for hooks that modify git config, which can alter commit authorship, disable signing, or change hooks",

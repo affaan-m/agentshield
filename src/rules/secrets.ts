@@ -315,6 +315,72 @@ export const secretRules: ReadonlyArray<Rule> = [
     },
   },
   {
+    id: "secrets-credential-file-reference",
+    name: "Credential File Reference",
+    description: "Checks for references to credential files that should never be accessed by agents",
+    severity: "high",
+    category: "secrets",
+    check(file: ConfigFile): ReadonlyArray<Finding> {
+      if (file.type !== "agent-md" && file.type !== "claude-md") return [];
+
+      const findings: Finding[] = [];
+
+      const credentialFiles: ReadonlyArray<{
+        readonly pattern: RegExp;
+        readonly description: string;
+      }> = [
+        {
+          pattern: /~\/\.aws\/credentials|\/\.aws\/credentials/g,
+          description: "AWS credentials file",
+        },
+        {
+          pattern: /~\/\.ssh\/id_(?:rsa|ed25519|ecdsa)|\/\.ssh\/id_(?:rsa|ed25519|ecdsa)/g,
+          description: "SSH private key file",
+        },
+        {
+          pattern: /~\/\.netrc|\/\.netrc/g,
+          description: ".netrc file (contains plain-text login credentials)",
+        },
+        {
+          pattern: /~\/\.pgpass|\/\.pgpass/g,
+          description: "PostgreSQL password file",
+        },
+        {
+          pattern: /~\/\.docker\/config\.json|\/\.docker\/config\.json/g,
+          description: "Docker config (may contain registry credentials)",
+        },
+        {
+          pattern: /~\/\.npmrc|\/\.npmrc/g,
+          description: "npm config (may contain auth tokens)",
+        },
+        {
+          pattern: /~\/\.kube\/config|\/\.kube\/config/g,
+          description: "Kubernetes config (contains cluster credentials)",
+        },
+      ];
+
+      for (const { pattern, description } of credentialFiles) {
+        const matches = findAllMatches(file.content, pattern);
+        for (const match of matches) {
+          const idx = match.index ?? 0;
+
+          findings.push({
+            id: `secrets-cred-file-ref-${idx}`,
+            severity: "high",
+            category: "secrets",
+            title: `Reference to ${description}: ${match[0]}`,
+            description: `Found reference to "${match[0]}" — ${description}. Agent definitions and CLAUDE.md files should not reference credential files. If an agent is instructed to read these files, it could expose secrets.`,
+            file: file.path,
+            line: findLineNumber(file.content, idx),
+            evidence: match[0],
+          });
+        }
+      }
+
+      return findings;
+    },
+  },
+  {
     id: "secrets-base64-obfuscation",
     name: "Potential Base64 Obfuscated Secret",
     description: "Checks for long base64-encoded strings that may be obfuscated secrets or payloads",

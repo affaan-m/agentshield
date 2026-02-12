@@ -96,7 +96,7 @@ agentshield init
 
 ## What It Catches
 
-**45 rules** across 5 categories, graded A–F with a 0–100 numeric score.
+**48 rules** across 5 categories, graded A–F with a 0–100 numeric score.
 
 ### Secrets Detection (4 rules, 14 patterns)
 
@@ -368,7 +368,7 @@ MiniClaw has **zero external runtime dependencies** — Node.js built-ins only (
 ```bash
 npm install          # Install dependencies
 npm run dev          # Development mode
-npm test             # Run tests (663 tests)
+npm test             # Run tests (684 tests)
 npm run test:coverage # Coverage report
 npm run typecheck    # Type check
 npm run build        # Build
