@@ -520,6 +520,51 @@ export const agentRules: ReadonlyArray<Rule> = [
     },
   },
   {
+    id: "agents-hidden-instructions",
+    name: "Agent Contains Hidden Instructions",
+    description: "Checks for instructions hidden in HTML comments, markdown comments, or using invisible characters",
+    severity: "high",
+    category: "injection",
+    check(file: ConfigFile): ReadonlyArray<Finding> {
+      if (file.type !== "agent-md" && file.type !== "claude-md") return [];
+
+      const findings: Finding[] = [];
+
+      const hiddenPatterns = [
+        {
+          pattern: /<!--[\s\S]*?(?:ignore|override|system|execute|run|install|download|send|post|upload)[\s\S]*?-->/gi,
+          desc: "HTML comment contains suspicious instructions",
+        },
+        {
+          pattern: /\[\/\/\]:\s*#\s*\(.*(?:ignore|override|execute|run|install|download).*\)/gi,
+          desc: "Markdown reference-style comment contains suspicious instructions",
+        },
+        {
+          pattern: /[\u200B\u200C\u200D\uFEFF\u00AD]{3,}/g,
+          desc: "Sequence of zero-width or invisible characters (possible steganographic payload)",
+        },
+      ];
+
+      for (const { pattern, desc } of hiddenPatterns) {
+        const matches = findAllMatches(file.content, pattern);
+        for (const match of matches) {
+          findings.push({
+            id: `agents-hidden-instruction-${match.index}`,
+            severity: "high",
+            category: "injection",
+            title: `Hidden instruction detected in ${file.path}`,
+            description: `${desc}. Attackers may hide malicious instructions in comments or invisible characters that won't be visible in rendered markdown but will be processed by the AI agent.`,
+            file: file.path,
+            line: findLineNumber(file.content, match.index ?? 0),
+            evidence: match[0].substring(0, 100).replace(/[\u200B\u200C\u200D\uFEFF\u00AD]/g, "[ZWSP]"),
+          });
+        }
+      }
+
+      return findings;
+    },
+  },
+  {
     id: "agents-oversized-prompt",
     name: "Oversized Agent Definition",
     description: "Checks for agent definitions that are unusually large, which could hide malicious instructions",
