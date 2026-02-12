@@ -150,6 +150,21 @@ var SECRET_PATTERNS = [
     name: "sendgrid-key",
     pattern: /SG\.[a-zA-Z0-9_-]{22}\.[a-zA-Z0-9_-]{43}/g,
     description: "SendGrid API key"
+  },
+  {
+    name: "twilio-key",
+    pattern: /SK[a-f0-9]{32}/g,
+    description: "Twilio API key"
+  },
+  {
+    name: "azure-key",
+    pattern: /[a-zA-Z0-9\/+]{86}==/g,
+    description: "Azure storage account key"
+  },
+  {
+    name: "mailchimp-key",
+    pattern: /[a-f0-9]{32}-us\d{1,2}/g,
+    description: "Mailchimp API key"
   }
 ];
 function findLineNumber(content, matchIndex) {
@@ -1995,6 +2010,39 @@ var agentRules = [
         }
       }
       return findings;
+    }
+  },
+  {
+    id: "agents-web-write-combo",
+    name: "Agent Has Web Fetch + Write Access",
+    description: "Checks for agents that can fetch web content and write files \u2014 a remote code injection vector",
+    severity: "high",
+    category: "agents",
+    check(file) {
+      if (file.type !== "agent-md") return [];
+      const toolsMatch = file.content.match(/tools:\s*\[([^\]]*)\]/);
+      if (!toolsMatch) return [];
+      const tools = toolsMatch[1].split(",").map((t) => t.trim().replace(/["']/g, ""));
+      const hasWebAccess = tools.some(
+        (t) => ["WebFetch", "WebSearch"].includes(t)
+      );
+      const hasWriteAccess = tools.some(
+        (t) => ["Write", "Edit", "Bash"].includes(t)
+      );
+      if (hasWebAccess && hasWriteAccess) {
+        return [
+          {
+            id: `agents-web-write-${file.path}`,
+            severity: "high",
+            category: "agents",
+            title: `Agent has web access + write access: ${file.path}`,
+            description: "This agent can fetch content from the web AND write/edit files. An attacker could host prompt injection payloads on a web page that the agent processes, then use the write access to inject malicious code into the codebase. Consider separating web research agents from code-writing agents.",
+            file: file.path,
+            evidence: `Web: ${tools.filter((t) => ["WebFetch", "WebSearch"].includes(t)).join(", ")} + Write: ${tools.filter((t) => ["Write", "Edit", "Bash"].includes(t)).join(", ")}`
+          }
+        ];
+      }
+      return [];
     }
   },
   {

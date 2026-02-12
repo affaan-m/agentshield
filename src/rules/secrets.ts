@@ -93,6 +93,21 @@ const SECRET_PATTERNS: ReadonlyArray<{
     pattern: /SG\.[a-zA-Z0-9_-]{22}\.[a-zA-Z0-9_-]{43}/g,
     description: "SendGrid API key",
   },
+  {
+    name: "twilio-key",
+    pattern: /SK[a-f0-9]{32}/g,
+    description: "Twilio API key",
+  },
+  {
+    name: "azure-key",
+    pattern: /[a-zA-Z0-9\/+]{86}==/g,
+    description: "Azure storage account key",
+  },
+  {
+    name: "mailchimp-key",
+    pattern: /[a-f0-9]{32}-us\d{1,2}/g,
+    description: "Mailchimp API key",
+  },
 ];
 
 function findLineNumber(content: string, matchIndex: number): number {

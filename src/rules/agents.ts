@@ -298,6 +298,47 @@ export const agentRules: ReadonlyArray<Rule> = [
     },
   },
   {
+    id: "agents-web-write-combo",
+    name: "Agent Has Web Fetch + Write Access",
+    description: "Checks for agents that can fetch web content and write files — a remote code injection vector",
+    severity: "high",
+    category: "agents",
+    check(file: ConfigFile): ReadonlyArray<Finding> {
+      if (file.type !== "agent-md") return [];
+
+      const toolsMatch = file.content.match(/tools:\s*\[([^\]]*)\]/);
+      if (!toolsMatch) return [];
+
+      const tools = toolsMatch[1]
+        .split(",")
+        .map((t) => t.trim().replace(/["']/g, ""));
+
+      const hasWebAccess = tools.some((t) =>
+        ["WebFetch", "WebSearch"].includes(t)
+      );
+      const hasWriteAccess = tools.some((t) =>
+        ["Write", "Edit", "Bash"].includes(t)
+      );
+
+      if (hasWebAccess && hasWriteAccess) {
+        return [
+          {
+            id: `agents-web-write-${file.path}`,
+            severity: "high",
+            category: "agents",
+            title: `Agent has web access + write access: ${file.path}`,
+            description:
+              "This agent can fetch content from the web AND write/edit files. An attacker could host prompt injection payloads on a web page that the agent processes, then use the write access to inject malicious code into the codebase. Consider separating web research agents from code-writing agents.",
+            file: file.path,
+            evidence: `Web: ${tools.filter((t) => ["WebFetch", "WebSearch"].includes(t)).join(", ")} + Write: ${tools.filter((t) => ["Write", "Edit", "Bash"].includes(t)).join(", ")}`,
+          },
+        ];
+      }
+
+      return [];
+    },
+  },
+  {
     id: "agents-prompt-injection-surface",
     name: "Agent Prompt Injection Surface",
     description: "Checks agent definitions for patterns that increase prompt injection risk",

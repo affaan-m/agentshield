@@ -48,6 +48,33 @@ describe("agentRules", () => {
     });
   });
 
+  describe("web + write combo", () => {
+    it("flags agents with WebFetch and Write", () => {
+      const file = makeAgent('---\ntools: ["WebFetch", "Write", "Read"]\nmodel: sonnet\n---\nResearch and code agent.');
+      const findings = runAllAgentRules(file);
+      expect(findings.some((f) => f.id.includes("web-write"))).toBe(true);
+      expect(findings.find((f) => f.id.includes("web-write"))?.severity).toBe("high");
+    });
+
+    it("flags agents with WebSearch and Bash", () => {
+      const file = makeAgent('---\ntools: ["WebSearch", "Bash", "Read"]\nmodel: sonnet\n---\nResearch agent.');
+      const findings = runAllAgentRules(file);
+      expect(findings.some((f) => f.id.includes("web-write"))).toBe(true);
+    });
+
+    it("does not flag agents with web access only", () => {
+      const file = makeAgent('---\ntools: ["WebFetch", "Read", "Grep"]\nmodel: sonnet\n---\nResearch agent.');
+      const findings = runAllAgentRules(file);
+      expect(findings.some((f) => f.id.includes("web-write"))).toBe(false);
+    });
+
+    it("does not flag agents with write access only", () => {
+      const file = makeAgent('---\ntools: ["Write", "Edit", "Read"]\nmodel: sonnet\n---\nCoding agent.');
+      const findings = runAllAgentRules(file);
+      expect(findings.some((f) => f.id.includes("web-write"))).toBe(false);
+    });
+  });
+
   describe("prompt injection surface", () => {
     it("detects agents that process external content", () => {
       const file = makeAgent('---\ntools: ["Read"]\nmodel: sonnet\n---\nFetch URLs and parse HTML from web pages.');

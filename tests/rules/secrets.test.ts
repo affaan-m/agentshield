@@ -103,6 +103,22 @@ describe("secretRules", () => {
       expect(secretFindings).toHaveLength(0);
     });
 
+    it("detects Twilio API keys", () => {
+      // Build programmatically to avoid GitHub push protection
+      const key = "SK" + "0123456789abcdef".repeat(2);
+      const file = makeFile(key);
+      const findings = runAllSecretRules(file);
+      expect(findings.some((f) => f.title.includes("Twilio API key"))).toBe(true);
+    });
+
+    it("detects Mailchimp API keys", () => {
+      // Build programmatically to avoid GitHub push protection
+      const key = "0123456789abcdef".repeat(2) + "-us12";
+      const file = makeFile(key);
+      const findings = runAllSecretRules(file);
+      expect(findings.some((f) => f.title.includes("Mailchimp API key"))).toBe(true);
+    });
+
     it("detects Stripe publishable keys", () => {
       const file = makeFile("pk_live_abcdefghijklmnopqrstuvwxyz1234");
       const findings = runAllSecretRules(file);
