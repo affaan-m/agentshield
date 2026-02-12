@@ -51,15 +51,15 @@ That's it. AgentShield auto-discovers your `~/.claude/` directory, scans all con
 
   Score Breakdown
   Secrets        ░░░░░░░░░░░░░░░░░░░░ 0
-  Permissions    █████░░░░░░░░░░░░░░░ 23
+  Permissions    ░░░░░░░░░░░░░░░░░░░░ 0
   Hooks          ░░░░░░░░░░░░░░░░░░░░ 0
-  MCP Servers    ██░░░░░░░░░░░░░░░░░░ 10
-  Agents         ████████████████░░░░ 80
+  MCP Servers    ░░░░░░░░░░░░░░░░░░░░ 0
+  Agents         ░░░░░░░░░░░░░░░░░░░░ 0
 
   ● CRITICAL  Hardcoded Anthropic API key
     CLAUDE.md:13
     Evidence: sk-ant-a...cdef
-    Fix: Replace with environment variable reference
+    Fix: Replace with environment variable reference [auto-fixable]
 
   ● CRITICAL  Overly permissive allow rule: Bash(*)
     settings.json
@@ -67,9 +67,9 @@ That's it. AgentShield auto-discovers your `~/.claude/` directory, scans all con
     Fix: Restrict to specific commands: Bash(git *), Bash(npm *), Bash(node *)
 
   Summary
-  Files scanned: 4
-  Findings: 35 total — 10 critical, 12 high, 8 medium, 1 low, 4 info
-  Auto-fixable: 1 (use --fix)
+  Files scanned: 6
+  Findings: 73 total — 19 critical, 29 high, 15 medium, 4 low, 6 info
+  Auto-fixable: 8 (use --fix)
 ```
 
 ### More commands
