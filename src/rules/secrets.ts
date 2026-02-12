@@ -78,6 +78,21 @@ const SECRET_PATTERNS: ReadonlyArray<{
     pattern: /(?:sk|pk)_(?:test|live)_[a-zA-Z0-9]{24,}/g,
     description: "Stripe API key",
   },
+  {
+    name: "discord-token",
+    pattern: /[MN][A-Za-z\d]{23,}\.[\w-]{6}\.[\w-]{27,}/g,
+    description: "Discord bot token",
+  },
+  {
+    name: "npm-token",
+    pattern: /npm_[a-zA-Z0-9]{36,}/g,
+    description: "npm access token",
+  },
+  {
+    name: "sendgrid-key",
+    pattern: /SG\.[a-zA-Z0-9_-]{22}\.[a-zA-Z0-9_-]{43}/g,
+    description: "SendGrid API key",
+  },
 ];
 
 function findLineNumber(content: string, matchIndex: number): number {

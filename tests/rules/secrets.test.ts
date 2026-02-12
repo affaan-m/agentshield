@@ -79,6 +79,22 @@ describe("secretRules", () => {
       expect(findings.some((f) => f.title.includes("Stripe API key"))).toBe(true);
     });
 
+    it("detects npm access tokens", () => {
+      const file = makeFile("npm_abcdefghijklmnopqrstuvwxyz1234567890AB");
+      const findings = runAllSecretRules(file);
+      expect(findings.some((f) => f.title.includes("npm access token"))).toBe(true);
+    });
+
+    it("detects SendGrid API keys", () => {
+      // Build the test key programmatically to avoid triggering GitHub push protection
+      const prefix = "SG";
+      const part1 = "FAKE_TEST_KEY_12345678";
+      const part2 = "FAKE_DEMO_NOT_REAL_abcdefghijklmnopqrstuvwxyz12345";
+      const file = makeFile(`${prefix}.${part1}.${part2}`);
+      const findings = runAllSecretRules(file);
+      expect(findings.some((f) => f.title.includes("SendGrid API key"))).toBe(true);
+    });
+
     it("skips env var references like ${VAR}", () => {
       const file = makeFile('token: "${ANTHROPIC_API_KEY}"');
       const findings = runAllSecretRules(file);

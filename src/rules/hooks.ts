@@ -445,6 +445,62 @@ export const hookRules: ReadonlyArray<Rule> = [
     },
   },
   {
+    id: "hooks-background-process",
+    name: "Hook Spawns Background Process",
+    description: "Checks for hooks that spawn background processes which persist beyond the hook's execution",
+    severity: "high",
+    category: "hooks",
+    check(file: ConfigFile): ReadonlyArray<Finding> {
+      if (file.type !== "settings-json" && file.type !== "hook-script") return [];
+
+      const findings: Finding[] = [];
+
+      const bgPatterns: ReadonlyArray<{
+        readonly pattern: RegExp;
+        readonly description: string;
+      }> = [
+        {
+          pattern: /\bnohup\b/g,
+          description: "nohup keeps a process running after the hook exits — potential persistence mechanism",
+        },
+        {
+          pattern: /\bdisown\b/g,
+          description: "disown detaches a process from the shell — hides background activity",
+        },
+        {
+          pattern: /&\s*(?:$|[;)]|&&)/gm,
+          description: "Background process via & — may run indefinitely after hook completes",
+        },
+        {
+          pattern: /\bscreen\s+-[dS]/g,
+          description: "screen session — creates persistent hidden shell sessions",
+        },
+        {
+          pattern: /\btmux\s+(?:new|send)/g,
+          description: "tmux session — creates persistent hidden shell sessions",
+        },
+      ];
+
+      for (const { pattern, description } of bgPatterns) {
+        const matches = findAllMatches(file.content, pattern);
+        for (const match of matches) {
+          findings.push({
+            id: `hooks-bg-process-${match.index}`,
+            severity: "high",
+            category: "hooks",
+            title: `Hook spawns background process: ${match[0].trim()}`,
+            description: `${description}. Background processes in hooks can be used for persistent backdoors or data exfiltration that outlives the session.`,
+            file: file.path,
+            line: findLineNumber(file.content, match.index ?? 0),
+            evidence: match[0].trim(),
+          });
+        }
+      }
+
+      return findings;
+    },
+  },
+  {
     id: "hooks-env-exfiltration",
     name: "Hook Env Var Exfiltration",
     description: "Checks for hooks that access environment variables and send them to external services",
