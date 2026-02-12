@@ -120,6 +120,21 @@ var SECRET_PATTERNS = [
     name: "slack-token",
     pattern: /xox[bprs]-[a-zA-Z0-9-]{10,}/g,
     description: "Slack API token"
+  },
+  {
+    name: "jwt-token",
+    pattern: /eyJ[a-zA-Z0-9_-]{10,}\.eyJ[a-zA-Z0-9_-]{10,}\.[a-zA-Z0-9_-]{10,}/g,
+    description: "JWT token"
+  },
+  {
+    name: "google-api-key",
+    pattern: /AIza[a-zA-Z0-9_\\-]{35}/g,
+    description: "Google API key"
+  },
+  {
+    name: "stripe-key",
+    pattern: /(?:sk|pk)_(?:test|live)_[a-zA-Z0-9]{24,}/g,
+    description: "Stripe API key"
   }
 ];
 function findLineNumber(content, matchIndex) {
@@ -844,6 +859,59 @@ var hookRules = [
     }
   },
   {
+    id: "hooks-sensitive-file-access",
+    name: "Hook Accesses Sensitive Files",
+    description: "Checks for hooks that read or write to sensitive system files",
+    severity: "high",
+    category: "hooks",
+    check(file) {
+      if (file.type !== "settings-json" && file.type !== "hook-script") return [];
+      const findings = [];
+      const sensitivePathPatterns = [
+        {
+          pattern: /\/etc\/(?:passwd|shadow|sudoers|hosts)/g,
+          desc: "system authentication/configuration file"
+        },
+        {
+          pattern: /~\/\.ssh\/|\/\.ssh\//g,
+          desc: "SSH directory (may contain private keys)"
+        },
+        {
+          pattern: /~\/\.aws\/|\/\.aws\//g,
+          desc: "AWS credentials directory"
+        },
+        {
+          pattern: /~\/\.gnupg\/|\/\.gnupg\//g,
+          desc: "GPG keyring directory"
+        },
+        {
+          pattern: /~\/\.env|\/\.env\b/g,
+          desc: "environment file (likely contains secrets)"
+        },
+        {
+          pattern: /\/etc\/ssl\/|\/etc\/pki\//g,
+          desc: "SSL/TLS certificate directory"
+        }
+      ];
+      for (const { pattern, desc } of sensitivePathPatterns) {
+        const matches = findAllMatches2(file.content, pattern);
+        for (const match of matches) {
+          findings.push({
+            id: `hooks-sensitive-file-${match.index}`,
+            severity: "high",
+            category: "exposure",
+            title: `Hook accesses sensitive path: ${match[0]}`,
+            description: `A hook references "${match[0]}" \u2014 ${desc}. Hooks should not access sensitive system files. This could expose credentials, keys, or system configuration.`,
+            file: file.path,
+            line: findLineNumber3(file.content, match.index ?? 0),
+            evidence: match[0]
+          });
+        }
+      }
+      return findings;
+    }
+  },
+  {
     id: "hooks-no-stop-hooks",
     name: "No Stop Hooks for Session Verification",
     description: "Checks if there are Stop hooks for end-of-session verification",
@@ -1345,6 +1413,51 @@ var mcpRules = [
     }
   },
   {
+    id: "mcp-shell-metacharacters",
+    name: "MCP Shell Metacharacters in Args",
+    description: "Checks for shell metacharacters in MCP server arguments that could enable command injection",
+    severity: "medium",
+    category: "mcp",
+    check(file) {
+      if (file.type !== "mcp-json" && file.type !== "settings-json") return [];
+      const findings = [];
+      try {
+        const config = JSON.parse(file.content);
+        const servers = config.mcpServers ?? {};
+        const shellMetachars = /[;|&`$(){}]/;
+        for (const [name, server] of Object.entries(servers)) {
+          const serverConfig = server;
+          const command = serverConfig.command ?? "";
+          const args = serverConfig.args ?? [];
+          if (/^(sh|bash|zsh|cmd)$/.test(command)) continue;
+          for (const arg of args) {
+            if (arg.startsWith("-")) continue;
+            if (shellMetachars.test(arg)) {
+              findings.push({
+                id: `mcp-shell-metachar-${name}`,
+                severity: "medium",
+                category: "mcp",
+                title: `MCP server "${name}" has shell metacharacters in args`,
+                description: `The argument "${arg.substring(0, 60)}" for MCP server "${name}" contains shell metacharacters (;|&\`$). If the command spawns a shell, these could enable command injection. Use separate args instead of shell syntax.`,
+                file: file.path,
+                evidence: arg.substring(0, 80),
+                fix: {
+                  description: "Split into separate arguments without shell metacharacters",
+                  before: `"${arg.substring(0, 40)}"`,
+                  after: "Split into separate args array elements",
+                  auto: false
+                }
+              });
+              break;
+            }
+          }
+        }
+      } catch {
+      }
+      return findings;
+    }
+  },
+  {
     id: "mcp-excessive-server-count",
     name: "MCP Excessive Server Count",
     description: "Flags configurations with too many MCP servers",
@@ -1467,6 +1580,55 @@ var agentRules = [
         ];
       }
       return [];
+    }
+  },
+  {
+    id: "agents-claude-md-url-execution",
+    name: "CLAUDE.md URL Execution",
+    description: "Checks CLAUDE.md files for instructions to download and execute remote content",
+    severity: "high",
+    category: "injection",
+    check(file) {
+      if (file.type !== "claude-md") return [];
+      const findings = [];
+      const urlExecPatterns = [
+        {
+          pattern: /\b(curl|wget)\s+.*https?:\/\/[^\s]+.*\|\s*(sh|bash|zsh|node|python)/gi,
+          desc: "Pipe-to-shell instruction \u2014 downloading and executing remote code",
+          severity: "critical"
+        },
+        {
+          pattern: /\b(curl|wget)\s+(-[a-zA-Z]*\s+)*https?:\/\/[^\s]+/gi,
+          desc: "Download instruction in CLAUDE.md \u2014 if the agent follows this, it will fetch remote content",
+          severity: "high"
+        },
+        {
+          pattern: /\bgit\s+clone\s+https?:\/\/[^\s]+/gi,
+          desc: "Git clone instruction \u2014 could pull malicious repository content",
+          severity: "medium"
+        },
+        {
+          pattern: /\bnpm\s+install\s+https?:\/\/[^\s]+/gi,
+          desc: "npm install from URL \u2014 could install unvetted package",
+          severity: "high"
+        }
+      ];
+      for (const { pattern, desc, severity } of urlExecPatterns) {
+        const matches = findAllMatches3(file.content, pattern);
+        for (const match of matches) {
+          findings.push({
+            id: `agents-claude-md-url-exec-${match.index}`,
+            severity,
+            category: "injection",
+            title: "CLAUDE.md contains URL execution instruction",
+            description: `Found "${match[0].substring(0, 80)}" \u2014 ${desc}. A malicious repository could include a CLAUDE.md with instructions to download and run arbitrary code.`,
+            file: file.path,
+            line: findLineNumber4(file.content, match.index ?? 0),
+            evidence: match[0].substring(0, 100)
+          });
+        }
+      }
+      return findings;
     }
   },
   {

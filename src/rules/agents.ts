@@ -124,6 +124,59 @@ export const agentRules: ReadonlyArray<Rule> = [
     },
   },
   {
+    id: "agents-claude-md-url-execution",
+    name: "CLAUDE.md URL Execution",
+    description: "Checks CLAUDE.md files for instructions to download and execute remote content",
+    severity: "high",
+    category: "injection",
+    check(file: ConfigFile): ReadonlyArray<Finding> {
+      if (file.type !== "claude-md") return [];
+
+      const findings: Finding[] = [];
+
+      const urlExecPatterns = [
+        {
+          pattern: /\b(curl|wget)\s+.*https?:\/\/[^\s]+.*\|\s*(sh|bash|zsh|node|python)/gi,
+          desc: "Pipe-to-shell instruction — downloading and executing remote code",
+          severity: "critical" as const,
+        },
+        {
+          pattern: /\b(curl|wget)\s+(-[a-zA-Z]*\s+)*https?:\/\/[^\s]+/gi,
+          desc: "Download instruction in CLAUDE.md — if the agent follows this, it will fetch remote content",
+          severity: "high" as const,
+        },
+        {
+          pattern: /\bgit\s+clone\s+https?:\/\/[^\s]+/gi,
+          desc: "Git clone instruction — could pull malicious repository content",
+          severity: "medium" as const,
+        },
+        {
+          pattern: /\bnpm\s+install\s+https?:\/\/[^\s]+/gi,
+          desc: "npm install from URL — could install unvetted package",
+          severity: "high" as const,
+        },
+      ];
+
+      for (const { pattern, desc, severity } of urlExecPatterns) {
+        const matches = findAllMatches(file.content, pattern);
+        for (const match of matches) {
+          findings.push({
+            id: `agents-claude-md-url-exec-${match.index}`,
+            severity,
+            category: "injection",
+            title: "CLAUDE.md contains URL execution instruction",
+            description: `Found "${match[0].substring(0, 80)}" — ${desc}. A malicious repository could include a CLAUDE.md with instructions to download and run arbitrary code.`,
+            file: file.path,
+            line: findLineNumber(file.content, match.index ?? 0),
+            evidence: match[0].substring(0, 100),
+          });
+        }
+      }
+
+      return findings;
+    },
+  },
+  {
     id: "agents-prompt-injection-patterns",
     name: "Agent Prompt Injection Patterns",
     description: "Checks agent definitions for patterns commonly used in prompt injection attacks",

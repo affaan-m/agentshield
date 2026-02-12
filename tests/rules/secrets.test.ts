@@ -61,6 +61,24 @@ describe("secretRules", () => {
       expect(findings.some((f) => f.title.includes("Slack API token"))).toBe(true);
     });
 
+    it("detects JWT tokens", () => {
+      const file = makeFile("eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dozjgNryP4J3jVmNHl0w5N_XgL0n3I9PlFUP0THsR8U");
+      const findings = runAllSecretRules(file);
+      expect(findings.some((f) => f.title.includes("JWT token"))).toBe(true);
+    });
+
+    it("detects Google API keys", () => {
+      const file = makeFile("key: AIzaSyA1234567890abcdefghijklmnopqrstuvw");
+      const findings = runAllSecretRules(file);
+      expect(findings.some((f) => f.title.includes("Google API key"))).toBe(true);
+    });
+
+    it("detects Stripe API keys", () => {
+      const file = makeFile("sk_test_abcdefghijklmnopqrstuvwxyz1234");
+      const findings = runAllSecretRules(file);
+      expect(findings.some((f) => f.title.includes("Stripe API key"))).toBe(true);
+    });
+
     it("skips env var references like ${VAR}", () => {
       const file = makeFile('token: "${ANTHROPIC_API_KEY}"');
       const findings = runAllSecretRules(file);

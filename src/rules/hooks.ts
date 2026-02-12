@@ -276,6 +276,63 @@ export const hookRules: ReadonlyArray<Rule> = [
     },
   },
   {
+    id: "hooks-sensitive-file-access",
+    name: "Hook Accesses Sensitive Files",
+    description: "Checks for hooks that read or write to sensitive system files",
+    severity: "high",
+    category: "hooks",
+    check(file: ConfigFile): ReadonlyArray<Finding> {
+      if (file.type !== "settings-json" && file.type !== "hook-script") return [];
+
+      const findings: Finding[] = [];
+
+      const sensitivePathPatterns = [
+        {
+          pattern: /\/etc\/(?:passwd|shadow|sudoers|hosts)/g,
+          desc: "system authentication/configuration file",
+        },
+        {
+          pattern: /~\/\.ssh\/|\/\.ssh\//g,
+          desc: "SSH directory (may contain private keys)",
+        },
+        {
+          pattern: /~\/\.aws\/|\/\.aws\//g,
+          desc: "AWS credentials directory",
+        },
+        {
+          pattern: /~\/\.gnupg\/|\/\.gnupg\//g,
+          desc: "GPG keyring directory",
+        },
+        {
+          pattern: /~\/\.env|\/\.env\b/g,
+          desc: "environment file (likely contains secrets)",
+        },
+        {
+          pattern: /\/etc\/ssl\/|\/etc\/pki\//g,
+          desc: "SSL/TLS certificate directory",
+        },
+      ];
+
+      for (const { pattern, desc } of sensitivePathPatterns) {
+        const matches = findAllMatches(file.content, pattern);
+        for (const match of matches) {
+          findings.push({
+            id: `hooks-sensitive-file-${match.index}`,
+            severity: "high",
+            category: "exposure",
+            title: `Hook accesses sensitive path: ${match[0]}`,
+            description: `A hook references "${match[0]}" — ${desc}. Hooks should not access sensitive system files. This could expose credentials, keys, or system configuration.`,
+            file: file.path,
+            line: findLineNumber(file.content, match.index ?? 0),
+            evidence: match[0],
+          });
+        }
+      }
+
+      return findings;
+    },
+  },
+  {
     id: "hooks-no-stop-hooks",
     name: "No Stop Hooks for Session Verification",
     description: "Checks if there are Stop hooks for end-of-session verification",

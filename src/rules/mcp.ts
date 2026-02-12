@@ -445,6 +445,62 @@ export const mcpRules: ReadonlyArray<Rule> = [
     },
   },
   {
+    id: "mcp-shell-metacharacters",
+    name: "MCP Shell Metacharacters in Args",
+    description: "Checks for shell metacharacters in MCP server arguments that could enable command injection",
+    severity: "medium",
+    category: "mcp",
+    check(file: ConfigFile): ReadonlyArray<Finding> {
+      if (file.type !== "mcp-json" && file.type !== "settings-json") return [];
+
+      const findings: Finding[] = [];
+
+      try {
+        const config = JSON.parse(file.content);
+        const servers = config.mcpServers ?? {};
+
+        const shellMetachars = /[;|&`$(){}]/;
+
+        for (const [name, server] of Object.entries(servers)) {
+          const serverConfig = server as Record<string, unknown>;
+          const command = (serverConfig.command ?? "") as string;
+          const args = (serverConfig.args ?? []) as string[];
+
+          // Skip if command is sh/bash (expected to have shell syntax)
+          if (/^(sh|bash|zsh|cmd)$/.test(command)) continue;
+
+          for (const arg of args) {
+            // Skip flags
+            if (arg.startsWith("-")) continue;
+
+            if (shellMetachars.test(arg)) {
+              findings.push({
+                id: `mcp-shell-metachar-${name}`,
+                severity: "medium",
+                category: "mcp",
+                title: `MCP server "${name}" has shell metacharacters in args`,
+                description: `The argument "${arg.substring(0, 60)}" for MCP server "${name}" contains shell metacharacters (;|&\`$). If the command spawns a shell, these could enable command injection. Use separate args instead of shell syntax.`,
+                file: file.path,
+                evidence: arg.substring(0, 80),
+                fix: {
+                  description: "Split into separate arguments without shell metacharacters",
+                  before: `"${arg.substring(0, 40)}"`,
+                  after: "Split into separate args array elements",
+                  auto: false,
+                },
+              });
+              break;
+            }
+          }
+        }
+      } catch {
+        // Not valid JSON
+      }
+
+      return findings;
+    },
+  },
+  {
     id: "mcp-excessive-server-count",
     name: "MCP Excessive Server Count",
     description: "Flags configurations with too many MCP servers",

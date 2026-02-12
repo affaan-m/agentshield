@@ -63,6 +63,21 @@ const SECRET_PATTERNS: ReadonlyArray<{
     pattern: /xox[bprs]-[a-zA-Z0-9-]{10,}/g,
     description: "Slack API token",
   },
+  {
+    name: "jwt-token",
+    pattern: /eyJ[a-zA-Z0-9_-]{10,}\.eyJ[a-zA-Z0-9_-]{10,}\.[a-zA-Z0-9_-]{10,}/g,
+    description: "JWT token",
+  },
+  {
+    name: "google-api-key",
+    pattern: /AIza[a-zA-Z0-9_\\-]{35}/g,
+    description: "Google API key",
+  },
+  {
+    name: "stripe-key",
+    pattern: /(?:sk|pk)_(?:test|live)_[a-zA-Z0-9]{24,}/g,
+    description: "Stripe API key",
+  },
 ];
 
 function findLineNumber(content: string, matchIndex: number): number {

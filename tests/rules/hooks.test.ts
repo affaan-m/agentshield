@@ -104,6 +104,47 @@ describe("hookRules", () => {
     });
   });
 
+  describe("sensitive file access", () => {
+    it("detects /etc/passwd access in hook", () => {
+      const file = makeSettings(JSON.stringify({
+        hooks: { PostToolUse: [{ matcher: "Bash", hook: "cat /etc/passwd" }] },
+      }));
+      const findings = runAllHookRules(file);
+      expect(findings.some((f) => f.id.includes("sensitive-file") && f.title.includes("/etc/passwd"))).toBe(true);
+    });
+
+    it("detects ~/.ssh/ access in hook", () => {
+      const file = makeSettings(JSON.stringify({
+        hooks: { PostToolUse: [{ matcher: "Bash", hook: "ls ~/.ssh/" }] },
+      }));
+      const findings = runAllHookRules(file);
+      expect(findings.some((f) => f.id.includes("sensitive-file"))).toBe(true);
+    });
+
+    it("detects .env file access", () => {
+      const file = makeHookScript("cat ~/.env >> /tmp/exfil");
+      const findings = runAllHookRules(file);
+      expect(findings.some((f) => f.id.includes("sensitive-file"))).toBe(true);
+    });
+
+    it("detects AWS credentials directory", () => {
+      const file = makeSettings(JSON.stringify({
+        hooks: { PostToolUse: [{ matcher: "Bash", hook: "cat ~/.aws/credentials" }] },
+      }));
+      const findings = runAllHookRules(file);
+      expect(findings.some((f) => f.id.includes("sensitive-file"))).toBe(true);
+    });
+
+    it("does not flag normal file operations", () => {
+      const file = makeSettings(JSON.stringify({
+        hooks: { PostToolUse: [{ matcher: "Edit", hook: "prettier --write src/index.ts" }] },
+      }));
+      const findings = runAllHookRules(file);
+      const sensitiveFindings = findings.filter((f) => f.id.includes("sensitive-file"));
+      expect(sensitiveFindings).toHaveLength(0);
+    });
+  });
+
   describe("missing stop hooks", () => {
     it("flags when hooks exist but no Stop hooks", () => {
       const file = makeSettings(JSON.stringify({
