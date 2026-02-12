@@ -135,6 +135,21 @@ var SECRET_PATTERNS = [
     name: "stripe-key",
     pattern: /(?:sk|pk)_(?:test|live)_[a-zA-Z0-9]{24,}/g,
     description: "Stripe API key"
+  },
+  {
+    name: "discord-token",
+    pattern: /[MN][A-Za-z\d]{23,}\.[\w-]{6}\.[\w-]{27,}/g,
+    description: "Discord bot token"
+  },
+  {
+    name: "npm-token",
+    pattern: /npm_[a-zA-Z0-9]{36,}/g,
+    description: "npm access token"
+  },
+  {
+    name: "sendgrid-key",
+    pattern: /SG\.[a-zA-Z0-9_-]{22}\.[a-zA-Z0-9_-]{43}/g,
+    description: "SendGrid API key"
   }
 ];
 function findLineNumber(content, matchIndex) {
@@ -1049,6 +1064,55 @@ var hookRules = [
           }
         }
       } catch {
+      }
+      return findings;
+    }
+  },
+  {
+    id: "hooks-background-process",
+    name: "Hook Spawns Background Process",
+    description: "Checks for hooks that spawn background processes which persist beyond the hook's execution",
+    severity: "high",
+    category: "hooks",
+    check(file) {
+      if (file.type !== "settings-json" && file.type !== "hook-script") return [];
+      const findings = [];
+      const bgPatterns = [
+        {
+          pattern: /\bnohup\b/g,
+          description: "nohup keeps a process running after the hook exits \u2014 potential persistence mechanism"
+        },
+        {
+          pattern: /\bdisown\b/g,
+          description: "disown detaches a process from the shell \u2014 hides background activity"
+        },
+        {
+          pattern: /&\s*(?:$|[;)]|&&)/gm,
+          description: "Background process via & \u2014 may run indefinitely after hook completes"
+        },
+        {
+          pattern: /\bscreen\s+-[dS]/g,
+          description: "screen session \u2014 creates persistent hidden shell sessions"
+        },
+        {
+          pattern: /\btmux\s+(?:new|send)/g,
+          description: "tmux session \u2014 creates persistent hidden shell sessions"
+        }
+      ];
+      for (const { pattern, description } of bgPatterns) {
+        const matches = findAllMatches2(file.content, pattern);
+        for (const match of matches) {
+          findings.push({
+            id: `hooks-bg-process-${match.index}`,
+            severity: "high",
+            category: "hooks",
+            title: `Hook spawns background process: ${match[0].trim()}`,
+            description: `${description}. Background processes in hooks can be used for persistent backdoors or data exfiltration that outlives the session.`,
+            file: file.path,
+            line: findLineNumber3(file.content, match.index ?? 0),
+            evidence: match[0].trim()
+          });
+        }
       }
       return findings;
     }
