@@ -52,6 +52,18 @@ const OVERLY_PERMISSIVE: ReadonlyArray<{
     severity: "medium",
     suggestion: "Restrict to specific domains or move to deny list",
   },
+  {
+    pattern: /^Bash\(chmod\s/,
+    description: "chmod access — agent can change file permissions",
+    severity: "medium",
+    suggestion: "Move chmod to deny list to prevent permission escalation",
+  },
+  {
+    pattern: /^Bash\(chown\s/,
+    description: "chown access — agent can change file ownership",
+    severity: "high",
+    suggestion: "Move chown to deny list to prevent ownership takeover",
+  },
 ];
 
 /**

@@ -39,6 +39,10 @@
     "shell-wrapped": {
       "command": "sh",
       "args": ["-c", "node /opt/mcp-server/index.js --unsafe"]
+    },
+    "from-git": {
+      "command": "npx",
+      "args": ["-y", "git+https://github.com/someuser/mcp-tool.git"]
     }
   }
 }

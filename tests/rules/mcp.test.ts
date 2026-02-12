@@ -547,4 +547,40 @@ describe("mcpRules", () => {
       expect(finding?.fix?.after).toContain("node");
     });
   });
+
+  describe("git URL dependency detection", () => {
+    it("detects git+https URL in args", () => {
+      const file = makeMcpConfig({
+        custom: { command: "npx", args: ["-y", "git+https://github.com/user/repo.git"] },
+      });
+      const findings = runAllMcpRules(file);
+      expect(findings.some((f) => f.id.includes("git-url-dep"))).toBe(true);
+    });
+
+    it("detects github.com .git URL in args", () => {
+      const file = makeMcpConfig({
+        custom: { command: "npx", args: ["-y", "https://github.com/user/mcp-tool.git"] },
+      });
+      const findings = runAllMcpRules(file);
+      expect(findings.some((f) => f.id.includes("git-url-dep"))).toBe(true);
+    });
+
+    it("does not flag npm package names", () => {
+      const file = makeMcpConfig({
+        safe: { command: "npx", args: ["-y", "@scope/package@1.0.0"] },
+      });
+      const findings = runAllMcpRules(file);
+      const gitFindings = findings.filter((f) => f.id.includes("git-url-dep"));
+      expect(gitFindings).toHaveLength(0);
+    });
+
+    it("provides fix suggestion", () => {
+      const file = makeMcpConfig({
+        custom: { command: "npx", args: ["git+https://github.com/user/repo.git"] },
+      });
+      const findings = runAllMcpRules(file);
+      const finding = findings.find((f) => f.id.includes("git-url-dep"));
+      expect(finding?.fix).toBeDefined();
+    });
+  });
 });

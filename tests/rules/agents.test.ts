@@ -315,4 +315,64 @@ describe("agentRules", () => {
       expect(findings.some((f) => f.evidence === "Run unattended")).toBe(true);
     });
   });
+
+  describe("full tool escalation chain", () => {
+    it("flags agents with discovery + read + write + execute", () => {
+      const file = makeAgent('---\ntools: ["Glob", "Read", "Write", "Bash"]\nmodel: sonnet\n---\nFull-access agent.');
+      const findings = runAllAgentRules(file);
+      expect(findings.some((f) => f.id.includes("escalation-chain"))).toBe(true);
+    });
+
+    it("flags agents with Grep instead of Glob", () => {
+      const file = makeAgent('---\ntools: ["Grep", "Read", "Edit", "Bash"]\nmodel: sonnet\n---\nFull-access agent.');
+      const findings = runAllAgentRules(file);
+      expect(findings.some((f) => f.id.includes("escalation-chain"))).toBe(true);
+    });
+
+    it("does not flag agents missing execute", () => {
+      const file = makeAgent('---\ntools: ["Glob", "Read", "Write"]\nmodel: sonnet\n---\nNo bash agent.');
+      const findings = runAllAgentRules(file);
+      expect(findings.some((f) => f.id.includes("escalation-chain"))).toBe(false);
+    });
+
+    it("does not flag agents missing discovery", () => {
+      const file = makeAgent('---\ntools: ["Read", "Write", "Bash"]\nmodel: sonnet\n---\nNo discovery agent.');
+      const findings = runAllAgentRules(file);
+      expect(findings.some((f) => f.id.includes("escalation-chain"))).toBe(false);
+    });
+  });
+
+  describe("expensive model for read-only agent", () => {
+    it("flags read-only agent with opus model", () => {
+      const file = makeAgent('---\ntools: ["Read", "Grep", "Glob"]\nmodel: opus\n---\nSearch agent.');
+      const findings = runAllAgentRules(file);
+      expect(findings.some((f) => f.id.includes("expensive-readonly"))).toBe(true);
+    });
+
+    it("flags read-only agent with sonnet model", () => {
+      const file = makeAgent('---\ntools: ["Read", "Grep"]\nmodel: sonnet\n---\nSearch agent.');
+      const findings = runAllAgentRules(file);
+      expect(findings.some((f) => f.id.includes("expensive-readonly"))).toBe(true);
+    });
+
+    it("does not flag read-only agent with haiku model", () => {
+      const file = makeAgent('---\ntools: ["Read", "Grep", "Glob"]\nmodel: haiku\n---\nSearch agent.');
+      const findings = runAllAgentRules(file);
+      expect(findings.some((f) => f.id.includes("expensive-readonly"))).toBe(false);
+    });
+
+    it("does not flag write agent with opus model", () => {
+      const file = makeAgent('---\ntools: ["Read", "Write", "Grep"]\nmodel: opus\n---\nEditor agent.');
+      const findings = runAllAgentRules(file);
+      expect(findings.some((f) => f.id.includes("expensive-readonly"))).toBe(false);
+    });
+
+    it("provides fix suggestion", () => {
+      const file = makeAgent('---\ntools: ["Read", "Glob"]\nmodel: opus\n---\nExplorer.');
+      const findings = runAllAgentRules(file);
+      const finding = findings.find((f) => f.id.includes("expensive-readonly"));
+      expect(finding?.fix).toBeDefined();
+      expect(finding?.fix?.after).toContain("haiku");
+    });
+  });
 });

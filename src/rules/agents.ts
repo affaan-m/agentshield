@@ -432,4 +432,91 @@ export const agentRules: ReadonlyArray<Rule> = [
       return findings;
     },
   },
+  {
+    id: "agents-full-tool-escalation",
+    name: "Agent Has Full Tool Escalation Chain",
+    description: "Checks if an agent has the complete chain: discovery + read + write + execute tools",
+    severity: "high",
+    category: "agents",
+    check(file: ConfigFile): ReadonlyArray<Finding> {
+      if (file.type !== "agent-md") return [];
+
+      const toolsMatch = file.content.match(/tools:\s*\[([^\]]*)\]/);
+      if (!toolsMatch) return [];
+
+      const tools = toolsMatch[1]
+        .split(",")
+        .map((t) => t.trim().replace(/["']/g, ""));
+
+      const hasDiscovery = tools.some((t) => ["Glob", "Grep", "LS"].includes(t));
+      const hasRead = tools.includes("Read");
+      const hasWrite = tools.some((t) => ["Write", "Edit"].includes(t));
+      const hasExecute = tools.includes("Bash");
+
+      if (hasDiscovery && hasRead && hasWrite && hasExecute) {
+        return [
+          {
+            id: `agents-escalation-chain-${file.path}`,
+            severity: "high",
+            category: "agents",
+            title: `Agent has full escalation chain: ${file.path}`,
+            description:
+              "This agent has discovery tools (Glob/Grep), Read, Write/Edit, AND Bash access. This forms a complete escalation chain: find files → read contents → modify code → execute commands. Consider whether the agent truly needs all four capabilities, or if it can be split into separate agents with narrower roles.",
+            file: file.path,
+            evidence: `Discovery: ${tools.filter((t) => ["Glob", "Grep", "LS"].includes(t)).join(", ")} + Read + Write: ${tools.filter((t) => ["Write", "Edit"].includes(t)).join(", ")} + Bash`,
+          },
+        ];
+      }
+
+      return [];
+    },
+  },
+  {
+    id: "agents-expensive-model-readonly",
+    name: "Expensive Model for Read-Only Agent",
+    description: "Checks if read-only agents are using expensive models unnecessarily",
+    severity: "low",
+    category: "misconfiguration",
+    check(file: ConfigFile): ReadonlyArray<Finding> {
+      if (file.type !== "agent-md") return [];
+
+      const toolsMatch = file.content.match(/tools:\s*\[([^\]]*)\]/);
+      if (!toolsMatch) return [];
+
+      const tools = toolsMatch[1]
+        .split(",")
+        .map((t) => t.trim().replace(/["']/g, ""));
+
+      const modelMatch = file.content.match(/model:\s*(\w+)/);
+      if (!modelMatch) return [];
+
+      const model = modelMatch[1].toLowerCase();
+
+      const readOnlyTools = ["Read", "Grep", "Glob", "LS"];
+      const isReadOnly = tools.every((t) => readOnlyTools.includes(t));
+      const isExpensive = model === "opus" || model === "sonnet";
+
+      if (isReadOnly && isExpensive) {
+        return [
+          {
+            id: `agents-expensive-readonly-${file.path}`,
+            severity: "low",
+            category: "misconfiguration",
+            title: `Read-only agent uses expensive model "${model}": ${file.path}`,
+            description:
+              `This agent only has read-only tools (${tools.join(", ")}) but uses the "${model}" model. For simple file reading and searching, "haiku" is typically sufficient and significantly cheaper.`,
+            file: file.path,
+            fix: {
+              description: "Use haiku for read-only agents",
+              before: `model: ${model}`,
+              after: "model: haiku",
+              auto: false,
+            },
+          },
+        ];
+      }
+
+      return [];
+    },
+  },
 ];

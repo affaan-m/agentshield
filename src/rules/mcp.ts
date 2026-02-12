@@ -644,4 +644,50 @@ export const mcpRules: ReadonlyArray<Rule> = [
       return findings;
     },
   },
+  {
+    id: "mcp-git-url-dependency",
+    name: "MCP Git URL Dependency",
+    description: "Checks for MCP servers installed from git URLs which are mutable supply chain risks",
+    severity: "high",
+    category: "mcp",
+    check(file: ConfigFile): ReadonlyArray<Finding> {
+      if (file.type !== "mcp-json" && file.type !== "settings-json") return [];
+
+      const findings: Finding[] = [];
+
+      try {
+        const config = JSON.parse(file.content);
+        const servers = config.mcpServers ?? {};
+
+        for (const [name, server] of Object.entries(servers)) {
+          const serverConfig = server as Record<string, unknown>;
+          const args = (serverConfig.args ?? []) as string[];
+
+          for (const arg of args) {
+            if (/git\+https?:\/\/|github\.com\/.*\.git/.test(arg)) {
+              findings.push({
+                id: `mcp-git-url-dep-${name}`,
+                severity: "high",
+                category: "mcp",
+                title: `MCP server "${name}" installed from git URL`,
+                description: `The MCP server "${name}" references a git URL "${arg.substring(0, 80)}". Git URLs point to mutable content — the repository owner can push malicious changes at any time, and they would be picked up on next install. Use a pinned npm package version instead.`,
+                file: file.path,
+                evidence: arg.substring(0, 100),
+                fix: {
+                  description: "Use a pinned npm package version instead of a git URL",
+                  before: `"${arg.substring(0, 40)}"`,
+                  after: '"@scope/package@1.0.0"',
+                  auto: false,
+                },
+              });
+            }
+          }
+        }
+      } catch {
+        // Not valid JSON
+      }
+
+      return findings;
+    },
+  },
 ];

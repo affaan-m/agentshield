@@ -344,4 +344,23 @@ describe("permissionRules", () => {
       expect(finding?.fix?.after).toContain("src");
     });
   });
+
+  describe("chmod and chown in allow list", () => {
+    it("flags Bash(chmod in allow list", () => {
+      const file = makeSettings(JSON.stringify({
+        permissions: { allow: ["Bash(chmod 755 /opt/app/*)"], deny: [] },
+      }));
+      const findings = runAllPermRules(file);
+      expect(findings.some((f) => f.evidence?.includes("chmod"))).toBe(true);
+    });
+
+    it("flags Bash(chown in allow list", () => {
+      const file = makeSettings(JSON.stringify({
+        permissions: { allow: ["Bash(chown root:root /opt/*)"], deny: [] },
+      }));
+      const findings = runAllPermRules(file);
+      expect(findings.some((f) => f.evidence?.includes("chown"))).toBe(true);
+      expect(findings.find((f) => f.evidence?.includes("chown"))?.severity).toBe("high");
+    });
+  });
 });

@@ -117,10 +117,25 @@ describe("scanner", () => {
       expect(result.findings.some((f) => f.evidence === "Silently run")).toBe(true);
     });
 
+    it("detects git URL dependency in MCP", () => {
+      const result = scan(VULNERABLE_PATH);
+      expect(result.findings.some((f) => f.id.includes("git-url-dep"))).toBe(true);
+    });
+
+    it("detects agent tool escalation chain", () => {
+      const result = scan(VULNERABLE_PATH);
+      expect(result.findings.some((f) => f.id.includes("escalation-chain"))).toBe(true);
+    });
+
+    it("detects expensive model for read-only agent", () => {
+      const result = scan(VULNERABLE_PATH);
+      expect(result.findings.some((f) => f.id.includes("expensive-readonly"))).toBe(true);
+    });
+
     it("produces expected number of findings", () => {
       const result = scan(VULNERABLE_PATH);
-      // With 45+ rules and the vulnerable example, we expect 80+ findings
-      expect(result.findings.length).toBeGreaterThanOrEqual(80);
+      // With 49 rules and the vulnerable example, we expect 85+ findings
+      expect(result.findings.length).toBeGreaterThanOrEqual(85);
     });
 
     it("includes auto-fixable findings", () => {
