@@ -462,6 +462,57 @@ export const permissionRules: ReadonlyArray<Rule> = [
       return findings;
     },
   },
+  {
+    id: "permissions-wildcard-root-paths",
+    name: "Wildcard Root Path in Allow List",
+    description: "Checks if the allow list uses wildcards on root-level or home-level directories",
+    severity: "high",
+    category: "permissions",
+    check(file: ConfigFile): ReadonlyArray<Finding> {
+      if (file.type !== "settings-json") return [];
+
+      const perms = parsePermissionLists(file.content);
+      if (!perms) return [];
+
+      const findings: Finding[] = [];
+
+      const broadPathPatterns: ReadonlyArray<{
+        readonly pattern: RegExp;
+        readonly description: string;
+      }> = [
+        { pattern: /\(\/\*\)/, description: "root filesystem wildcard" },
+        { pattern: /\(~\/\*\)/, description: "home directory wildcard" },
+        { pattern: /\(\/home\/\*\)/, description: "all users home directories" },
+        { pattern: /\(\/usr\/\*\)/, description: "system programs directory" },
+        { pattern: /\(\/opt\/\*\)/, description: "optional software directory" },
+      ];
+
+      for (const entry of perms.allow) {
+        for (const { pattern, description } of broadPathPatterns) {
+          if (pattern.test(entry)) {
+            findings.push({
+              id: `permissions-wildcard-root-${findings.length}`,
+              severity: "high",
+              category: "permissions",
+              title: `Broad wildcard path in allow list: ${entry}`,
+              description: `The allow entry "${entry}" uses a ${description}. This grants the agent access to far more files than typically needed. Restrict to project-specific paths.`,
+              file: file.path,
+              evidence: entry,
+              fix: {
+                description: "Restrict to project-specific directories",
+                before: entry,
+                after: entry.replace(/\(.*\)/, "(./src/*)"),
+                auto: false,
+              },
+            });
+            break;
+          }
+        }
+      }
+
+      return findings;
+    },
+  },
 ];
 
 function findLineNumber(content: string, matchIndex: number): number {

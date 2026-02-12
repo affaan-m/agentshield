@@ -388,16 +388,28 @@ export const agentRules: ReadonlyArray<Rule> = [
 
       const autoRunPatterns = [
         {
-          pattern: /always\s+(?:run|install|download)/gi,
+          pattern: /always\s+(?:run|install|download|execute)/gi,
           desc: "Auto-run instructions",
         },
         {
-          pattern: /automatically\s+(?:run|install|clone)/gi,
+          pattern: /automatically\s+(?:run|install|clone|execute|download)/gi,
           desc: "Automatic running",
         },
         {
-          pattern: /without\s+(?:asking|confirmation|prompting)/gi,
+          pattern: /without\s+(?:asking|confirmation|prompting|user\s+input)/gi,
           desc: "Bypasses confirmation",
+        },
+        {
+          pattern: /\bsilently\s+(?:run|install|execute|download|clone)/gi,
+          desc: "Silent execution",
+        },
+        {
+          pattern: /\brun\s+unattended\b/gi,
+          desc: "Unattended execution",
+        },
+        {
+          pattern: /\bexecute\s+without\s+(?:confirmation|review|approval)/gi,
+          desc: "Execution without review",
         },
       ];
 

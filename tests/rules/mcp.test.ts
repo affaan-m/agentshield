@@ -501,4 +501,50 @@ describe("mcpRules", () => {
       expect(countFindings).toHaveLength(0);
     });
   });
+
+  describe("shell wrapper detection", () => {
+    it("detects sh -c command pattern", () => {
+      const file = makeMcpConfig({
+        wrapper: { command: "sh", args: ["-c", "node server.js --port 3000"] },
+      });
+      const findings = runAllMcpRules(file);
+      expect(findings.some((f) => f.id.includes("shell-wrapper"))).toBe(true);
+    });
+
+    it("detects bash -c command pattern", () => {
+      const file = makeMcpConfig({
+        runner: { command: "bash", args: ["-c", "python3 mcp_server.py"] },
+      });
+      const findings = runAllMcpRules(file);
+      expect(findings.some((f) => f.id.includes("shell-wrapper"))).toBe(true);
+    });
+
+    it("does not flag node command", () => {
+      const file = makeMcpConfig({
+        safe: { command: "node", args: ["./server.js"] },
+      });
+      const findings = runAllMcpRules(file);
+      const shellFindings = findings.filter((f) => f.id.includes("shell-wrapper"));
+      expect(shellFindings).toHaveLength(0);
+    });
+
+    it("does not flag sh without -c flag", () => {
+      const file = makeMcpConfig({
+        script: { command: "sh", args: ["./run.sh"] },
+      });
+      const findings = runAllMcpRules(file);
+      const shellFindings = findings.filter((f) => f.id.includes("shell-wrapper"));
+      expect(shellFindings).toHaveLength(0);
+    });
+
+    it("provides fix suggestion", () => {
+      const file = makeMcpConfig({
+        wrapper: { command: "sh", args: ["-c", "node server.js"] },
+      });
+      const findings = runAllMcpRules(file);
+      const finding = findings.find((f) => f.id.includes("shell-wrapper"));
+      expect(finding?.fix).toBeDefined();
+      expect(finding?.fix?.after).toContain("node");
+    });
+  });
 });

@@ -299,4 +299,49 @@ describe("permissionRules", () => {
       expect(finding?.fix?.description).toContain("force-with-lease");
     });
   });
+
+  describe("wildcard root paths", () => {
+    it("detects Write(/*) in allow list", () => {
+      const file = makeSettings(JSON.stringify({
+        permissions: { allow: ["Write(/*)", "Read(src/*)"], deny: [] },
+      }));
+      const findings = runAllPermRules(file);
+      expect(findings.some((f) => f.id.includes("wildcard-root"))).toBe(true);
+    });
+
+    it("detects Read(/home/*) in allow list", () => {
+      const file = makeSettings(JSON.stringify({
+        permissions: { allow: ["Read(/home/*)"], deny: [] },
+      }));
+      const findings = runAllPermRules(file);
+      expect(findings.some((f) => f.id.includes("wildcard-root"))).toBe(true);
+    });
+
+    it("detects Edit(~/*) in allow list", () => {
+      const file = makeSettings(JSON.stringify({
+        permissions: { allow: ["Edit(~/*)"], deny: [] },
+      }));
+      const findings = runAllPermRules(file);
+      expect(findings.some((f) => f.id.includes("wildcard-root"))).toBe(true);
+    });
+
+    it("does not flag project-scoped paths", () => {
+      const file = makeSettings(JSON.stringify({
+        permissions: { allow: ["Write(src/*)", "Edit(tests/*)"], deny: [] },
+      }));
+      const findings = runAllPermRules(file);
+      const wildcardFindings = findings.filter((f) => f.id.includes("wildcard-root"));
+      expect(wildcardFindings).toHaveLength(0);
+    });
+
+    it("provides fix suggestion", () => {
+      const file = makeSettings(JSON.stringify({
+        permissions: { allow: ["Write(/*)"], deny: [] },
+      }));
+      const findings = runAllPermRules(file);
+      const finding = findings.find((f) => f.id.includes("wildcard-root"));
+      expect(finding?.fix).toBeDefined();
+      expect(finding?.fix?.after).toContain("src");
+    });
+  });
 });

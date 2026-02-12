@@ -269,4 +269,33 @@ describe("secretRules", () => {
       expect(passthroughFindings).toHaveLength(0);
     });
   });
+
+  describe("new secret patterns", () => {
+    it("detects Hugging Face tokens", () => {
+      const file = makeFile("hf_abcdefghijklmnopqrstuvwxyz1234");
+      const findings = runAllSecretRules(file);
+      expect(findings.some((f) => f.title.includes("Hugging Face"))).toBe(true);
+    });
+
+    it("detects Databricks tokens", () => {
+      // Build programmatically to avoid GitHub push protection
+      const token = "dapi" + "0123456789abcdef".repeat(2);
+      const file = makeFile(token);
+      const findings = runAllSecretRules(file);
+      expect(findings.some((f) => f.title.includes("Databricks"))).toBe(true);
+    });
+
+    it("detects DigitalOcean tokens", () => {
+      const token = "dop_v1_" + "a".repeat(64);
+      const file = makeFile(token);
+      const findings = runAllSecretRules(file);
+      expect(findings.some((f) => f.title.includes("DigitalOcean"))).toBe(true);
+    });
+
+    it("does not flag short hf_ prefixes", () => {
+      const file = makeFile("hf_short");
+      const findings = runAllSecretRules(file);
+      expect(findings.some((f) => f.title.includes("Hugging Face"))).toBe(false);
+    });
+  });
 });

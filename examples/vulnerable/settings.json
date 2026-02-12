@@ -41,7 +41,9 @@
       "Bash(git push --force origin main)",
       "Bash(git reset --hard HEAD~1)",
       "Read(/etc/passwd)",
-      "Write(~/.ssh/authorized_keys)"
+      "Write(~/.ssh/authorized_keys)",
+      "Write(/*)",
+      "Read(/home/*)"
     ]
   }
 }

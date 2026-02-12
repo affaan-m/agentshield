@@ -108,6 +108,21 @@ const SECRET_PATTERNS: ReadonlyArray<{
     pattern: /[a-f0-9]{32}-us\d{1,2}/g,
     description: "Mailchimp API key",
   },
+  {
+    name: "huggingface-token",
+    pattern: /hf_[a-zA-Z0-9]{20,}/g,
+    description: "Hugging Face access token",
+  },
+  {
+    name: "databricks-token",
+    pattern: /dapi[a-f0-9]{32}/g,
+    description: "Databricks personal access token",
+  },
+  {
+    name: "digitalocean-token",
+    pattern: /dop_v1_[a-f0-9]{64}/g,
+    description: "DigitalOcean personal access token",
+  },
 ];
 
 function findLineNumber(content: string, matchIndex: number): number {

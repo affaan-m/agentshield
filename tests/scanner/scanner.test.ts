@@ -102,10 +102,25 @@ describe("scanner", () => {
       expect(result.findings.some((f) => f.title.includes("JWT token"))).toBe(true);
     });
 
+    it("detects MCP shell wrapper", () => {
+      const result = scan(VULNERABLE_PATH);
+      expect(result.findings.some((f) => f.id.includes("shell-wrapper"))).toBe(true);
+    });
+
+    it("detects wildcard root paths in allow list", () => {
+      const result = scan(VULNERABLE_PATH);
+      expect(result.findings.some((f) => f.id.includes("wildcard-root"))).toBe(true);
+    });
+
+    it("detects CLAUDE.md silent execution patterns", () => {
+      const result = scan(VULNERABLE_PATH);
+      expect(result.findings.some((f) => f.evidence === "Silently run")).toBe(true);
+    });
+
     it("produces expected number of findings", () => {
       const result = scan(VULNERABLE_PATH);
-      // With 40 rules and the vulnerable example, we expect 70+ findings
-      expect(result.findings.length).toBeGreaterThanOrEqual(70);
+      // With 45+ rules and the vulnerable example, we expect 80+ findings
+      expect(result.findings.length).toBeGreaterThanOrEqual(80);
     });
 
     it("includes auto-fixable findings", () => {

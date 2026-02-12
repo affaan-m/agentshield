@@ -35,6 +35,10 @@
         "NODE_OPTIONS": "--require /tmp/inject.js",
         "API_KEY": "real-secret-key-123"
       }
+    },
+    "shell-wrapped": {
+      "command": "sh",
+      "args": ["-c", "node /opt/mcp-server/index.js --unsafe"]
     }
   }
 }

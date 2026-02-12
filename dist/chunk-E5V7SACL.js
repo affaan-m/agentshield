@@ -165,6 +165,21 @@ var SECRET_PATTERNS = [
     name: "mailchimp-key",
     pattern: /[a-f0-9]{32}-us\d{1,2}/g,
     description: "Mailchimp API key"
+  },
+  {
+    name: "huggingface-token",
+    pattern: /hf_[a-zA-Z0-9]{20,}/g,
+    description: "Hugging Face access token"
+  },
+  {
+    name: "databricks-token",
+    pattern: /dapi[a-f0-9]{32}/g,
+    description: "Databricks personal access token"
+  },
+  {
+    name: "digitalocean-token",
+    pattern: /dop_v1_[a-f0-9]{64}/g,
+    description: "DigitalOcean personal access token"
   }
 ];
 function findLineNumber(content, matchIndex) {
@@ -693,6 +708,49 @@ var permissionRules = [
                 description: "Restrict to project directories only",
                 before: entry,
                 after: entry.replace(/\/etc\/.*|~\/\.ssh.*|\/\.ssh.*|~\/\.aws.*|\/\.aws.*|~\/\.gnupg.*|\/\.gnupg.*|\/root\/.*|\/var\/log.*/, "src/*"),
+                auto: false
+              }
+            });
+            break;
+          }
+        }
+      }
+      return findings;
+    }
+  },
+  {
+    id: "permissions-wildcard-root-paths",
+    name: "Wildcard Root Path in Allow List",
+    description: "Checks if the allow list uses wildcards on root-level or home-level directories",
+    severity: "high",
+    category: "permissions",
+    check(file) {
+      if (file.type !== "settings-json") return [];
+      const perms = parsePermissionLists(file.content);
+      if (!perms) return [];
+      const findings = [];
+      const broadPathPatterns = [
+        { pattern: /\(\/\*\)/, description: "root filesystem wildcard" },
+        { pattern: /\(~\/\*\)/, description: "home directory wildcard" },
+        { pattern: /\(\/home\/\*\)/, description: "all users home directories" },
+        { pattern: /\(\/usr\/\*\)/, description: "system programs directory" },
+        { pattern: /\(\/opt\/\*\)/, description: "optional software directory" }
+      ];
+      for (const entry of perms.allow) {
+        for (const { pattern, description } of broadPathPatterns) {
+          if (pattern.test(entry)) {
+            findings.push({
+              id: `permissions-wildcard-root-${findings.length}`,
+              severity: "high",
+              category: "permissions",
+              title: `Broad wildcard path in allow list: ${entry}`,
+              description: `The allow entry "${entry}" uses a ${description}. This grants the agent access to far more files than typically needed. Restrict to project-specific paths.`,
+              file: file.path,
+              evidence: entry,
+              fix: {
+                description: "Restrict to project-specific directories",
+                before: entry,
+                after: entry.replace(/\(.*\)/, "(./src/*)"),
                 auto: false
               }
             });
@@ -1268,6 +1326,93 @@ var hookRules = [
       }
       return findings;
     }
+  },
+  {
+    id: "hooks-output-to-world-readable",
+    name: "Hook Writes to World-Readable Path",
+    description: "Checks for hooks that redirect output to world-readable directories like /tmp",
+    severity: "high",
+    category: "hooks",
+    check(file) {
+      if (file.type !== "settings-json" && file.type !== "hook-script") return [];
+      const findings = [];
+      const worldReadablePatterns = [
+        {
+          pattern: />\s*\/tmp\//g,
+          description: "Redirects output to /tmp \u2014 readable by all users on the system"
+        },
+        {
+          pattern: /\btee\s+\/tmp\//g,
+          description: "Uses tee to write to /tmp \u2014 creates world-readable file"
+        },
+        {
+          pattern: />\s*\/var\/tmp\//g,
+          description: "Redirects output to /var/tmp \u2014 persistent and world-readable"
+        },
+        {
+          pattern: /\bmktemp\b/g,
+          description: "Creates temporary file \u2014 ensure secure permissions (mktemp is generally safe but verify cleanup)"
+        }
+      ];
+      for (const { pattern, description } of worldReadablePatterns) {
+        const matches = findAllMatches2(file.content, pattern);
+        for (const match of matches) {
+          if (pattern.source.includes("mktemp")) continue;
+          findings.push({
+            id: `hooks-world-readable-${match.index}`,
+            severity: "high",
+            category: "exposure",
+            title: `Hook writes to world-readable path: ${match[0].trim()}`,
+            description: `${description}. Other users or processes on the system can read the output, which may contain secrets, code, or session data.`,
+            file: file.path,
+            line: findLineNumber3(file.content, match.index ?? 0),
+            evidence: match[0].trim()
+          });
+        }
+      }
+      return findings;
+    }
+  },
+  {
+    id: "hooks-source-from-env",
+    name: "Hook Sources Script from Environment Path",
+    description: "Checks for hooks that source scripts from environment variable paths",
+    severity: "high",
+    category: "injection",
+    check(file) {
+      if (file.type !== "settings-json" && file.type !== "hook-script") return [];
+      const findings = [];
+      const sourcePatterns = [
+        {
+          pattern: /\bsource\s+\$\{?\w+\}?\//g,
+          description: "Sources a script from an environment variable path"
+        },
+        {
+          pattern: /\.\s+\$\{?\w+\}?\//g,
+          description: "Dot-sources a script from an environment variable path"
+        },
+        {
+          pattern: /\beval\s+\$\{?\w+/g,
+          description: "Evaluates content from an environment variable"
+        }
+      ];
+      for (const { pattern, description } of sourcePatterns) {
+        const matches = findAllMatches2(file.content, pattern);
+        for (const match of matches) {
+          findings.push({
+            id: `hooks-source-env-${match.index}`,
+            severity: "high",
+            category: "injection",
+            title: `Hook sources script from environment path: ${match[0].trim()}`,
+            description: `${description}. If the environment variable is attacker-controlled, this enables arbitrary code execution through the sourced script.`,
+            file: file.path,
+            line: findLineNumber3(file.content, match.index ?? 0),
+            evidence: match[0].trim()
+          });
+        }
+      }
+      return findings;
+    }
   }
 ];
 
@@ -1757,6 +1902,45 @@ var mcpRules = [
       }
       return [];
     }
+  },
+  {
+    id: "mcp-shell-wrapper",
+    name: "MCP Server Uses Shell Wrapper",
+    description: "Checks for MCP servers that use sh/bash -c as command, which defeats argument separation safety",
+    severity: "high",
+    category: "mcp",
+    check(file) {
+      if (file.type !== "mcp-json" && file.type !== "settings-json") return [];
+      const findings = [];
+      try {
+        const config = JSON.parse(file.content);
+        const servers = config.mcpServers ?? {};
+        for (const [name, server] of Object.entries(servers)) {
+          const serverConfig = server;
+          const command = serverConfig.command ?? "";
+          const args = serverConfig.args ?? [];
+          if (/^(sh|bash|zsh|cmd)$/.test(command) && args.includes("-c")) {
+            findings.push({
+              id: `mcp-shell-wrapper-${name}`,
+              severity: "high",
+              category: "mcp",
+              title: `MCP server "${name}" uses shell wrapper (${command} -c)`,
+              description: `The MCP server "${name}" uses "${command} -c" as its command. This passes all arguments through a shell interpreter, defeating the security benefits of argument separation. Shell metacharacters in args become live injection vectors. Use the target binary directly as the command instead.`,
+              file: file.path,
+              evidence: `command: ${command}, args: ${JSON.stringify(args).substring(0, 80)}`,
+              fix: {
+                description: "Use the target binary directly instead of wrapping in sh -c",
+                before: `"command": "${command}", "args": ["-c", ...]`,
+                after: '"command": "node", "args": ["./server.js"]',
+                auto: false
+              }
+            });
+          }
+        }
+      } catch {
+      }
+      return findings;
+    }
   }
 ];
 
@@ -2088,16 +2272,28 @@ var agentRules = [
       const findings = [];
       const autoRunPatterns = [
         {
-          pattern: /always\s+(?:run|install|download)/gi,
+          pattern: /always\s+(?:run|install|download|execute)/gi,
           desc: "Auto-run instructions"
         },
         {
-          pattern: /automatically\s+(?:run|install|clone)/gi,
+          pattern: /automatically\s+(?:run|install|clone|execute|download)/gi,
           desc: "Automatic running"
         },
         {
-          pattern: /without\s+(?:asking|confirmation|prompting)/gi,
+          pattern: /without\s+(?:asking|confirmation|prompting|user\s+input)/gi,
           desc: "Bypasses confirmation"
+        },
+        {
+          pattern: /\bsilently\s+(?:run|install|execute|download|clone)/gi,
+          desc: "Silent execution"
+        },
+        {
+          pattern: /\brun\s+unattended\b/gi,
+          desc: "Unattended execution"
+        },
+        {
+          pattern: /\bexecute\s+without\s+(?:confirmation|review|approval)/gi,
+          desc: "Execution without review"
         }
       ];
       for (const { pattern, desc } of autoRunPatterns) {

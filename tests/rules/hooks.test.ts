@@ -460,4 +460,58 @@ describe("hookRules", () => {
       expect(expensiveFindings).toHaveLength(0);
     });
   });
+
+  describe("output to world-readable paths", () => {
+    it("detects redirect to /tmp", () => {
+      const file = makeSettings('{"hooks": {"PostToolUse": [{"hook": "command > /tmp/output.log"}]}}');
+      const findings = runAllHookRules(file);
+      expect(findings.some((f) => f.id.includes("world-readable"))).toBe(true);
+    });
+
+    it("detects tee to /tmp", () => {
+      const file = makeSettings('{"hooks": {"PostToolUse": [{"hook": "echo test | tee /tmp/data.txt"}]}}');
+      const findings = runAllHookRules(file);
+      expect(findings.some((f) => f.id.includes("world-readable"))).toBe(true);
+    });
+
+    it("detects redirect to /var/tmp", () => {
+      const file = makeSettings('{"hooks": {"PostToolUse": [{"hook": "ls > /var/tmp/files.txt"}]}}');
+      const findings = runAllHookRules(file);
+      expect(findings.some((f) => f.id.includes("world-readable"))).toBe(true);
+    });
+
+    it("does not flag redirects to project paths", () => {
+      const file = makeSettings('{"hooks": {"PostToolUse": [{"hook": "echo ok > ./output.log"}]}}');
+      const findings = runAllHookRules(file);
+      const worldReadable = findings.filter((f) => f.id.includes("world-readable"));
+      expect(worldReadable).toHaveLength(0);
+    });
+  });
+
+  describe("source from environment path", () => {
+    it("detects source from env variable", () => {
+      const file = makeSettings('{"hooks": {"PreToolUse": [{"hook": "source $HOOK_DIR/check.sh"}]}}');
+      const findings = runAllHookRules(file);
+      expect(findings.some((f) => f.id.includes("source-env"))).toBe(true);
+    });
+
+    it("detects dot-source from env variable", () => {
+      const file = makeHookScript(". ${SCRIPTS_DIR}/setup.sh");
+      const findings = runAllHookRules(file);
+      expect(findings.some((f) => f.id.includes("source-env"))).toBe(true);
+    });
+
+    it("detects eval from env variable", () => {
+      const file = makeSettings('{"hooks": {"PostToolUse": [{"hook": "eval ${DYNAMIC_CMD}"}]}}');
+      const findings = runAllHookRules(file);
+      expect(findings.some((f) => f.id.includes("source-env"))).toBe(true);
+    });
+
+    it("does not flag source from fixed paths", () => {
+      const file = makeSettings('{"hooks": {"PreToolUse": [{"hook": "source ./lib/helpers.sh"}]}}');
+      const findings = runAllHookRules(file);
+      const sourceFindings = findings.filter((f) => f.id.includes("source-env"));
+      expect(sourceFindings).toHaveLength(0);
+    });
+  });
 });

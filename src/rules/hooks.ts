@@ -666,4 +666,107 @@ export const hookRules: ReadonlyArray<Rule> = [
       return findings;
     },
   },
+  {
+    id: "hooks-output-to-world-readable",
+    name: "Hook Writes to World-Readable Path",
+    description: "Checks for hooks that redirect output to world-readable directories like /tmp",
+    severity: "high",
+    category: "hooks",
+    check(file: ConfigFile): ReadonlyArray<Finding> {
+      if (file.type !== "settings-json" && file.type !== "hook-script") return [];
+
+      const findings: Finding[] = [];
+
+      const worldReadablePatterns: ReadonlyArray<{
+        readonly pattern: RegExp;
+        readonly description: string;
+      }> = [
+        {
+          pattern: />\s*\/tmp\//g,
+          description: "Redirects output to /tmp — readable by all users on the system",
+        },
+        {
+          pattern: /\btee\s+\/tmp\//g,
+          description: "Uses tee to write to /tmp — creates world-readable file",
+        },
+        {
+          pattern: />\s*\/var\/tmp\//g,
+          description: "Redirects output to /var/tmp — persistent and world-readable",
+        },
+        {
+          pattern: /\bmktemp\b/g,
+          description: "Creates temporary file — ensure secure permissions (mktemp is generally safe but verify cleanup)",
+        },
+      ];
+
+      for (const { pattern, description } of worldReadablePatterns) {
+        const matches = findAllMatches(file.content, pattern);
+        for (const match of matches) {
+          // mktemp is generally safe — only flag if combined with risky patterns
+          if (pattern.source.includes("mktemp")) continue;
+
+          findings.push({
+            id: `hooks-world-readable-${match.index}`,
+            severity: "high",
+            category: "exposure",
+            title: `Hook writes to world-readable path: ${match[0].trim()}`,
+            description: `${description}. Other users or processes on the system can read the output, which may contain secrets, code, or session data.`,
+            file: file.path,
+            line: findLineNumber(file.content, match.index ?? 0),
+            evidence: match[0].trim(),
+          });
+        }
+      }
+
+      return findings;
+    },
+  },
+  {
+    id: "hooks-source-from-env",
+    name: "Hook Sources Script from Environment Path",
+    description: "Checks for hooks that source scripts from environment variable paths",
+    severity: "high",
+    category: "injection",
+    check(file: ConfigFile): ReadonlyArray<Finding> {
+      if (file.type !== "settings-json" && file.type !== "hook-script") return [];
+
+      const findings: Finding[] = [];
+
+      const sourcePatterns: ReadonlyArray<{
+        readonly pattern: RegExp;
+        readonly description: string;
+      }> = [
+        {
+          pattern: /\bsource\s+\$\{?\w+\}?\//g,
+          description: "Sources a script from an environment variable path",
+        },
+        {
+          pattern: /\.\s+\$\{?\w+\}?\//g,
+          description: "Dot-sources a script from an environment variable path",
+        },
+        {
+          pattern: /\beval\s+\$\{?\w+/g,
+          description: "Evaluates content from an environment variable",
+        },
+      ];
+
+      for (const { pattern, description } of sourcePatterns) {
+        const matches = findAllMatches(file.content, pattern);
+        for (const match of matches) {
+          findings.push({
+            id: `hooks-source-env-${match.index}`,
+            severity: "high",
+            category: "injection",
+            title: `Hook sources script from environment path: ${match[0].trim()}`,
+            description: `${description}. If the environment variable is attacker-controlled, this enables arbitrary code execution through the sourced script.`,
+            file: file.path,
+            line: findLineNumber(file.content, match.index ?? 0),
+            evidence: match[0].trim(),
+          });
+        }
+      }
+
+      return findings;
+    },
+  },
 ];

@@ -598,4 +598,50 @@ export const mcpRules: ReadonlyArray<Rule> = [
       return [];
     },
   },
+  {
+    id: "mcp-shell-wrapper",
+    name: "MCP Server Uses Shell Wrapper",
+    description: "Checks for MCP servers that use sh/bash -c as command, which defeats argument separation safety",
+    severity: "high",
+    category: "mcp",
+    check(file: ConfigFile): ReadonlyArray<Finding> {
+      if (file.type !== "mcp-json" && file.type !== "settings-json") return [];
+
+      const findings: Finding[] = [];
+
+      try {
+        const config = JSON.parse(file.content);
+        const servers = config.mcpServers ?? {};
+
+        for (const [name, server] of Object.entries(servers)) {
+          const serverConfig = server as Record<string, unknown>;
+          const command = (serverConfig.command ?? "") as string;
+          const args = (serverConfig.args ?? []) as string[];
+
+          // Detect sh/bash/zsh -c "..." pattern
+          if (/^(sh|bash|zsh|cmd)$/.test(command) && args.includes("-c")) {
+            findings.push({
+              id: `mcp-shell-wrapper-${name}`,
+              severity: "high",
+              category: "mcp",
+              title: `MCP server "${name}" uses shell wrapper (${command} -c)`,
+              description: `The MCP server "${name}" uses "${command} -c" as its command. This passes all arguments through a shell interpreter, defeating the security benefits of argument separation. Shell metacharacters in args become live injection vectors. Use the target binary directly as the command instead.`,
+              file: file.path,
+              evidence: `command: ${command}, args: ${JSON.stringify(args).substring(0, 80)}`,
+              fix: {
+                description: "Use the target binary directly instead of wrapping in sh -c",
+                before: `"command": "${command}", "args": ["-c", ...]`,
+                after: '"command": "node", "args": ["./server.js"]',
+                auto: false,
+              },
+            });
+          }
+        }
+      } catch {
+        // Not valid JSON
+      }
+
+      return findings;
+    },
+  },
 ];
