@@ -276,6 +276,47 @@ export const hookRules: ReadonlyArray<Rule> = [
     },
   },
   {
+    id: "hooks-no-stop-hooks",
+    name: "No Stop Hooks for Session Verification",
+    description: "Checks if there are Stop hooks for end-of-session verification",
+    severity: "low",
+    category: "misconfiguration",
+    check(file: ConfigFile): ReadonlyArray<Finding> {
+      if (file.type !== "settings-json") return [];
+
+      try {
+        const config = JSON.parse(file.content);
+        const hooks = config?.hooks ?? {};
+
+        // Only flag if hooks object exists but no Stop hooks
+        if (Object.keys(hooks).length > 0 && !hooks.Stop?.length) {
+          return [
+            {
+              id: "hooks-no-stop-hooks",
+              severity: "low",
+              category: "misconfiguration",
+              title: "No Stop hooks for session-end verification",
+              description:
+                "Hooks are configured but no Stop hooks exist. Stop hooks run when a session ends and are useful for final verification — checking for uncommitted secrets, ensuring console.log statements were removed, or auditing file changes.",
+              file: file.path,
+              fix: {
+                description: "Add a Stop hook for session-end checks",
+                before: '"hooks": { ... }',
+                after:
+                  '"hooks": { ..., "Stop": [{ "hook": "check-for-secrets.sh" }] }',
+                auto: false,
+              },
+            },
+          ];
+        }
+      } catch {
+        // JSON parse errors handled elsewhere
+      }
+
+      return [];
+    },
+  },
+  {
     id: "hooks-session-start-download",
     name: "Hook SessionStart Downloads Remote Content",
     description: "Checks for SessionStart hooks that download or execute remote scripts",

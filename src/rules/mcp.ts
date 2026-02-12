@@ -322,6 +322,56 @@ export const mcpRules: ReadonlyArray<Rule> = [
     },
   },
   {
+    id: "mcp-url-transport",
+    name: "MCP External URL Transport",
+    description: "Checks for MCP servers using URL-based transport connecting to external hosts",
+    severity: "high",
+    category: "mcp",
+    check(file: ConfigFile): ReadonlyArray<Finding> {
+      if (file.type !== "mcp-json" && file.type !== "settings-json") return [];
+
+      const findings: Finding[] = [];
+
+      try {
+        const config = JSON.parse(file.content);
+        const servers = config.mcpServers ?? {};
+
+        for (const [name, server] of Object.entries(servers)) {
+          const serverConfig = server as Record<string, unknown>;
+          const url = serverConfig.url as string | undefined;
+
+          if (!url) continue;
+
+          // Check if it's connecting to an external host
+          const isLocal =
+            /^https?:\/\/(localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1\])/i.test(url);
+
+          if (!isLocal) {
+            findings.push({
+              id: `mcp-url-transport-${name}`,
+              severity: "high",
+              category: "mcp",
+              title: `MCP server "${name}" connects to external URL`,
+              description: `The MCP server "${name}" uses URL transport connecting to "${url}". External MCP connections send all tool calls and results over the network, potentially exposing code, secrets, and session data to a remote server. Prefer local stdio-based MCP servers.`,
+              file: file.path,
+              evidence: url.substring(0, 100),
+              fix: {
+                description: "Use a local stdio-based MCP server instead",
+                before: `"url": "${url.substring(0, 40)}"`,
+                after: '"command": "node", "args": ["./local-server.js"]',
+                auto: false,
+              },
+            });
+          }
+        }
+      } catch {
+        // Not valid JSON
+      }
+
+      return findings;
+    },
+  },
+  {
     id: "mcp-remote-command",
     name: "MCP Remote Command Execution",
     description: "Checks for MCP servers that download and execute remote code",

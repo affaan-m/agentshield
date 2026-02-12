@@ -177,6 +177,74 @@ export const agentRules: ReadonlyArray<Rule> = [
     },
   },
   {
+    id: "agents-hidden-instructions",
+    name: "Hidden Instructions via Unicode",
+    description: "Checks for invisible Unicode characters that could hide malicious instructions in agent definitions or CLAUDE.md",
+    severity: "critical",
+    category: "injection",
+    check(file: ConfigFile): ReadonlyArray<Finding> {
+      if (file.type !== "agent-md" && file.type !== "claude-md") return [];
+
+      const findings: Finding[] = [];
+
+      const unicodeTricks: ReadonlyArray<{
+        readonly pattern: RegExp;
+        readonly name: string;
+        readonly description: string;
+      }> = [
+        {
+          pattern: /[\u200B\u200C\u200D\uFEFF]/g,
+          name: "zero-width character",
+          description: "Zero-width characters (U+200B/200C/200D/FEFF) can hide text from visual inspection while still being processed by the model",
+        },
+        {
+          pattern: /[\u202A-\u202E\u2066-\u2069]/g,
+          name: "bidirectional override",
+          description: "Bidirectional text override characters (U+202A-202E, U+2066-2069) can reverse displayed text direction, making malicious instructions appear differently than they actually read",
+        },
+        {
+          pattern: /[\u00AD]/g,
+          name: "soft hyphen",
+          description: "Soft hyphens (U+00AD) are invisible but can break up keywords to evade pattern matching while preserving the original meaning for the model",
+        },
+        {
+          pattern: /[\uE000-\uF8FF]/g,
+          name: "private use area character",
+          description: "Private Use Area characters (U+E000-F8FF) have no standard meaning and could carry hidden payloads or encode instructions",
+        },
+        {
+          pattern: /[\u2028\u2029]/g,
+          name: "line/paragraph separator",
+          description: "Unicode line/paragraph separators (U+2028/2029) create invisible line breaks that can inject hidden instructions between visible lines",
+        },
+      ];
+
+      for (const { pattern, name, description } of unicodeTricks) {
+        const matches = findAllMatches(file.content, pattern);
+        if (matches.length > 0) {
+          findings.push({
+            id: `agents-hidden-unicode-${name.replace(/\s/g, "-")}`,
+            severity: "critical",
+            category: "injection",
+            title: `Hidden ${name} detected (${matches.length} occurrences)`,
+            description: `${description}. Found ${matches.length} instance(s) in ${file.path}. This is a prompt injection technique — review the file in a hex editor.`,
+            file: file.path,
+            line: findLineNumber(file.content, matches[0].index ?? 0),
+            evidence: `${matches.length}x ${name}`,
+            fix: {
+              description: `Remove all ${name}s from the file`,
+              before: `File contains ${matches.length} hidden characters`,
+              after: "Clean text with no invisible Unicode characters",
+              auto: false,
+            },
+          });
+        }
+      }
+
+      return findings;
+    },
+  },
+  {
     id: "agents-prompt-injection-surface",
     name: "Agent Prompt Injection Surface",
     description: "Checks agent definitions for patterns that increase prompt injection risk",

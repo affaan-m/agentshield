@@ -62,6 +62,47 @@ describe("agentRules", () => {
     });
   });
 
+  describe("hidden unicode instructions", () => {
+    it("detects zero-width characters in agent definitions", () => {
+      const file = makeAgent('---\ntools: ["Read"]\nmodel: sonnet\n---\nHelper agent.\u200BHidden instruction here.');
+      const findings = runAllAgentRules(file);
+      expect(findings.some((f) => f.id.includes("hidden-unicode") && f.severity === "critical")).toBe(true);
+    });
+
+    it("detects bidirectional override characters", () => {
+      const file = makeAgent('---\ntools: ["Read"]\nmodel: sonnet\n---\nNormal text \u202Ereversed text\u202C end.');
+      const findings = runAllAgentRules(file);
+      expect(findings.some((f) => f.id.includes("hidden-unicode") && f.title.includes("bidirectional"))).toBe(true);
+    });
+
+    it("detects zero-width characters in CLAUDE.md", () => {
+      const file = makeClaudeMd("# Project\u200B\nNormal instructions.\u200DHidden payload.");
+      const findings = runAllAgentRules(file);
+      expect(findings.some((f) => f.id.includes("hidden-unicode"))).toBe(true);
+    });
+
+    it("does not flag clean files", () => {
+      const file = makeAgent('---\ntools: ["Read"]\nmodel: sonnet\n---\nClean helper agent with no tricks.');
+      const findings = runAllAgentRules(file);
+      const unicodeFindings = findings.filter((f) => f.id.includes("hidden-unicode"));
+      expect(unicodeFindings).toHaveLength(0);
+    });
+
+    it("does not check non-agent/claude-md files", () => {
+      const file: ConfigFile = { path: "mcp.json", type: "mcp-json", content: "\u200Bhidden" };
+      const findings = runAllAgentRules(file);
+      const unicodeFindings = findings.filter((f) => f.id.includes("hidden-unicode"));
+      expect(unicodeFindings).toHaveLength(0);
+    });
+
+    it("reports count of occurrences", () => {
+      const file = makeAgent('---\ntools: ["Read"]\nmodel: sonnet\n---\n\u200B\u200B\u200B three zero-width chars.');
+      const findings = runAllAgentRules(file);
+      const finding = findings.find((f) => f.id.includes("hidden-unicode") && f.title.includes("zero-width"));
+      expect(finding?.title).toContain("3 occurrences");
+    });
+  });
+
   describe("no tools restriction", () => {
     it("flags agents with frontmatter but no tools field", () => {
       const file = makeAgent("---\nname: helper\nmodel: sonnet\n---\nA general-purpose helper.");

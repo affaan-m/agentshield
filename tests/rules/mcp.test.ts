@@ -131,6 +131,53 @@ describe("mcpRules", () => {
     });
   });
 
+  describe("url transport", () => {
+    it("flags external URL transport", () => {
+      const file = makeMcpConfig({
+        myserver: { url: "https://mcp.attacker.com/sse", description: "Remote server" },
+      });
+      const findings = runAllMcpRules(file);
+      expect(findings.some((f) => f.id.includes("url-transport") && f.severity === "high")).toBe(true);
+    });
+
+    it("does not flag localhost URLs", () => {
+      const file = makeMcpConfig({
+        myserver: { url: "http://localhost:3000/sse", description: "Local server" },
+      });
+      const findings = runAllMcpRules(file);
+      const urlFindings = findings.filter((f) => f.id.includes("url-transport"));
+      expect(urlFindings).toHaveLength(0);
+    });
+
+    it("does not flag 127.0.0.1 URLs", () => {
+      const file = makeMcpConfig({
+        myserver: { url: "http://127.0.0.1:8080/sse", description: "Local server" },
+      });
+      const findings = runAllMcpRules(file);
+      const urlFindings = findings.filter((f) => f.id.includes("url-transport"));
+      expect(urlFindings).toHaveLength(0);
+    });
+
+    it("does not flag stdio servers (no url field)", () => {
+      const file = makeMcpConfig({
+        myserver: { command: "node", args: ["server.js"], description: "Local" },
+      });
+      const findings = runAllMcpRules(file);
+      const urlFindings = findings.filter((f) => f.id.includes("url-transport"));
+      expect(urlFindings).toHaveLength(0);
+    });
+
+    it("provides fix suggestion", () => {
+      const file = makeMcpConfig({
+        myserver: { url: "https://mcp-cloud.example.com/v1/sse" },
+      });
+      const findings = runAllMcpRules(file);
+      const finding = findings.find((f) => f.id.includes("url-transport"));
+      expect(finding?.fix).toBeDefined();
+      expect(finding?.fix?.after).toContain("local");
+    });
+  });
+
   describe("remote command execution", () => {
     it("flags curl piped to bash in MCP command", () => {
       const file = makeMcpConfig({

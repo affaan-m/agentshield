@@ -541,6 +541,44 @@ var permissionRules = [
     }
   },
   {
+    id: "permissions-all-mutable-tools",
+    name: "All Mutable Tools Allowed",
+    description: "Checks if the allow list grants access to all three mutable tool categories simultaneously",
+    severity: "high",
+    category: "permissions",
+    check(file) {
+      if (file.type !== "settings-json") return [];
+      const perms = parsePermissionLists(file.content);
+      if (!perms) return [];
+      const allowStr = perms.allow.join(" ");
+      const hasBash = perms.allow.some((e) => e.startsWith("Bash"));
+      const hasWrite = perms.allow.some((e) => e.startsWith("Write"));
+      const hasEdit = perms.allow.some((e) => e.startsWith("Edit"));
+      if (hasBash && hasWrite && hasEdit) {
+        const allUnrestricted = allowStr.includes("Bash(*)") && allowStr.includes("Write(*)") && allowStr.includes("Edit(*)");
+        if (!allUnrestricted) {
+          return [
+            {
+              id: "permissions-all-mutable-tools",
+              severity: "high",
+              category: "permissions",
+              title: "All mutable tool categories allowed simultaneously",
+              description: "The allow list grants Bash, Write, and Edit access. Even with scoped patterns, having all three categories means the agent can run commands, create files, and modify files \u2014 effectively unrestricted write access to the system. Consider whether all three are truly needed.",
+              file: file.path,
+              fix: {
+                description: "Remove one or more mutable tool categories if not needed",
+                before: "Bash(...) + Write(...) + Edit(...)",
+                after: "Consider if the agent really needs all three",
+                auto: false
+              }
+            }
+          ];
+        }
+      }
+      return [];
+    }
+  },
+  {
     id: "permissions-destructive-git",
     name: "Destructive Git Commands Allowed",
     description: "Checks if the allow list permits destructive git operations",
@@ -803,6 +841,40 @@ var hookRules = [
       } catch {
       }
       return findings;
+    }
+  },
+  {
+    id: "hooks-no-stop-hooks",
+    name: "No Stop Hooks for Session Verification",
+    description: "Checks if there are Stop hooks for end-of-session verification",
+    severity: "low",
+    category: "misconfiguration",
+    check(file) {
+      if (file.type !== "settings-json") return [];
+      try {
+        const config = JSON.parse(file.content);
+        const hooks = config?.hooks ?? {};
+        if (Object.keys(hooks).length > 0 && !hooks.Stop?.length) {
+          return [
+            {
+              id: "hooks-no-stop-hooks",
+              severity: "low",
+              category: "misconfiguration",
+              title: "No Stop hooks for session-end verification",
+              description: "Hooks are configured but no Stop hooks exist. Stop hooks run when a session ends and are useful for final verification \u2014 checking for uncommitted secrets, ensuring console.log statements were removed, or auditing file changes.",
+              file: file.path,
+              fix: {
+                description: "Add a Stop hook for session-end checks",
+                before: '"hooks": { ... }',
+                after: '"hooks": { ..., "Stop": [{ "hook": "check-for-secrets.sh" }] }',
+                auto: false
+              }
+            }
+          ];
+        }
+      } catch {
+      }
+      return [];
     }
   },
   {
@@ -1172,6 +1244,46 @@ var mcpRules = [
     }
   },
   {
+    id: "mcp-url-transport",
+    name: "MCP External URL Transport",
+    description: "Checks for MCP servers using URL-based transport connecting to external hosts",
+    severity: "high",
+    category: "mcp",
+    check(file) {
+      if (file.type !== "mcp-json" && file.type !== "settings-json") return [];
+      const findings = [];
+      try {
+        const config = JSON.parse(file.content);
+        const servers = config.mcpServers ?? {};
+        for (const [name, server] of Object.entries(servers)) {
+          const serverConfig = server;
+          const url = serverConfig.url;
+          if (!url) continue;
+          const isLocal = /^https?:\/\/(localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1\])/i.test(url);
+          if (!isLocal) {
+            findings.push({
+              id: `mcp-url-transport-${name}`,
+              severity: "high",
+              category: "mcp",
+              title: `MCP server "${name}" connects to external URL`,
+              description: `The MCP server "${name}" uses URL transport connecting to "${url}". External MCP connections send all tool calls and results over the network, potentially exposing code, secrets, and session data to a remote server. Prefer local stdio-based MCP servers.`,
+              file: file.path,
+              evidence: url.substring(0, 100),
+              fix: {
+                description: "Use a local stdio-based MCP server instead",
+                before: `"url": "${url.substring(0, 40)}"`,
+                after: '"command": "node", "args": ["./local-server.js"]',
+                auto: false
+              }
+            });
+          }
+        }
+      } catch {
+      }
+      return findings;
+    }
+  },
+  {
     id: "mcp-remote-command",
     name: "MCP Remote Command Execution",
     description: "Checks for MCP servers that download and execute remote code",
@@ -1400,6 +1512,66 @@ var agentRules = [
             file: file.path,
             line: findLineNumber4(file.content, match.index ?? 0),
             evidence: match[0]
+          });
+        }
+      }
+      return findings;
+    }
+  },
+  {
+    id: "agents-hidden-instructions",
+    name: "Hidden Instructions via Unicode",
+    description: "Checks for invisible Unicode characters that could hide malicious instructions in agent definitions or CLAUDE.md",
+    severity: "critical",
+    category: "injection",
+    check(file) {
+      if (file.type !== "agent-md" && file.type !== "claude-md") return [];
+      const findings = [];
+      const unicodeTricks = [
+        {
+          pattern: /[\u200B\u200C\u200D\uFEFF]/g,
+          name: "zero-width character",
+          description: "Zero-width characters (U+200B/200C/200D/FEFF) can hide text from visual inspection while still being processed by the model"
+        },
+        {
+          pattern: /[\u202A-\u202E\u2066-\u2069]/g,
+          name: "bidirectional override",
+          description: "Bidirectional text override characters (U+202A-202E, U+2066-2069) can reverse displayed text direction, making malicious instructions appear differently than they actually read"
+        },
+        {
+          pattern: /[\u00AD]/g,
+          name: "soft hyphen",
+          description: "Soft hyphens (U+00AD) are invisible but can break up keywords to evade pattern matching while preserving the original meaning for the model"
+        },
+        {
+          pattern: /[\uE000-\uF8FF]/g,
+          name: "private use area character",
+          description: "Private Use Area characters (U+E000-F8FF) have no standard meaning and could carry hidden payloads or encode instructions"
+        },
+        {
+          pattern: /[\u2028\u2029]/g,
+          name: "line/paragraph separator",
+          description: "Unicode line/paragraph separators (U+2028/2029) create invisible line breaks that can inject hidden instructions between visible lines"
+        }
+      ];
+      for (const { pattern, name, description } of unicodeTricks) {
+        const matches = findAllMatches3(file.content, pattern);
+        if (matches.length > 0) {
+          findings.push({
+            id: `agents-hidden-unicode-${name.replace(/\s/g, "-")}`,
+            severity: "critical",
+            category: "injection",
+            title: `Hidden ${name} detected (${matches.length} occurrences)`,
+            description: `${description}. Found ${matches.length} instance(s) in ${file.path}. This is a prompt injection technique \u2014 review the file in a hex editor.`,
+            file: file.path,
+            line: findLineNumber4(file.content, matches[0].index ?? 0),
+            evidence: `${matches.length}x ${name}`,
+            fix: {
+              description: `Remove all ${name}s from the file`,
+              before: `File contains ${matches.length} hidden characters`,
+              after: "Clean text with no invisible Unicode characters",
+              auto: false
+            }
           });
         }
       }

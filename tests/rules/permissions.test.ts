@@ -134,6 +134,41 @@ describe("permissionRules", () => {
     });
   });
 
+  describe("all mutable tools allowed", () => {
+    it("flags when Bash + Write + Edit are all in allow list (scoped)", () => {
+      const file = makeSettings(JSON.stringify({
+        permissions: { allow: ["Bash(git *)", "Write(src/*)", "Edit(src/*)"], deny: [] },
+      }));
+      const findings = runAllPermRules(file);
+      expect(findings.some((f) => f.id === "permissions-all-mutable-tools")).toBe(true);
+    });
+
+    it("does not flag when only two mutable tools present", () => {
+      const file = makeSettings(JSON.stringify({
+        permissions: { allow: ["Write(src/*)", "Edit(src/*)"], deny: [] },
+      }));
+      const findings = runAllPermRules(file);
+      expect(findings.some((f) => f.id === "permissions-all-mutable-tools")).toBe(false);
+    });
+
+    it("does not double-flag when all three are wildcards", () => {
+      const file = makeSettings(JSON.stringify({
+        permissions: { allow: ["Bash(*)", "Write(*)", "Edit(*)"], deny: [] },
+      }));
+      const findings = runAllPermRules(file);
+      // Wildcards are already flagged by overly-permissive rule
+      expect(findings.some((f) => f.id === "permissions-all-mutable-tools")).toBe(false);
+    });
+
+    it("flags mixed scoped and unscoped", () => {
+      const file = makeSettings(JSON.stringify({
+        permissions: { allow: ["Bash(npm *)", "Write(*)", "Edit(src/*)"], deny: [] },
+      }));
+      const findings = runAllPermRules(file);
+      expect(findings.some((f) => f.id === "permissions-all-mutable-tools")).toBe(true);
+    });
+  });
+
   describe("destructive git commands", () => {
     it("flags git push --force in allow list", () => {
       const file = makeSettings(JSON.stringify({

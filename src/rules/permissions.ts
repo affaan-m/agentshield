@@ -318,6 +318,59 @@ export const permissionRules: ReadonlyArray<Rule> = [
     },
   },
   {
+    id: "permissions-all-mutable-tools",
+    name: "All Mutable Tools Allowed",
+    description: "Checks if the allow list grants access to all three mutable tool categories simultaneously",
+    severity: "high",
+    category: "permissions",
+    check(file: ConfigFile): ReadonlyArray<Finding> {
+      if (file.type !== "settings-json") return [];
+
+      const perms = parsePermissionLists(file.content);
+      if (!perms) return [];
+
+      const allowStr = perms.allow.join(" ");
+
+      const hasBash = perms.allow.some((e) => e.startsWith("Bash"));
+      const hasWrite = perms.allow.some((e) => e.startsWith("Write"));
+      const hasEdit = perms.allow.some((e) => e.startsWith("Edit"));
+
+      if (hasBash && hasWrite && hasEdit) {
+        // Check if individual entries are already flagged as overly permissive
+        // This rule adds value when entries are scoped but the combination is dangerous
+        const allUnrestricted =
+          allowStr.includes("Bash(*)") &&
+          allowStr.includes("Write(*)") &&
+          allowStr.includes("Edit(*)");
+
+        // Only flag the combination if not all three are already wildcards
+        // (wildcards are individually flagged by overly-permissive rule)
+        if (!allUnrestricted) {
+          return [
+            {
+              id: "permissions-all-mutable-tools",
+              severity: "high",
+              category: "permissions",
+              title: "All mutable tool categories allowed simultaneously",
+              description:
+                "The allow list grants Bash, Write, and Edit access. Even with scoped patterns, having all three categories means the agent can run commands, create files, and modify files — effectively unrestricted write access to the system. Consider whether all three are truly needed.",
+              file: file.path,
+              fix: {
+                description:
+                  "Remove one or more mutable tool categories if not needed",
+                before: "Bash(...) + Write(...) + Edit(...)",
+                after: "Consider if the agent really needs all three",
+                auto: false,
+              },
+            },
+          ];
+        }
+      }
+
+      return [];
+    },
+  },
+  {
     id: "permissions-destructive-git",
     name: "Destructive Git Commands Allowed",
     description: "Checks if the allow list permits destructive git operations",

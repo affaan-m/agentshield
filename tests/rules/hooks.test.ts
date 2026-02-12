@@ -104,6 +104,39 @@ describe("hookRules", () => {
     });
   });
 
+  describe("missing stop hooks", () => {
+    it("flags when hooks exist but no Stop hooks", () => {
+      const file = makeSettings(JSON.stringify({
+        hooks: { PostToolUse: [{ matcher: "Edit", hook: "echo done" }] },
+      }));
+      const findings = runAllHookRules(file);
+      expect(findings.some((f) => f.id === "hooks-no-stop-hooks")).toBe(true);
+    });
+
+    it("does not flag when Stop hooks exist", () => {
+      const file = makeSettings(JSON.stringify({
+        hooks: {
+          PostToolUse: [{ matcher: "Edit", hook: "echo done" }],
+          Stop: [{ hook: "check-secrets.sh" }],
+        },
+      }));
+      const findings = runAllHookRules(file);
+      expect(findings.some((f) => f.id === "hooks-no-stop-hooks")).toBe(false);
+    });
+
+    it("does not flag when no hooks object exists at all", () => {
+      const file = makeSettings(JSON.stringify({ permissions: {} }));
+      const findings = runAllHookRules(file);
+      expect(findings.some((f) => f.id === "hooks-no-stop-hooks")).toBe(false);
+    });
+
+    it("does not flag empty hooks object", () => {
+      const file = makeSettings(JSON.stringify({ hooks: {} }));
+      const findings = runAllHookRules(file);
+      expect(findings.some((f) => f.id === "hooks-no-stop-hooks")).toBe(false);
+    });
+  });
+
   describe("session start download", () => {
     it("flags curl piped to bash in SessionStart", () => {
       const file = makeSettings(JSON.stringify({
