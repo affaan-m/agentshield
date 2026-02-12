@@ -176,6 +176,12 @@ export const hookRules: ReadonlyArray<Rule> = [
             file: file.path,
             line: findLineNumber(file.content, match.index ?? 0),
             evidence: match[0],
+            fix: {
+              description: "Remove error suppression to surface failures",
+              before: match[0],
+              after: "# [REMOVED: error suppression]",
+              auto: true,
+            },
           });
         }
       }
@@ -433,6 +439,56 @@ export const hookRules: ReadonlyArray<Rule> = [
         }
       } catch {
         // JSON parse errors handled elsewhere
+      }
+
+      return findings;
+    },
+  },
+  {
+    id: "hooks-env-exfiltration",
+    name: "Hook Env Var Exfiltration",
+    description: "Checks for hooks that access environment variables and send them to external services",
+    severity: "critical",
+    category: "exposure",
+    check(file: ConfigFile): ReadonlyArray<Finding> {
+      if (file.type !== "settings-json" && file.type !== "hook-script") return [];
+
+      const findings: Finding[] = [];
+
+      // Pattern: accessing env vars AND sending data externally in the same command
+      const envAccessPatterns = /\$\{?\w*(KEY|TOKEN|SECRET|PASSWORD|PASS|CRED|AUTH)\w*\}?/gi;
+      const networkPatterns = /\b(curl|wget|nc|netcat|sendmail|mail\s+-s)\b/gi;
+
+      // Check if content has BOTH env access and network patterns
+      const hasEnvAccess = envAccessPatterns.test(file.content);
+      const envAccessRegex = new RegExp(envAccessPatterns.source, envAccessPatterns.flags);
+      envAccessPatterns.lastIndex = 0;
+      const hasNetwork = networkPatterns.test(file.content);
+      networkPatterns.lastIndex = 0;
+
+      if (hasEnvAccess && hasNetwork) {
+        const matches = findAllMatches(file.content, envAccessRegex);
+        for (const match of matches) {
+          // Check if there's a network command in the surrounding context (same line or nearby)
+          const lineStart = file.content.lastIndexOf("\n", match.index ?? 0) + 1;
+          const lineEnd = file.content.indexOf("\n", (match.index ?? 0) + match[0].length);
+          const line = file.content.substring(lineStart, lineEnd === -1 ? undefined : lineEnd);
+
+          const networkCheck = new RegExp(networkPatterns.source, "i");
+          if (networkCheck.test(line)) {
+            findings.push({
+              id: `hooks-env-exfil-${match.index}`,
+              severity: "critical",
+              category: "exposure",
+              title: `Hook combines env var access with network call`,
+              description: `A hook accesses an environment variable (${match[0]}) and sends data over the network in the same command. This pattern can exfiltrate secrets from the environment to external services.`,
+              file: file.path,
+              line: findLineNumber(file.content, match.index ?? 0),
+              evidence: line.trim().substring(0, 100),
+            });
+            break; // One finding per file for this pattern
+          }
+        }
       }
 
       return findings;
