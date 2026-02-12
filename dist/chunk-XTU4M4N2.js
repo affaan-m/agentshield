@@ -450,7 +450,7 @@ var permissionRules = [
       const perms = parsePermissionLists(file.content);
       if (!perms) return [];
       const findings = [];
-      if (perms.deny.length === 0) {
+      if (perms.deny.length === 0 && perms.allow.length > 0) {
         findings.push({
           id: "permissions-no-deny-list",
           severity: "high",
@@ -628,6 +628,50 @@ var permissionRules = [
       }
       return findings;
     }
+  },
+  {
+    id: "permissions-sensitive-path-access",
+    name: "Sensitive Path in Allow List",
+    description: "Checks if the allow list permits tool access to sensitive system directories",
+    severity: "high",
+    category: "permissions",
+    check(file) {
+      if (file.type !== "settings-json") return [];
+      const perms = parsePermissionLists(file.content);
+      if (!perms) return [];
+      const findings = [];
+      const sensitivePaths = [
+        { pattern: /\/etc\//, description: "system configuration directory" },
+        { pattern: /~\/\.ssh|\/\.ssh/, description: "SSH keys and configuration" },
+        { pattern: /~\/\.aws|\/\.aws/, description: "AWS credentials" },
+        { pattern: /~\/\.gnupg|\/\.gnupg/, description: "GPG keyring" },
+        { pattern: /\/root\//, description: "root user home directory" },
+        { pattern: /\/var\/log/, description: "system log directory" }
+      ];
+      for (const entry of perms.allow) {
+        for (const { pattern, description } of sensitivePaths) {
+          if (pattern.test(entry)) {
+            findings.push({
+              id: `permissions-sensitive-path-${findings.length}`,
+              severity: "high",
+              category: "permissions",
+              title: `Allow rule grants access to ${description}: ${entry}`,
+              description: `The allow entry "${entry}" grants tool access to a sensitive directory (${description}). This could expose credentials, keys, or system configuration.`,
+              file: file.path,
+              evidence: entry,
+              fix: {
+                description: "Restrict to project directories only",
+                before: entry,
+                after: entry.replace(/\/etc\/.*|~\/\.ssh.*|\/\.ssh.*|~\/\.aws.*|\/\.aws.*|~\/\.gnupg.*|\/\.gnupg.*|\/root\/.*|\/var\/log.*/, "src/*"),
+                auto: false
+              }
+            });
+            break;
+          }
+        }
+      }
+      return findings;
+    }
   }
 ];
 function findLineNumber2(content, matchIndex) {
@@ -762,7 +806,7 @@ var hookRules = [
       const silentFailPatterns = [
         { pattern: /2>\/dev\/null/g, desc: "stderr silenced" },
         { pattern: /\|\|\s*true\b/g, desc: "errors suppressed with || true" },
-        { pattern: /\|\|\s*:\s*$/gm, desc: "errors suppressed with || :" }
+        { pattern: /\|\|\s*:\s*(?:$|[)"'])/gm, desc: "errors suppressed with || :" }
       ];
       for (const { pattern, desc } of silentFailPatterns) {
         const matches = findAllMatches2(file.content, pattern);
@@ -775,7 +819,13 @@ var hookRules = [
             description: `Hook uses "${match[0]}" which suppresses errors. A failing security hook that silently passes could miss real vulnerabilities.`,
             file: file.path,
             line: findLineNumber3(file.content, match.index ?? 0),
-            evidence: match[0]
+            evidence: match[0],
+            fix: {
+              description: "Remove error suppression to surface failures",
+              before: match[0],
+              after: "# [REMOVED: error suppression]",
+              auto: true
+            }
           });
         }
       }
@@ -1004,6 +1054,100 @@ var hookRules = [
     }
   },
   {
+    id: "hooks-env-exfiltration",
+    name: "Hook Env Var Exfiltration",
+    description: "Checks for hooks that access environment variables and send them to external services",
+    severity: "critical",
+    category: "exposure",
+    check(file) {
+      if (file.type !== "settings-json" && file.type !== "hook-script") return [];
+      const findings = [];
+      const envAccessPatterns = /\$\{?\w*(KEY|TOKEN|SECRET|PASSWORD|PASS|CRED|AUTH)\w*\}?/gi;
+      const networkPatterns = /\b(curl|wget|nc|netcat|sendmail|mail\s+-s)\b/gi;
+      const hasEnvAccess = envAccessPatterns.test(file.content);
+      const envAccessRegex = new RegExp(envAccessPatterns.source, envAccessPatterns.flags);
+      envAccessPatterns.lastIndex = 0;
+      const hasNetwork = networkPatterns.test(file.content);
+      networkPatterns.lastIndex = 0;
+      if (hasEnvAccess && hasNetwork) {
+        const matches = findAllMatches2(file.content, envAccessRegex);
+        for (const match of matches) {
+          const lineStart = file.content.lastIndexOf("\n", match.index ?? 0) + 1;
+          const lineEnd = file.content.indexOf("\n", (match.index ?? 0) + match[0].length);
+          const line = file.content.substring(lineStart, lineEnd === -1 ? void 0 : lineEnd);
+          const networkCheck = new RegExp(networkPatterns.source, "i");
+          if (networkCheck.test(line)) {
+            findings.push({
+              id: `hooks-env-exfil-${match.index}`,
+              severity: "critical",
+              category: "exposure",
+              title: `Hook combines env var access with network call`,
+              description: `A hook accesses an environment variable (${match[0]}) and sends data over the network in the same command. This pattern can exfiltrate secrets from the environment to external services.`,
+              file: file.path,
+              line: findLineNumber3(file.content, match.index ?? 0),
+              evidence: line.trim().substring(0, 100)
+            });
+            break;
+          }
+        }
+      }
+      return findings;
+    }
+  },
+  {
+    id: "hooks-chained-commands",
+    name: "Hook Chained Shell Commands",
+    description: "Checks for hooks that chain multiple commands, which may execute beyond the matcher's intended scope",
+    severity: "medium",
+    category: "hooks",
+    check(file) {
+      if (file.type !== "settings-json") return [];
+      const findings = [];
+      try {
+        const config = JSON.parse(file.content);
+        const allHooks = [
+          ...config?.hooks?.PreToolUse ?? [],
+          ...config?.hooks?.PostToolUse ?? [],
+          ...config?.hooks?.SessionStart ?? [],
+          ...config?.hooks?.Stop ?? []
+        ];
+        const chainPatterns = [
+          { pattern: /&&/, desc: "AND chain (&&)" },
+          { pattern: /;\s*[a-zA-Z]/, desc: "semicolon chain" },
+          { pattern: /\|\s*[a-zA-Z]/, desc: "pipe chain" }
+        ];
+        for (const hook of allHooks) {
+          const hookConfig = hook;
+          const command = hookConfig.hook ?? "";
+          let chainCount = 0;
+          for (const { pattern } of chainPatterns) {
+            const matches = [...command.matchAll(new RegExp(pattern.source, "g"))];
+            chainCount += matches.length;
+          }
+          if (chainCount >= 3) {
+            findings.push({
+              id: `hooks-chained-commands-${findings.length}`,
+              severity: "medium",
+              category: "hooks",
+              title: `Hook has ${chainCount + 1} chained commands`,
+              description: `A hook chains ${chainCount + 1} commands together: "${command.substring(0, 80)}...". Complex chained commands in hooks are harder to audit and may perform operations beyond the hook's stated purpose. Consider breaking into a dedicated script file.`,
+              file: file.path,
+              evidence: command.substring(0, 100),
+              fix: {
+                description: "Move complex logic to a script file",
+                before: command.substring(0, 50),
+                after: '"hook": "./scripts/hook-check.sh"',
+                auto: false
+              }
+            });
+          }
+        }
+      } catch {
+      }
+      return findings;
+    }
+  },
+  {
     id: "hooks-expensive-unscoped",
     name: "Hook Expensive Unscoped Command",
     description: "Checks for PostToolUse hooks running expensive build/lint commands with broad matchers",
@@ -1181,10 +1325,10 @@ var mcpRules = [
               description: `The MCP server "${name}" uses "npx -y" which automatically installs packages without confirmation. A typosquatting or supply chain attack could run malicious code.`,
               file: file.path,
               fix: {
-                description: "Install the package explicitly and reference it directly, or pin a specific version",
-                before: `"command": "npx", "args": ["-y", "${args[1] ?? "package"}"]`,
-                after: `Install with: npm install ${args[1] ?? "package"}, then reference directly`,
-                auto: false
+                description: "Remove -y flag so npx prompts before installing, or install the package explicitly",
+                before: `"args": ["-y", "${args[1] ?? "package"}"]`,
+                after: `"args": ["${args[1] ?? "package"}"]`,
+                auto: true
               }
             });
           }
@@ -1287,7 +1431,8 @@ var mcpRules = [
           );
           if (!packageArg) continue;
           const afterScope = packageArg.startsWith("@") ? packageArg.substring(packageArg.indexOf("/")) : packageArg;
-          const hasVersion = afterScope.includes("@");
+          const versionPart = afterScope.includes("@") ? afterScope.substring(afterScope.indexOf("@") + 1) : "";
+          const hasVersion = afterScope.includes("@") && versionPart !== "latest" && versionPart !== "next";
           if (!hasVersion) {
             findings.push({
               id: `mcp-no-version-${name}`,
@@ -1449,6 +1594,54 @@ var mcpRules = [
                 }
               });
               break;
+            }
+          }
+        }
+      } catch {
+      }
+      return findings;
+    }
+  },
+  {
+    id: "mcp-env-override",
+    name: "MCP Environment Variable Override",
+    description: "Checks for MCP servers that override system-critical environment variables like PATH or LD_PRELOAD",
+    severity: "critical",
+    category: "mcp",
+    check(file) {
+      if (file.type !== "mcp-json" && file.type !== "settings-json") return [];
+      const findings = [];
+      try {
+        const config = JSON.parse(file.content);
+        const servers = config.mcpServers ?? {};
+        const dangerousEnvVars = [
+          { name: "PATH", description: "Controls which executables are found \u2014 can redirect to malicious binaries" },
+          { name: "LD_PRELOAD", description: "Injects shared libraries into every process \u2014 classic privilege escalation" },
+          { name: "LD_LIBRARY_PATH", description: "Redirects dynamic library loading \u2014 can intercept system calls" },
+          { name: "NODE_OPTIONS", description: "Injects flags into every Node.js process \u2014 can load arbitrary code" },
+          { name: "PYTHONPATH", description: "Redirects Python module imports \u2014 can load malicious modules" },
+          { name: "HOME", description: "Changes home directory \u2014 can redirect config file loading" }
+        ];
+        for (const [name, server] of Object.entries(servers)) {
+          const serverConfig = server;
+          const env = serverConfig.env ?? {};
+          for (const envVar of dangerousEnvVars) {
+            if (envVar.name in env) {
+              findings.push({
+                id: `mcp-env-override-${name}-${envVar.name}`,
+                severity: "critical",
+                category: "mcp",
+                title: `MCP server "${name}" overrides ${envVar.name}`,
+                description: `The MCP server "${name}" sets ${envVar.name} in its environment. ${envVar.description}. If a malicious MCP config is injected (e.g., via a cloned repo), this could compromise the entire system.`,
+                file: file.path,
+                evidence: `${envVar.name}=${(env[envVar.name] ?? "").substring(0, 40)}`,
+                fix: {
+                  description: `Remove ${envVar.name} from the MCP server's env block`,
+                  before: `"${envVar.name}": "${(env[envVar.name] ?? "").substring(0, 20)}"`,
+                  after: `# Remove ${envVar.name} override`,
+                  auto: false
+                }
+              });
             }
           }
         }

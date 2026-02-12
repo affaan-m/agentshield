@@ -163,10 +163,10 @@ export const mcpRules: ReadonlyArray<Rule> = [
               file: file.path,
               fix: {
                 description:
-                  "Install the package explicitly and reference it directly, or pin a specific version",
-                before: `"command": "npx", "args": ["-y", "${args[1] ?? "package"}"]`,
-                after: `Install with: npm install ${args[1] ?? "package"}, then reference directly`,
-                auto: false,
+                  "Remove -y flag so npx prompts before installing, or install the package explicitly",
+                before: `"args": ["-y", "${args[1] ?? "package"}"]`,
+                after: `"args": ["${args[1] ?? "package"}"]`,
+                auto: true,
               },
             });
           }
