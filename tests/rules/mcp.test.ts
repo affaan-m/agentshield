@@ -310,6 +310,34 @@ describe("mcpRules", () => {
       const versionFindings = findings.filter((f) => f.id.includes("no-version"));
       expect(versionFindings).toHaveLength(0);
     });
+
+    it("flags @latest as unversioned (not a real pin)", () => {
+      const file = makeMcpConfig({
+        myserver: { command: "npx", args: ["-y", "@example/server@latest"] },
+      });
+      const findings = runAllMcpRules(file);
+      // @latest resolves dynamically — same risk as no pin
+      const versionFindings = findings.filter((f) => f.id.includes("no-version"));
+      expect(versionFindings).toHaveLength(1);
+    });
+
+    it("flags @next as unversioned", () => {
+      const file = makeMcpConfig({
+        myserver: { command: "npx", args: ["-y", "@example/server@next"] },
+      });
+      const findings = runAllMcpRules(file);
+      const versionFindings = findings.filter((f) => f.id.includes("no-version"));
+      expect(versionFindings).toHaveLength(1);
+    });
+
+    it("does not flag specific semver pins", () => {
+      const file = makeMcpConfig({
+        myserver: { command: "npx", args: ["-y", "@example/server@2.5.1"] },
+      });
+      const findings = runAllMcpRules(file);
+      const versionFindings = findings.filter((f) => f.id.includes("no-version"));
+      expect(versionFindings).toHaveLength(0);
+    });
   });
 
   describe("shell metacharacters in args", () => {
@@ -362,6 +390,39 @@ describe("mcpRules", () => {
       const findings = runAllMcpRules(file);
       const metacharFindings = findings.filter((f) => f.id.includes("shell-metachar"));
       expect(metacharFindings).toHaveLength(0);
+    });
+  });
+
+  describe("invalid JSON handling", () => {
+    it("handles invalid JSON gracefully", () => {
+      const file: ConfigFile = {
+        path: "mcp.json",
+        type: "mcp-json",
+        content: "this is not json at all",
+      };
+      const findings = runAllMcpRules(file);
+      // No rules should crash on invalid JSON
+      expect(findings).toHaveLength(0);
+    });
+
+    it("handles empty mcpServers object", () => {
+      const file = makeMcpConfig({});
+      const findings = runAllMcpRules(file);
+      const riskyFindings = findings.filter((f) => !f.id.includes("no-desc"));
+      expect(riskyFindings).toHaveLength(0);
+    });
+
+    it("handles server with both url and command fields", () => {
+      const file = makeMcpConfig({
+        hybrid: {
+          command: "node",
+          url: "https://external-server.com/sse",
+          args: ["server.js"],
+        },
+      });
+      const findings = runAllMcpRules(file);
+      // Should flag the URL transport even if command is also present
+      expect(findings.some((f) => f.id.includes("url-transport"))).toBe(true);
     });
   });
 

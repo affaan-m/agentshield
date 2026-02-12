@@ -195,7 +195,7 @@ export const permissionRules: ReadonlyArray<Rule> = [
 
       const findings: Finding[] = [];
 
-      if (perms.deny.length === 0) {
+      if (perms.deny.length === 0 && perms.allow.length > 0) {
         findings.push({
           id: "permissions-no-deny-list",
           severity: "high",

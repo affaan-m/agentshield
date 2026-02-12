@@ -291,10 +291,17 @@ export const mcpRules: ReadonlyArray<Rule> = [
 
           // Check if it has a version pin (contains @ after the scope)
           // Scoped packages look like @scope/name@version
+          // @latest is NOT a real pin — it resolves dynamically
           const afterScope = packageArg.startsWith("@")
             ? packageArg.substring(packageArg.indexOf("/"))
             : packageArg;
-          const hasVersion = afterScope.includes("@");
+          const versionPart = afterScope.includes("@")
+            ? afterScope.substring(afterScope.indexOf("@") + 1)
+            : "";
+          const hasVersion =
+            afterScope.includes("@") &&
+            versionPart !== "latest" &&
+            versionPart !== "next";
 
           if (!hasVersion) {
             findings.push({

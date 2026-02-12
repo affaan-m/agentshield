@@ -160,7 +160,7 @@ export const hookRules: ReadonlyArray<Rule> = [
       const silentFailPatterns = [
         { pattern: /2>\/dev\/null/g, desc: "stderr silenced" },
         { pattern: /\|\|\s*true\b/g, desc: "errors suppressed with || true" },
-        { pattern: /\|\|\s*:\s*$/gm, desc: "errors suppressed with || :" },
+        { pattern: /\|\|\s*:\s*(?:$|[)"'])/gm, desc: "errors suppressed with || :" },
       ];
 
       for (const { pattern, desc } of silentFailPatterns) {

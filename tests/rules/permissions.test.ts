@@ -134,6 +134,32 @@ describe("permissionRules", () => {
     });
   });
 
+  describe("invalid JSON handling", () => {
+    it("handles invalid JSON gracefully in overly-permissive", () => {
+      const file = makeSettings("not valid json at all");
+      const findings = runAllPermRules(file);
+      const permFindings = findings.filter((f) => f.id.includes("permissive"));
+      expect(permFindings).toHaveLength(0);
+    });
+
+    it("handles empty JSON object", () => {
+      const file = makeSettings("{}");
+      const findings = runAllPermRules(file);
+      const permFindings = findings.filter(
+        (f) => f.id.includes("permissive") || f.id === "permissions-no-deny-list"
+      );
+      expect(permFindings).toHaveLength(0);
+    });
+
+    it("flags Bash(sudo *) in allow list", () => {
+      const file = makeSettings(JSON.stringify({
+        permissions: { allow: ["Bash(sudo apt install)"], deny: [] },
+      }));
+      const findings = runAllPermRules(file);
+      expect(findings.some((f) => f.severity === "critical" && f.evidence?.includes("sudo"))).toBe(true);
+    });
+  });
+
   describe("all mutable tools allowed", () => {
     it("flags when Bash + Write + Edit are all in allow list (scoped)", () => {
       const file = makeSettings(JSON.stringify({

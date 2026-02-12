@@ -87,6 +87,18 @@ describe("secretRules", () => {
       expect(secretFindings).toHaveLength(0);
     });
 
+    it("detects Stripe publishable keys", () => {
+      const file = makeFile("pk_live_abcdefghijklmnopqrstuvwxyz1234");
+      const findings = runAllSecretRules(file);
+      expect(findings.some((f) => f.title.includes("Stripe API key"))).toBe(true);
+    });
+
+    it("detects multiple secrets in the same file", () => {
+      const file = makeFile("key: sk-ant-api03-abcdefghijklmnopqrstuvwxyz1234567890\ntoken: ghp_abcdefghijklmnopqrstuvwxyz1234567890AB");
+      const findings = runAllSecretRules(file);
+      expect(findings.length).toBeGreaterThanOrEqual(2);
+    });
+
     it("returns no findings for clean config", () => {
       const file = makeFile("# Clean config\nNo secrets here\nUse env vars for everything");
       const findings = runAllSecretRules(file);
