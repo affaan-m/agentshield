@@ -4,7 +4,7 @@ import {
   renderJsonReport,
   renderMarkdownReport,
   scan
-} from "./chunk-UJVY7OA5.js";
+} from "./chunk-6ZKXOUZF.js";
 import {
   startMiniClaw
 } from "./chunk-GH4JN4Y3.js";

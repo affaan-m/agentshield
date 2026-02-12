@@ -276,6 +276,71 @@ export const hookRules: ReadonlyArray<Rule> = [
     },
   },
   {
+    id: "hooks-session-start-download",
+    name: "Hook SessionStart Downloads Remote Content",
+    description: "Checks for SessionStart hooks that download or execute remote scripts",
+    severity: "high",
+    category: "hooks",
+    check(file: ConfigFile): ReadonlyArray<Finding> {
+      if (file.type !== "settings-json") return [];
+
+      const findings: Finding[] = [];
+
+      try {
+        const config = JSON.parse(file.content);
+        const sessionHooks = config?.hooks?.SessionStart ?? [];
+
+        const remoteExecutionPatterns = [
+          {
+            pattern: /\b(curl|wget)\b.*\|\s*(sh|bash|zsh|node|python)/i,
+            desc: "Downloads and pipes to shell — classic remote code execution vector",
+            severity: "critical" as const,
+          },
+          {
+            pattern: /\b(curl|wget)\b.*https?:\/\//i,
+            desc: "Downloads remote content on every session start",
+            severity: "high" as const,
+          },
+          {
+            pattern: /\bgit\s+clone\b/i,
+            desc: "Clones a repository on session start — could pull malicious code",
+            severity: "medium" as const,
+          },
+        ];
+
+        for (const hook of sessionHooks) {
+          const hookConfig = hook as { hook?: string };
+          const command = hookConfig.hook ?? "";
+
+          for (const { pattern, desc, severity } of remoteExecutionPatterns) {
+            if (pattern.test(command)) {
+              findings.push({
+                id: `hooks-session-start-download-${findings.length}`,
+                severity,
+                category: "hooks",
+                title: `SessionStart hook downloads remote content`,
+                description: `A SessionStart hook runs "${command.substring(0, 80)}". ${desc}. SessionStart hooks run automatically at the beginning of every session without user confirmation.`,
+                file: file.path,
+                evidence: command.substring(0, 100),
+                fix: {
+                  description: "Remove remote downloads from SessionStart or use a local script",
+                  before: command.substring(0, 60),
+                  after: "# Use pre-installed local tools instead",
+                  auto: false,
+                },
+              });
+              break;
+            }
+          }
+        }
+      } catch {
+        // JSON parse errors handled elsewhere
+      }
+
+      return findings;
+    },
+  },
+  {
     id: "hooks-expensive-unscoped",
     name: "Hook Expensive Unscoped Command",
     description: "Checks for PostToolUse hooks running expensive build/lint commands with broad matchers",

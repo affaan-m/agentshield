@@ -87,6 +87,41 @@ function parsePermissionLists(content: string): {
   }
 }
 
+/**
+ * Destructive git commands that should never be in the allow list.
+ */
+const DESTRUCTIVE_GIT_PATTERNS: ReadonlyArray<{
+  readonly pattern: RegExp;
+  readonly description: string;
+  readonly suggestion: string;
+}> = [
+  {
+    pattern: /push\s+--force|push\s+-f\b/,
+    description: "Force push can overwrite remote history, destroying teammates' work",
+    suggestion: "Use --force-with-lease instead, or move to deny list",
+  },
+  {
+    pattern: /reset\s+--hard/,
+    description: "Hard reset destroys uncommitted changes without recovery",
+    suggestion: "Move to deny list; use 'git stash' or 'git reset --soft' instead",
+  },
+  {
+    pattern: /clean\s+-[a-z]*f/,
+    description: "Git clean with force flag permanently deletes untracked files",
+    suggestion: "Move to deny list; use 'git clean -n' (dry-run) first",
+  },
+  {
+    pattern: /branch\s+-D\b/,
+    description: "Force-delete branch regardless of merge status can lose work",
+    suggestion: "Use 'branch -d' (lowercase) which checks merge status first",
+  },
+  {
+    pattern: /checkout\s+\.\s*$/,
+    description: "Discards all unstaged changes in working directory",
+    suggestion: "Move to deny list to prevent accidental loss of work",
+  },
+];
+
 export const permissionRules: ReadonlyArray<Rule> = [
   {
     id: "permissions-overly-permissive",
@@ -276,6 +311,46 @@ export const permissionRules: ReadonlyArray<Rule> = [
               auto: false,
             },
           });
+        }
+      }
+
+      return findings;
+    },
+  },
+  {
+    id: "permissions-destructive-git",
+    name: "Destructive Git Commands Allowed",
+    description: "Checks if the allow list permits destructive git operations",
+    severity: "high",
+    category: "permissions",
+    check(file: ConfigFile): ReadonlyArray<Finding> {
+      if (file.type !== "settings-json") return [];
+
+      const perms = parsePermissionLists(file.content);
+      if (!perms) return [];
+
+      const findings: Finding[] = [];
+
+      for (const entry of perms.allow) {
+        for (const gitPattern of DESTRUCTIVE_GIT_PATTERNS) {
+          if (gitPattern.pattern.test(entry)) {
+            findings.push({
+              id: `permissions-destructive-git-${findings.length}`,
+              severity: "high",
+              category: "permissions",
+              title: `Destructive git command allowed: ${entry}`,
+              description: gitPattern.description,
+              file: file.path,
+              evidence: entry,
+              fix: {
+                description: gitPattern.suggestion,
+                before: entry,
+                after: `# Move to deny list: ${entry}`,
+                auto: false,
+              },
+            });
+            break;
+          }
         }
       }
 

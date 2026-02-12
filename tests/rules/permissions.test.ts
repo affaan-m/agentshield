@@ -133,4 +133,73 @@ describe("permissionRules", () => {
       expect(permissiveFindings).toHaveLength(0);
     });
   });
+
+  describe("destructive git commands", () => {
+    it("flags git push --force in allow list", () => {
+      const file = makeSettings(JSON.stringify({
+        permissions: { allow: ["Bash(git push --force)"], deny: [] },
+      }));
+      const findings = runAllPermRules(file);
+      expect(findings.some((f) => f.id.includes("destructive-git"))).toBe(true);
+      expect(findings.find((f) => f.id.includes("destructive-git"))?.severity).toBe("high");
+    });
+
+    it("flags git push -f in allow list", () => {
+      const file = makeSettings(JSON.stringify({
+        permissions: { allow: ["Bash(git push -f origin main)"], deny: [] },
+      }));
+      const findings = runAllPermRules(file);
+      expect(findings.some((f) => f.id.includes("destructive-git"))).toBe(true);
+    });
+
+    it("flags git reset --hard in allow list", () => {
+      const file = makeSettings(JSON.stringify({
+        permissions: { allow: ["Bash(git reset --hard HEAD~1)"], deny: [] },
+      }));
+      const findings = runAllPermRules(file);
+      expect(findings.some((f) => f.title.includes("reset --hard"))).toBe(true);
+    });
+
+    it("flags git clean -fd in allow list", () => {
+      const file = makeSettings(JSON.stringify({
+        permissions: { allow: ["Bash(git clean -fd)"], deny: [] },
+      }));
+      const findings = runAllPermRules(file);
+      expect(findings.some((f) => f.id.includes("destructive-git"))).toBe(true);
+    });
+
+    it("flags git branch -D in allow list", () => {
+      const file = makeSettings(JSON.stringify({
+        permissions: { allow: ["Bash(git branch -D feature-branch)"], deny: [] },
+      }));
+      const findings = runAllPermRules(file);
+      expect(findings.some((f) => f.title.includes("branch -D"))).toBe(true);
+    });
+
+    it("does not flag safe git commands", () => {
+      const file = makeSettings(JSON.stringify({
+        permissions: { allow: ["Bash(git push)", "Bash(git commit)", "Bash(git branch -d)"], deny: [] },
+      }));
+      const findings = runAllPermRules(file);
+      const gitFindings = findings.filter((f) => f.id.includes("destructive-git"));
+      expect(gitFindings).toHaveLength(0);
+    });
+
+    it("does not flag non-settings files", () => {
+      const file: ConfigFile = { path: "agent.md", type: "agent-md", content: "git push --force" };
+      const findings = runAllPermRules(file);
+      const gitFindings = findings.filter((f) => f.id.includes("destructive-git"));
+      expect(gitFindings).toHaveLength(0);
+    });
+
+    it("provides fix suggestion", () => {
+      const file = makeSettings(JSON.stringify({
+        permissions: { allow: ["Bash(git push --force)"], deny: [] },
+      }));
+      const findings = runAllPermRules(file);
+      const finding = findings.find((f) => f.id.includes("destructive-git"));
+      expect(finding?.fix).toBeDefined();
+      expect(finding?.fix?.description).toContain("force-with-lease");
+    });
+  });
 });

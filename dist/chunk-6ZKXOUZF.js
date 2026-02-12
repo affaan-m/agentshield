@@ -345,6 +345,33 @@ function parsePermissionLists(content) {
     return null;
   }
 }
+var DESTRUCTIVE_GIT_PATTERNS = [
+  {
+    pattern: /push\s+--force|push\s+-f\b/,
+    description: "Force push can overwrite remote history, destroying teammates' work",
+    suggestion: "Use --force-with-lease instead, or move to deny list"
+  },
+  {
+    pattern: /reset\s+--hard/,
+    description: "Hard reset destroys uncommitted changes without recovery",
+    suggestion: "Move to deny list; use 'git stash' or 'git reset --soft' instead"
+  },
+  {
+    pattern: /clean\s+-[a-z]*f/,
+    description: "Git clean with force flag permanently deletes untracked files",
+    suggestion: "Move to deny list; use 'git clean -n' (dry-run) first"
+  },
+  {
+    pattern: /branch\s+-D\b/,
+    description: "Force-delete branch regardless of merge status can lose work",
+    suggestion: "Use 'branch -d' (lowercase) which checks merge status first"
+  },
+  {
+    pattern: /checkout\s+\.\s*$/,
+    description: "Discards all unstaged changes in working directory",
+    suggestion: "Move to deny list to prevent accidental loss of work"
+  }
+];
 var permissionRules = [
   {
     id: "permissions-overly-permissive",
@@ -508,6 +535,42 @@ var permissionRules = [
               auto: false
             }
           });
+        }
+      }
+      return findings;
+    }
+  },
+  {
+    id: "permissions-destructive-git",
+    name: "Destructive Git Commands Allowed",
+    description: "Checks if the allow list permits destructive git operations",
+    severity: "high",
+    category: "permissions",
+    check(file) {
+      if (file.type !== "settings-json") return [];
+      const perms = parsePermissionLists(file.content);
+      if (!perms) return [];
+      const findings = [];
+      for (const entry of perms.allow) {
+        for (const gitPattern of DESTRUCTIVE_GIT_PATTERNS) {
+          if (gitPattern.pattern.test(entry)) {
+            findings.push({
+              id: `permissions-destructive-git-${findings.length}`,
+              severity: "high",
+              category: "permissions",
+              title: `Destructive git command allowed: ${entry}`,
+              description: gitPattern.description,
+              file: file.path,
+              evidence: entry,
+              fix: {
+                description: gitPattern.suggestion,
+                before: entry,
+                after: `# Move to deny list: ${entry}`,
+                auto: false
+              }
+            });
+            break;
+          }
         }
       }
       return findings;
@@ -735,6 +798,64 @@ var hookRules = [
                 auto: false
               }
             });
+          }
+        }
+      } catch {
+      }
+      return findings;
+    }
+  },
+  {
+    id: "hooks-session-start-download",
+    name: "Hook SessionStart Downloads Remote Content",
+    description: "Checks for SessionStart hooks that download or execute remote scripts",
+    severity: "high",
+    category: "hooks",
+    check(file) {
+      if (file.type !== "settings-json") return [];
+      const findings = [];
+      try {
+        const config = JSON.parse(file.content);
+        const sessionHooks = config?.hooks?.SessionStart ?? [];
+        const remoteExecutionPatterns = [
+          {
+            pattern: /\b(curl|wget)\b.*\|\s*(sh|bash|zsh|node|python)/i,
+            desc: "Downloads and pipes to shell \u2014 classic remote code execution vector",
+            severity: "critical"
+          },
+          {
+            pattern: /\b(curl|wget)\b.*https?:\/\//i,
+            desc: "Downloads remote content on every session start",
+            severity: "high"
+          },
+          {
+            pattern: /\bgit\s+clone\b/i,
+            desc: "Clones a repository on session start \u2014 could pull malicious code",
+            severity: "medium"
+          }
+        ];
+        for (const hook of sessionHooks) {
+          const hookConfig = hook;
+          const command = hookConfig.hook ?? "";
+          for (const { pattern, desc, severity } of remoteExecutionPatterns) {
+            if (pattern.test(command)) {
+              findings.push({
+                id: `hooks-session-start-download-${findings.length}`,
+                severity,
+                category: "hooks",
+                title: `SessionStart hook downloads remote content`,
+                description: `A SessionStart hook runs "${command.substring(0, 80)}". ${desc}. SessionStart hooks run automatically at the beginning of every session without user confirmation.`,
+                file: file.path,
+                evidence: command.substring(0, 100),
+                fix: {
+                  description: "Remove remote downloads from SessionStart or use a local script",
+                  before: command.substring(0, 60),
+                  after: "# Use pre-installed local tools instead",
+                  auto: false
+                }
+              });
+              break;
+            }
           }
         }
       } catch {
@@ -1051,6 +1172,67 @@ var mcpRules = [
     }
   },
   {
+    id: "mcp-remote-command",
+    name: "MCP Remote Command Execution",
+    description: "Checks for MCP servers that download and execute remote code",
+    severity: "critical",
+    category: "mcp",
+    check(file) {
+      if (file.type !== "mcp-json" && file.type !== "settings-json") return [];
+      const findings = [];
+      try {
+        const config = JSON.parse(file.content);
+        const servers = config.mcpServers ?? {};
+        for (const [name, server] of Object.entries(servers)) {
+          const serverConfig = server;
+          const command = serverConfig.command ?? "";
+          const args = serverConfig.args ?? [];
+          const fullCommand = `${command} ${args.join(" ")}`;
+          if (/\b(curl|wget)\b.*\|\s*(sh|bash|zsh|node|python)/i.test(fullCommand)) {
+            findings.push({
+              id: `mcp-remote-exec-${name}`,
+              severity: "critical",
+              category: "mcp",
+              title: `MCP server "${name}" pipes remote download to shell`,
+              description: `The MCP server "${name}" downloads remote code and pipes it directly to a shell interpreter. This is a critical remote code execution vulnerability \u2014 a compromised URL silently runs arbitrary commands.`,
+              file: file.path,
+              evidence: fullCommand.substring(0, 100),
+              fix: {
+                description: "Download, verify, then execute separately",
+                before: fullCommand.substring(0, 60),
+                after: "Install the package locally with npm/pip and reference it directly",
+                auto: false
+              }
+            });
+            continue;
+          }
+          const hasRemoteUrl = args.some(
+            (a) => /^https?:\/\/.+\.(sh|py|js|ts|exe|bin)$/i.test(a)
+          );
+          if (hasRemoteUrl && /^(sh|bash|zsh|node|python|ruby)$/.test(command)) {
+            findings.push({
+              id: `mcp-remote-script-${name}`,
+              severity: "high",
+              category: "mcp",
+              title: `MCP server "${name}" executes remote script URL`,
+              description: `The MCP server "${name}" runs a shell interpreter with a remote script URL as an argument. The remote script could be changed at any time, making this a supply chain risk.`,
+              file: file.path,
+              evidence: fullCommand.substring(0, 100),
+              fix: {
+                description: "Download the script locally and reference the local copy",
+                before: fullCommand.substring(0, 60),
+                after: "Use a locally installed package or script",
+                auto: false
+              }
+            });
+          }
+        }
+      } catch {
+      }
+      return findings;
+    }
+  },
+  {
     id: "mcp-excessive-server-count",
     name: "MCP Excessive Server Count",
     description: "Flags configurations with too many MCP servers",
@@ -1136,6 +1318,90 @@ var agentRules = [
           description: "No model is specified in the agent frontmatter. This will use the default model, which may be more expensive than needed. Specify 'haiku' for lightweight tasks.",
           file: file.path
         });
+      }
+      return findings;
+    }
+  },
+  {
+    id: "agents-no-tools-restriction",
+    name: "Agent Without Tools Restriction",
+    description: "Checks if agent definitions omit the tools array entirely, inheriting all tools by default",
+    severity: "high",
+    category: "agents",
+    check(file) {
+      if (file.type !== "agent-md") return [];
+      const hasFrontmatter = file.content.startsWith("---");
+      if (!hasFrontmatter) return [];
+      const frontmatterEnd = file.content.indexOf("---", 3);
+      if (frontmatterEnd === -1) return [];
+      const frontmatter = file.content.substring(0, frontmatterEnd);
+      const hasToolsField = /\btools\s*:/i.test(frontmatter);
+      if (!hasToolsField) {
+        return [
+          {
+            id: `agents-no-tools-${file.path}`,
+            severity: "high",
+            category: "agents",
+            title: `Agent has no tools restriction: ${file.path}`,
+            description: "This agent definition has frontmatter but does not specify a tools array. Without an explicit tools list, the agent may inherit all available tools by default, including Bash, Write, and Edit. Always specify the minimum set of tools needed.",
+            file: file.path,
+            fix: {
+              description: "Add an explicit tools array to the frontmatter",
+              before: "---\nname: agent\n---",
+              after: '---\nname: agent\ntools: ["Read", "Grep", "Glob"]\n---',
+              auto: false
+            }
+          }
+        ];
+      }
+      return [];
+    }
+  },
+  {
+    id: "agents-prompt-injection-patterns",
+    name: "Agent Prompt Injection Patterns",
+    description: "Checks agent definitions for patterns commonly used in prompt injection attacks",
+    severity: "high",
+    category: "injection",
+    check(file) {
+      if (file.type !== "agent-md") return [];
+      const findings = [];
+      const injectionPatterns = [
+        {
+          pattern: /ignore\s+(?:all\s+)?previous\s+(?:instructions|rules|constraints)/gi,
+          desc: "Instruction override attempt"
+        },
+        {
+          pattern: /disregard\s+(?:all\s+)?(?:safety|security|restrictions|guidelines)/gi,
+          desc: "Safety bypass attempt"
+        },
+        {
+          pattern: /you\s+are\s+now\s+(?:a|an|in)\s/gi,
+          desc: "Role reassignment attempt"
+        },
+        {
+          pattern: /bypass\s+(?:security|safety|permissions|restrictions|authentication)/gi,
+          desc: "Security bypass instruction"
+        },
+        {
+          pattern: /(?:do\s+not|don'?t)\s+(?:follow|obey|respect)\s+(?:the\s+)?(?:rules|instructions|guidelines)/gi,
+          desc: "Rule override instruction"
+        }
+      ];
+      for (const { pattern, desc } of injectionPatterns) {
+        const matches = findAllMatches3(file.content, pattern);
+        for (const match of matches) {
+          findings.push({
+            id: `agents-injection-pattern-${match.index}`,
+            severity: "high",
+            category: "injection",
+            title: `Prompt injection pattern in agent definition`,
+            description: `Found "${match[0]}" \u2014 ${desc}. If this agent definition is contributed by an external source, this could be an attempt to override the agent's safety constraints.`,
+            file: file.path,
+            line: findLineNumber4(file.content, match.index ?? 0),
+            evidence: match[0]
+          });
+        }
       }
       return findings;
     }

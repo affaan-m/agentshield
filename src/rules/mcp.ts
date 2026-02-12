@@ -322,6 +322,79 @@ export const mcpRules: ReadonlyArray<Rule> = [
     },
   },
   {
+    id: "mcp-remote-command",
+    name: "MCP Remote Command Execution",
+    description: "Checks for MCP servers that download and execute remote code",
+    severity: "critical",
+    category: "mcp",
+    check(file: ConfigFile): ReadonlyArray<Finding> {
+      if (file.type !== "mcp-json" && file.type !== "settings-json") return [];
+
+      const findings: Finding[] = [];
+
+      try {
+        const config = JSON.parse(file.content);
+        const servers = config.mcpServers ?? {};
+
+        for (const [name, server] of Object.entries(servers)) {
+          const serverConfig = server as Record<string, unknown>;
+          const command = (serverConfig.command ?? "") as string;
+          const args = (serverConfig.args ?? []) as string[];
+          const fullCommand = `${command} ${args.join(" ")}`;
+
+          // Check for pipe-to-shell patterns: curl/wget ... | sh/bash
+          if (/\b(curl|wget)\b.*\|\s*(sh|bash|zsh|node|python)/i.test(fullCommand)) {
+            findings.push({
+              id: `mcp-remote-exec-${name}`,
+              severity: "critical",
+              category: "mcp",
+              title: `MCP server "${name}" pipes remote download to shell`,
+              description: `The MCP server "${name}" downloads remote code and pipes it directly to a shell interpreter. This is a critical remote code execution vulnerability — a compromised URL silently runs arbitrary commands.`,
+              file: file.path,
+              evidence: fullCommand.substring(0, 100),
+              fix: {
+                description: "Download, verify, then execute separately",
+                before: fullCommand.substring(0, 60),
+                after: "Install the package locally with npm/pip and reference it directly",
+                auto: false,
+              },
+            });
+            continue;
+          }
+
+          // Check for URLs in command args that suggest remote fetching
+          const hasRemoteUrl = args.some(
+            (a) => /^https?:\/\/.+\.(sh|py|js|ts|exe|bin)$/i.test(a)
+          );
+          if (
+            hasRemoteUrl &&
+            /^(sh|bash|zsh|node|python|ruby)$/.test(command)
+          ) {
+            findings.push({
+              id: `mcp-remote-script-${name}`,
+              severity: "high",
+              category: "mcp",
+              title: `MCP server "${name}" executes remote script URL`,
+              description: `The MCP server "${name}" runs a shell interpreter with a remote script URL as an argument. The remote script could be changed at any time, making this a supply chain risk.`,
+              file: file.path,
+              evidence: fullCommand.substring(0, 100),
+              fix: {
+                description: "Download the script locally and reference the local copy",
+                before: fullCommand.substring(0, 60),
+                after: "Use a locally installed package or script",
+                auto: false,
+              },
+            });
+          }
+        }
+      } catch {
+        // Not valid JSON
+      }
+
+      return findings;
+    },
+  },
+  {
     id: "mcp-excessive-server-count",
     name: "MCP Excessive Server Count",
     description: "Flags configurations with too many MCP servers",
