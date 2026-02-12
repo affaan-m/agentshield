@@ -583,4 +583,42 @@ describe("mcpRules", () => {
       expect(finding?.fix).toBeDefined();
     });
   });
+
+  describe("dual transport detection", () => {
+    it("flags server with both url and command", () => {
+      const file: ConfigFile = {
+        path: "mcp.json",
+        type: "mcp-json",
+        content: JSON.stringify({
+          mcpServers: {
+            hybrid: {
+              url: "https://api.example.com/mcp",
+              command: "node",
+              args: ["./server.js"],
+            },
+          },
+        }),
+      };
+      const findings = runAllMcpRules(file);
+      expect(findings.some((f) => f.id.includes("dual-transport"))).toBe(true);
+    });
+
+    it("does not flag server with url only", () => {
+      const file = makeMcpConfig({
+        remote: { url: "https://api.example.com/mcp" },
+      });
+      const findings = runAllMcpRules(file);
+      const dualFindings = findings.filter((f) => f.id.includes("dual-transport"));
+      expect(dualFindings).toHaveLength(0);
+    });
+
+    it("does not flag server with command only", () => {
+      const file = makeMcpConfig({
+        local: { command: "node", args: ["./server.js"] },
+      });
+      const findings = runAllMcpRules(file);
+      const dualFindings = findings.filter((f) => f.id.includes("dual-transport"));
+      expect(dualFindings).toHaveLength(0);
+    });
+  });
 });

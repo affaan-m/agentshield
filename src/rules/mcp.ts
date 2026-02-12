@@ -690,4 +690,43 @@ export const mcpRules: ReadonlyArray<Rule> = [
       return findings;
     },
   },
+  {
+    id: "mcp-dual-transport",
+    name: "MCP Server Has Both URL and Command",
+    description: "Checks for MCP servers with both url and command fields, which is ambiguous and potentially dangerous",
+    severity: "medium",
+    category: "misconfiguration",
+    check(file: ConfigFile): ReadonlyArray<Finding> {
+      if (file.type !== "mcp-json" && file.type !== "settings-json") return [];
+
+      const findings: Finding[] = [];
+
+      try {
+        const config = JSON.parse(file.content);
+        const servers = config.mcpServers ?? {};
+
+        for (const [name, server] of Object.entries(servers)) {
+          const serverConfig = server as Record<string, unknown>;
+          const hasUrl = !!serverConfig.url;
+          const hasCommand = !!serverConfig.command;
+
+          if (hasUrl && hasCommand) {
+            findings.push({
+              id: `mcp-dual-transport-${name}`,
+              severity: "medium",
+              category: "misconfiguration",
+              title: `MCP server "${name}" has both url and command`,
+              description: `The MCP server "${name}" specifies both a URL transport and a stdio command. This is ambiguous — it's unclear which transport will be used, and the unused one could be an injection attempt. Use only one transport method.`,
+              file: file.path,
+              evidence: `url: ${(serverConfig.url as string).substring(0, 40)}, command: ${serverConfig.command}`,
+            });
+          }
+        }
+      } catch {
+        // Not valid JSON
+      }
+
+      return findings;
+    },
+  },
 ];

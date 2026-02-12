@@ -103,6 +103,27 @@ describe("secretRules", () => {
       expect(secretFindings).toHaveLength(0);
     });
 
+    it("skips process.env references", () => {
+      const file = makeFile("const key = process.env.sk-ant-api03-PLACEHOLDER_ONLY");
+      const findings = runAllSecretRules(file);
+      const secretFindings = findings.filter((f) => f.category === "secrets" && f.severity === "critical");
+      expect(secretFindings).toHaveLength(0);
+    });
+
+    it("detects secrets in multiline content", () => {
+      const file = makeFile("line 1\nline 2\nline 3\nkey: sk-ant-api03-abcdefghijklmnopqrstuvwxyz1234567890\nline 5");
+      const findings = runAllSecretRules(file);
+      expect(findings.some((f) => f.title.includes("Anthropic API key"))).toBe(true);
+      expect(findings[0].line).toBe(4);
+    });
+
+    it("reports correct line number", () => {
+      const file = makeFile("a\nb\nc\nghp_abcdefghijklmnopqrstuvwxyz1234567890AB");
+      const findings = runAllSecretRules(file);
+      const finding = findings.find((f) => f.title.includes("GitHub personal access token"));
+      expect(finding?.line).toBe(4);
+    });
+
     it("detects Twilio API keys", () => {
       // Build programmatically to avoid GitHub push protection
       const key = "SK" + "0123456789abcdef".repeat(2);
