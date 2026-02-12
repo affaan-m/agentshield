@@ -314,4 +314,46 @@ export const secretRules: ReadonlyArray<Rule> = [
       return findings;
     },
   },
+  {
+    id: "secrets-base64-obfuscation",
+    name: "Potential Base64 Obfuscated Secret",
+    description: "Checks for long base64-encoded strings that may be obfuscated secrets or payloads",
+    severity: "medium",
+    category: "secrets",
+    check(file: ConfigFile): ReadonlyArray<Finding> {
+      // Only check agent definitions and CLAUDE.md where base64 payloads would be injected
+      if (file.type !== "agent-md" && file.type !== "claude-md") return [];
+
+      const findings: Finding[] = [];
+
+      // Match base64 strings that are at least 60 chars (likely encoded secrets/payloads)
+      // Must not be inside a URL or common non-secret context
+      const base64Pattern = /(?<![a-zA-Z0-9/])([A-Za-z0-9+/]{60,}={0,2})(?![a-zA-Z0-9])/g;
+      const matches = findAllMatches(file.content, base64Pattern);
+
+      for (const match of matches) {
+        const idx = match.index ?? 0;
+
+        // Skip if it's inside a URL
+        const context = file.content.substring(Math.max(0, idx - 30), idx);
+        if (/https?:\/\/|data:/.test(context)) continue;
+
+        // Skip if it looks like a hash (hex chars only)
+        if (/^[a-fA-F0-9]+$/.test(match[1])) continue;
+
+        findings.push({
+          id: `secrets-base64-obfuscation-${idx}`,
+          severity: "medium",
+          category: "secrets",
+          title: `Potential base64-obfuscated payload (${match[1].length} chars)`,
+          description: `Found a long base64-encoded string (${match[1].length} characters) in ${file.path}. Attackers may encode secrets or malicious instructions in base64 to bypass pattern-matching detection. Decode and inspect this value.`,
+          file: file.path,
+          line: findLineNumber(file.content, idx),
+          evidence: match[1].substring(0, 20) + "..." + match[1].substring(match[1].length - 10),
+        });
+      }
+
+      return findings;
+    },
+  },
 ];

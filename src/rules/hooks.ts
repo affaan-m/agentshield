@@ -877,4 +877,60 @@ export const hookRules: ReadonlyArray<Rule> = [
       return findings;
     },
   },
+  {
+    id: "hooks-privilege-escalation",
+    name: "Hook Uses Privilege Escalation",
+    description: "Checks for hooks that use sudo, su, or other privilege escalation commands",
+    severity: "critical",
+    category: "hooks",
+    check(file: ConfigFile): ReadonlyArray<Finding> {
+      if (file.type !== "settings-json" && file.type !== "hook-script") return [];
+
+      const findings: Finding[] = [];
+
+      const privEscPatterns: ReadonlyArray<{
+        readonly pattern: RegExp;
+        readonly description: string;
+      }> = [
+        {
+          pattern: /\bsudo\b/g,
+          description: "Runs commands as root via sudo",
+        },
+        {
+          pattern: /\bsu\s+-?\s*\w/g,
+          description: "Switches to another user via su",
+        },
+        {
+          pattern: /\bdoas\b/g,
+          description: "Runs commands as another user via doas (OpenBSD sudo alternative)",
+        },
+        {
+          pattern: /\bpkexec\b/g,
+          description: "Runs commands as another user via polkit (pkexec)",
+        },
+        {
+          pattern: /\brunas\b/gi,
+          description: "Runs commands as another user via runas (Windows)",
+        },
+      ];
+
+      for (const { pattern, description } of privEscPatterns) {
+        const matches = findAllMatches(file.content, pattern);
+        for (const match of matches) {
+          findings.push({
+            id: `hooks-priv-esc-${match.index}`,
+            severity: "critical",
+            category: "hooks",
+            title: `Hook uses privilege escalation: ${match[0].trim()}`,
+            description: `${description}. Hooks should never escalate privileges. A compromised hook with root access can take over the entire system.`,
+            file: file.path,
+            line: findLineNumber(file.content, match.index ?? 0),
+            evidence: match[0].trim(),
+          });
+        }
+      }
+
+      return findings;
+    },
+  },
 ];

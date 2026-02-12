@@ -364,6 +364,59 @@ describe("permissionRules", () => {
     });
   });
 
+  describe("ssh, netcat, and interpreter in allow list", () => {
+    it("flags Bash(ssh in allow list", () => {
+      const file = makeSettings(JSON.stringify({
+        permissions: { allow: ["Bash(ssh user@remote)"], deny: [] },
+      }));
+      const findings = runAllPermRules(file);
+      expect(findings.some((f) => f.evidence?.includes("ssh"))).toBe(true);
+      expect(findings.find((f) => f.evidence?.includes("ssh"))?.severity).toBe("high");
+    });
+
+    it("flags Bash(nc in allow list", () => {
+      const file = makeSettings(JSON.stringify({
+        permissions: { allow: ["Bash(nc -l 4444)"], deny: [] },
+      }));
+      const findings = runAllPermRules(file);
+      expect(findings.some((f) => f.evidence?.includes("nc"))).toBe(true);
+    });
+
+    it("flags Bash(netcat in allow list", () => {
+      const file = makeSettings(JSON.stringify({
+        permissions: { allow: ["Bash(netcat -e /bin/sh)"], deny: [] },
+      }));
+      const findings = runAllPermRules(file);
+      expect(findings.some((f) => f.evidence?.includes("netcat"))).toBe(true);
+    });
+
+    it("flags Bash(python in allow list", () => {
+      const file = makeSettings(JSON.stringify({
+        permissions: { allow: ["Bash(python -c 'import os')"], deny: [] },
+      }));
+      const findings = runAllPermRules(file);
+      expect(findings.some((f) => f.evidence?.includes("python"))).toBe(true);
+      expect(findings.find((f) => f.evidence?.includes("python"))?.severity).toBe("high");
+    });
+
+    it("flags Bash(node in allow list", () => {
+      const file = makeSettings(JSON.stringify({
+        permissions: { allow: ["Bash(node -e 'process.exit()')"], deny: [] },
+      }));
+      const findings = runAllPermRules(file);
+      expect(findings.some((f) => f.evidence?.includes("node"))).toBe(true);
+    });
+
+    it("does not flag in deny list", () => {
+      const file = makeSettings(JSON.stringify({
+        permissions: { allow: ["Read(*)"], deny: ["Bash(ssh *)", "Bash(nc *)"] },
+      }));
+      const findings = runAllPermRules(file);
+      const sshFindings = findings.filter((f) => f.evidence?.includes("ssh") || f.evidence?.includes("nc"));
+      expect(sshFindings).toHaveLength(0);
+    });
+  });
+
   describe("edge cases", () => {
     it("handles multiple permission violations simultaneously", () => {
       const file = makeSettings(JSON.stringify({

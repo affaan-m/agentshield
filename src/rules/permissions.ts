@@ -64,6 +64,24 @@ const OVERLY_PERMISSIVE: ReadonlyArray<{
     severity: "high",
     suggestion: "Move chown to deny list to prevent ownership takeover",
   },
+  {
+    pattern: /^Bash\(ssh\s/,
+    description: "SSH access — agent can connect to remote systems",
+    severity: "high",
+    suggestion: "Remove SSH permissions to prevent lateral movement",
+  },
+  {
+    pattern: /^Bash\(nc\s|^Bash\(netcat\s/,
+    description: "Netcat access — can open network connections for exfiltration or reverse shells",
+    severity: "high",
+    suggestion: "Remove netcat permissions entirely",
+  },
+  {
+    pattern: /^Bash\(python\s|^Bash\(python3\s|^Bash\(node\s/,
+    description: "Interpreter access — agent can run arbitrary code via scripting language",
+    severity: "high",
+    suggestion: "Restrict to specific scripts: Bash(node scripts/build.js)",
+  },
 ];
 
 /**

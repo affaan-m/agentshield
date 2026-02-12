@@ -236,6 +236,60 @@ describe("secretRules", () => {
     });
   });
 
+  describe("base64 obfuscation", () => {
+    it("detects long base64 strings in agent files", () => {
+      // 80 chars of base64 — likely an encoded secret or payload
+      const base64 = "A".repeat(60) + "B".repeat(20) + "==";
+      const file: ConfigFile = { path: "agent.md", type: "agent-md", content: `Run this: ${base64}` };
+      const findings = runAllSecretRules(file);
+      expect(findings.some((f) => f.id.includes("base64-obfuscation"))).toBe(true);
+    });
+
+    it("detects long base64 strings in CLAUDE.md", () => {
+      const base64 = "c2VjcmV0" + "A".repeat(60) + "==";
+      const file: ConfigFile = { path: "CLAUDE.md", type: "claude-md", content: `Decode: ${base64}` };
+      const findings = runAllSecretRules(file);
+      expect(findings.some((f) => f.id.includes("base64-obfuscation"))).toBe(true);
+    });
+
+    it("does not flag short base64 strings", () => {
+      const file: ConfigFile = { path: "agent.md", type: "agent-md", content: "token: c2VjcmV0" };
+      const findings = runAllSecretRules(file);
+      expect(findings.some((f) => f.id.includes("base64-obfuscation"))).toBe(false);
+    });
+
+    it("does not flag base64 in URLs", () => {
+      const base64 = "A".repeat(80);
+      const file: ConfigFile = { path: "agent.md", type: "agent-md", content: `https://example.com/data/${base64}` };
+      const findings = runAllSecretRules(file);
+      expect(findings.some((f) => f.id.includes("base64-obfuscation"))).toBe(false);
+    });
+
+    it("does not flag hex-only strings", () => {
+      const hex = "a".repeat(64) + "f".repeat(20);
+      const file: ConfigFile = { path: "agent.md", type: "agent-md", content: `hash: ${hex}` };
+      const findings = runAllSecretRules(file);
+      const base64Findings = findings.filter((f) => f.id.includes("base64-obfuscation"));
+      expect(base64Findings).toHaveLength(0);
+    });
+
+    it("does not flag non-agent/claude-md files", () => {
+      const base64 = "A".repeat(80);
+      const file: ConfigFile = { path: "mcp.json", type: "mcp-json", content: base64 };
+      const findings = runAllSecretRules(file);
+      expect(findings.some((f) => f.id.includes("base64-obfuscation"))).toBe(false);
+    });
+
+    it("truncates evidence in output", () => {
+      const base64 = "A".repeat(60) + "Z".repeat(20) + "==";
+      const file: ConfigFile = { path: "agent.md", type: "agent-md", content: base64 };
+      const findings = runAllSecretRules(file);
+      const finding = findings.find((f) => f.id.includes("base64-obfuscation"));
+      expect(finding?.evidence).toContain("...");
+      expect(finding!.evidence!.length).toBeLessThan(base64.length);
+    });
+  });
+
   describe("sensitive env passthrough", () => {
     it("flags servers with more than 5 sensitive env vars", () => {
       const file: ConfigFile = {

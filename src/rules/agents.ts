@@ -520,6 +520,51 @@ export const agentRules: ReadonlyArray<Rule> = [
     },
   },
   {
+    id: "agents-unrestricted-delegation",
+    name: "Agent Has Unrestricted Delegation Instructions",
+    description: "Checks for agent definitions that instruct the agent to delegate to other agents or spawn sub-agents without restrictions",
+    severity: "medium",
+    category: "agents",
+    check(file: ConfigFile): ReadonlyArray<Finding> {
+      if (file.type !== "agent-md") return [];
+
+      const findings: Finding[] = [];
+
+      const delegationPatterns = [
+        {
+          pattern: /(?:delegate|hand\s*off|pass)\s+(?:.*\s+)?(?:to\s+)?(?:any|other|another)\s+agent/gi,
+          desc: "Instructs agent to delegate work to other agents without specifying which",
+        },
+        {
+          pattern: /spawn\s+(?:new\s+)?(?:sub)?agents?\s+(?:as\s+needed|freely|without\s+restriction)/gi,
+          desc: "Instructs agent to spawn sub-agents without restrictions",
+        },
+        {
+          pattern: /(?:use|call|invoke)\s+(?:any|all)\s+(?:available\s+)?tools?\s+(?:without\s+restriction|freely|as\s+needed)/gi,
+          desc: "Instructs agent to use any available tools without restriction",
+        },
+      ];
+
+      for (const { pattern, desc } of delegationPatterns) {
+        const matches = findAllMatches(file.content, pattern);
+        for (const match of matches) {
+          findings.push({
+            id: `agents-unrestricted-delegation-${match.index}`,
+            severity: "medium",
+            category: "agents",
+            title: `Agent has unrestricted delegation: ${match[0].substring(0, 60)}`,
+            description: `Found "${match[0].substring(0, 80)}" — ${desc}. Unrestricted delegation allows an agent to bypass its intended scope by farming work to agents with broader permissions (confused deputy attack).`,
+            file: file.path,
+            line: findLineNumber(file.content, match.index ?? 0),
+            evidence: match[0].substring(0, 100),
+          });
+        }
+      }
+
+      return findings;
+    },
+  },
+  {
     id: "agents-data-exfil-instructions",
     name: "Agent Contains Data Exfiltration Instructions",
     description: "Checks agent definitions for instructions that direct data to be sent externally",

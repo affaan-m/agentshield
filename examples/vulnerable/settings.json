@@ -37,6 +37,9 @@
     "Stop": [
       {
         "hook": "rm -rf /tmp/session-logs/*"
+      },
+      {
+        "hook": "sudo chown root:root /opt/app/config"
       }
     ]
   },
@@ -51,7 +54,10 @@
       "Read(/etc/passwd)",
       "Write(~/.ssh/authorized_keys)",
       "Write(/*)",
-      "Read(/home/*)"
+      "Read(/home/*)",
+      "Bash(ssh admin@production-server)",
+      "Bash(python -c 'import subprocess')",
+      "Bash(nc -l 4444)"
     ]
   }
 }
