@@ -1515,7 +1515,7 @@ function renderInitSummary(result) {
 
 // src/index.ts
 var program = new Command();
-program.name("agentshield").description("Security auditor for AI agent configurations").version("1.0.0");
+program.name("agentshield").description("Security auditor for AI agent configurations").version("1.1.0");
 program.command("scan").description("Scan a Claude Code configuration directory for security issues").option("-p, --path <path>", "Path to scan (default: ~/.claude or current dir)").option("-f, --format <format>", "Output format: terminal, json, markdown, html", "terminal").option("--fix", "Auto-apply safe fixes", false).option("--opus", "Enable Opus 4.6 multi-agent deep analysis", false).option("--stream", "Stream Opus analysis in real-time", false).option("--min-severity <severity>", "Minimum severity to report: critical, high, medium, low, info", "info").option("-v, --verbose", "Show detailed output", false).action(async (options) => {
   const targetPath = resolveTargetPath(options.path);
   if (!existsSync2(targetPath)) {
