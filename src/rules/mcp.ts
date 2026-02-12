@@ -508,6 +508,64 @@ export const mcpRules: ReadonlyArray<Rule> = [
     },
   },
   {
+    id: "mcp-env-override",
+    name: "MCP Environment Variable Override",
+    description: "Checks for MCP servers that override system-critical environment variables like PATH or LD_PRELOAD",
+    severity: "critical",
+    category: "mcp",
+    check(file: ConfigFile): ReadonlyArray<Finding> {
+      if (file.type !== "mcp-json" && file.type !== "settings-json") return [];
+
+      const findings: Finding[] = [];
+
+      try {
+        const config = JSON.parse(file.content);
+        const servers = config.mcpServers ?? {};
+
+        const dangerousEnvVars: ReadonlyArray<{
+          readonly name: string;
+          readonly description: string;
+        }> = [
+          { name: "PATH", description: "Controls which executables are found — can redirect to malicious binaries" },
+          { name: "LD_PRELOAD", description: "Injects shared libraries into every process — classic privilege escalation" },
+          { name: "LD_LIBRARY_PATH", description: "Redirects dynamic library loading — can intercept system calls" },
+          { name: "NODE_OPTIONS", description: "Injects flags into every Node.js process — can load arbitrary code" },
+          { name: "PYTHONPATH", description: "Redirects Python module imports — can load malicious modules" },
+          { name: "HOME", description: "Changes home directory — can redirect config file loading" },
+        ];
+
+        for (const [name, server] of Object.entries(servers)) {
+          const serverConfig = server as Record<string, unknown>;
+          const env = (serverConfig.env ?? {}) as Record<string, string>;
+
+          for (const envVar of dangerousEnvVars) {
+            if (envVar.name in env) {
+              findings.push({
+                id: `mcp-env-override-${name}-${envVar.name}`,
+                severity: "critical",
+                category: "mcp",
+                title: `MCP server "${name}" overrides ${envVar.name}`,
+                description: `The MCP server "${name}" sets ${envVar.name} in its environment. ${envVar.description}. If a malicious MCP config is injected (e.g., via a cloned repo), this could compromise the entire system.`,
+                file: file.path,
+                evidence: `${envVar.name}=${(env[envVar.name] ?? "").substring(0, 40)}`,
+                fix: {
+                  description: `Remove ${envVar.name} from the MCP server's env block`,
+                  before: `"${envVar.name}": "${(env[envVar.name] ?? "").substring(0, 20)}"`,
+                  after: `# Remove ${envVar.name} override`,
+                  auto: false,
+                },
+              });
+            }
+          }
+        }
+      } catch {
+        // Not valid JSON
+      }
+
+      return findings;
+    },
+  },
+  {
     id: "mcp-excessive-server-count",
     name: "MCP Excessive Server Count",
     description: "Flags configurations with too many MCP servers",

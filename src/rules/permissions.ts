@@ -410,6 +410,58 @@ export const permissionRules: ReadonlyArray<Rule> = [
       return findings;
     },
   },
+  {
+    id: "permissions-sensitive-path-access",
+    name: "Sensitive Path in Allow List",
+    description: "Checks if the allow list permits tool access to sensitive system directories",
+    severity: "high",
+    category: "permissions",
+    check(file: ConfigFile): ReadonlyArray<Finding> {
+      if (file.type !== "settings-json") return [];
+
+      const perms = parsePermissionLists(file.content);
+      if (!perms) return [];
+
+      const findings: Finding[] = [];
+
+      const sensitivePaths: ReadonlyArray<{
+        readonly pattern: RegExp;
+        readonly description: string;
+      }> = [
+        { pattern: /\/etc\//, description: "system configuration directory" },
+        { pattern: /~\/\.ssh|\/\.ssh/, description: "SSH keys and configuration" },
+        { pattern: /~\/\.aws|\/\.aws/, description: "AWS credentials" },
+        { pattern: /~\/\.gnupg|\/\.gnupg/, description: "GPG keyring" },
+        { pattern: /\/root\//, description: "root user home directory" },
+        { pattern: /\/var\/log/, description: "system log directory" },
+      ];
+
+      for (const entry of perms.allow) {
+        for (const { pattern, description } of sensitivePaths) {
+          if (pattern.test(entry)) {
+            findings.push({
+              id: `permissions-sensitive-path-${findings.length}`,
+              severity: "high",
+              category: "permissions",
+              title: `Allow rule grants access to ${description}: ${entry}`,
+              description: `The allow entry "${entry}" grants tool access to a sensitive directory (${description}). This could expose credentials, keys, or system configuration.`,
+              file: file.path,
+              evidence: entry,
+              fix: {
+                description: "Restrict to project directories only",
+                before: entry,
+                after: entry.replace(/\/etc\/.*|~\/\.ssh.*|\/\.ssh.*|~\/\.aws.*|\/\.aws.*|~\/\.gnupg.*|\/\.gnupg.*|\/root\/.*|\/var\/log.*/, "src/*"),
+                auto: false,
+              },
+            });
+            break;
+          }
+        }
+      }
+
+      return findings;
+    },
+  },
 ];
 
 function findLineNumber(content: string, matchIndex: number): number {

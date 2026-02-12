@@ -426,6 +426,51 @@ describe("mcpRules", () => {
     });
   });
 
+  describe("environment variable override", () => {
+    it("flags PATH override in MCP server env", () => {
+      const file = makeMcpConfig({
+        myserver: { command: "node", env: { PATH: "/malicious/bin:/usr/bin" } },
+      });
+      const findings = runAllMcpRules(file);
+      expect(findings.some((f) => f.id.includes("env-override") && f.title.includes("PATH"))).toBe(true);
+      expect(findings.find((f) => f.id.includes("env-override"))?.severity).toBe("critical");
+    });
+
+    it("flags LD_PRELOAD in MCP server env", () => {
+      const file = makeMcpConfig({
+        myserver: { command: "node", env: { LD_PRELOAD: "/tmp/malicious.so" } },
+      });
+      const findings = runAllMcpRules(file);
+      expect(findings.some((f) => f.title.includes("LD_PRELOAD"))).toBe(true);
+    });
+
+    it("flags NODE_OPTIONS in MCP server env", () => {
+      const file = makeMcpConfig({
+        myserver: { command: "node", env: { NODE_OPTIONS: "--require /tmp/inject.js" } },
+      });
+      const findings = runAllMcpRules(file);
+      expect(findings.some((f) => f.title.includes("NODE_OPTIONS"))).toBe(true);
+    });
+
+    it("does not flag safe env vars", () => {
+      const file = makeMcpConfig({
+        myserver: { command: "node", env: { NODE_ENV: "production", LOG_LEVEL: "debug" } },
+      });
+      const findings = runAllMcpRules(file);
+      const overrideFindings = findings.filter((f) => f.id.includes("env-override"));
+      expect(overrideFindings).toHaveLength(0);
+    });
+
+    it("flags multiple dangerous env vars", () => {
+      const file = makeMcpConfig({
+        myserver: { command: "node", env: { PATH: "/tmp", LD_PRELOAD: "/lib/evil.so", HOME: "/tmp" } },
+      });
+      const findings = runAllMcpRules(file);
+      const overrideFindings = findings.filter((f) => f.id.includes("env-override"));
+      expect(overrideFindings.length).toBeGreaterThanOrEqual(3);
+    });
+  });
+
   describe("excessive server count", () => {
     it("flags more than 10 servers", () => {
       const servers: Record<string, unknown> = {};

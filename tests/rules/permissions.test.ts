@@ -195,6 +195,42 @@ describe("permissionRules", () => {
     });
   });
 
+  describe("sensitive path access", () => {
+    it("flags Read(/etc/passwd) in allow list", () => {
+      const file = makeSettings(JSON.stringify({
+        permissions: { allow: ["Read(/etc/passwd)"], deny: [] },
+      }));
+      const findings = runAllPermRules(file);
+      expect(findings.some((f) => f.id.includes("sensitive-path"))).toBe(true);
+      expect(findings.find((f) => f.id.includes("sensitive-path"))?.severity).toBe("high");
+    });
+
+    it("flags Write(~/.ssh/*) in allow list", () => {
+      const file = makeSettings(JSON.stringify({
+        permissions: { allow: ["Write(~/.ssh/*)"], deny: [] },
+      }));
+      const findings = runAllPermRules(file);
+      expect(findings.some((f) => f.title.includes("SSH"))).toBe(true);
+    });
+
+    it("flags Bash with /var/log path", () => {
+      const file = makeSettings(JSON.stringify({
+        permissions: { allow: ["Read(/var/log/*)"], deny: [] },
+      }));
+      const findings = runAllPermRules(file);
+      expect(findings.some((f) => f.id.includes("sensitive-path"))).toBe(true);
+    });
+
+    it("does not flag normal project paths", () => {
+      const file = makeSettings(JSON.stringify({
+        permissions: { allow: ["Read(src/*)", "Write(tests/*)"], deny: [] },
+      }));
+      const findings = runAllPermRules(file);
+      const pathFindings = findings.filter((f) => f.id.includes("sensitive-path"));
+      expect(pathFindings).toHaveLength(0);
+    });
+  });
+
   describe("destructive git commands", () => {
     it("flags git push --force in allow list", () => {
       const file = makeSettings(JSON.stringify({

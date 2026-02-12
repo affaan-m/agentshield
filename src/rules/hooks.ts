@@ -439,6 +439,68 @@ export const hookRules: ReadonlyArray<Rule> = [
     },
   },
   {
+    id: "hooks-chained-commands",
+    name: "Hook Chained Shell Commands",
+    description: "Checks for hooks that chain multiple commands, which may execute beyond the matcher's intended scope",
+    severity: "medium",
+    category: "hooks",
+    check(file: ConfigFile): ReadonlyArray<Finding> {
+      if (file.type !== "settings-json") return [];
+
+      const findings: Finding[] = [];
+
+      try {
+        const config = JSON.parse(file.content);
+        const allHooks = [
+          ...(config?.hooks?.PreToolUse ?? []),
+          ...(config?.hooks?.PostToolUse ?? []),
+          ...(config?.hooks?.SessionStart ?? []),
+          ...(config?.hooks?.Stop ?? []),
+        ];
+
+        const chainPatterns = [
+          { pattern: /&&/, desc: "AND chain (&&)" },
+          { pattern: /;\s*[a-zA-Z]/, desc: "semicolon chain" },
+          { pattern: /\|\s*[a-zA-Z]/, desc: "pipe chain" },
+        ];
+
+        for (const hook of allHooks) {
+          const hookConfig = hook as { hook?: string; matcher?: string };
+          const command = hookConfig.hook ?? "";
+
+          // Only flag if there are 3+ chained commands (2 is common/normal)
+          let chainCount = 0;
+          for (const { pattern } of chainPatterns) {
+            const matches = [...command.matchAll(new RegExp(pattern.source, "g"))];
+            chainCount += matches.length;
+          }
+
+          if (chainCount >= 3) {
+            findings.push({
+              id: `hooks-chained-commands-${findings.length}`,
+              severity: "medium",
+              category: "hooks",
+              title: `Hook has ${chainCount + 1} chained commands`,
+              description: `A hook chains ${chainCount + 1} commands together: "${command.substring(0, 80)}...". Complex chained commands in hooks are harder to audit and may perform operations beyond the hook's stated purpose. Consider breaking into a dedicated script file.`,
+              file: file.path,
+              evidence: command.substring(0, 100),
+              fix: {
+                description: "Move complex logic to a script file",
+                before: command.substring(0, 50),
+                after: '"hook": "./scripts/hook-check.sh"',
+                auto: false,
+              },
+            });
+          }
+        }
+      } catch {
+        // JSON parse errors handled elsewhere
+      }
+
+      return findings;
+    },
+  },
+  {
     id: "hooks-expensive-unscoped",
     name: "Hook Expensive Unscoped Command",
     description: "Checks for PostToolUse hooks running expensive build/lint commands with broad matchers",

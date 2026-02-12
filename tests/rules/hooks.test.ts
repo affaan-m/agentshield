@@ -315,6 +315,42 @@ describe("hookRules", () => {
     });
   });
 
+  describe("chained commands", () => {
+    it("flags hooks with 4+ chained commands", () => {
+      const file = makeSettings(JSON.stringify({
+        hooks: { PostToolUse: [{ matcher: "Edit", hook: "echo a && echo b && echo c && echo d" }] },
+      }));
+      const findings = runAllHookRules(file);
+      expect(findings.some((f) => f.id.includes("chained-commands"))).toBe(true);
+    });
+
+    it("does not flag hooks with 2 chained commands", () => {
+      const file = makeSettings(JSON.stringify({
+        hooks: { PostToolUse: [{ matcher: "Edit", hook: "prettier --write && echo done" }] },
+      }));
+      const findings = runAllHookRules(file);
+      const chainFindings = findings.filter((f) => f.id.includes("chained-commands"));
+      expect(chainFindings).toHaveLength(0);
+    });
+
+    it("flags hooks with mixed chain operators", () => {
+      const file = makeSettings(JSON.stringify({
+        hooks: { PostToolUse: [{ matcher: "Edit", hook: "tsc && eslint . ; prettier --write | head" }] },
+      }));
+      const findings = runAllHookRules(file);
+      expect(findings.some((f) => f.id.includes("chained-commands"))).toBe(true);
+    });
+
+    it("provides fix suggestion", () => {
+      const file = makeSettings(JSON.stringify({
+        hooks: { PostToolUse: [{ matcher: "Edit", hook: "a && b && c && d" }] },
+      }));
+      const findings = runAllHookRules(file);
+      const finding = findings.find((f) => f.id.includes("chained-commands"));
+      expect(finding?.fix?.after).toContain("script");
+    });
+  });
+
   describe("expensive unscoped commands", () => {
     it("flags tsc on Edit matcher", () => {
       const file = makeSettings(JSON.stringify({
