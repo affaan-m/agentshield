@@ -103,4 +103,108 @@ describe("secretRules", () => {
       expect(findings.some((f) => f.severity === "high")).toBe(true);
     });
   });
+
+  describe("secrets in CLAUDE.md", () => {
+    it("detects API_KEY assignments in CLAUDE.md", () => {
+      const file = makeFile("ANTHROPIC_API_KEY=sk-ant-real-key-here-1234", "claude-md");
+      const findings = runAllSecretRules(file);
+      expect(findings.some((f) => f.id.includes("claude-md-env") && f.severity === "high")).toBe(true);
+    });
+
+    it("detects export SECRET_KEY assignments", () => {
+      const file = makeFile('export SECRET_KEY="my-super-secret-value"', "claude-md");
+      const findings = runAllSecretRules(file);
+      expect(findings.some((f) => f.title.includes("SECRET_KEY"))).toBe(true);
+    });
+
+    it("detects AUTH_TOKEN with colon separator", () => {
+      const file = makeFile("AUTH_TOKEN: some-token-value-here", "claude-md");
+      const findings = runAllSecretRules(file);
+      expect(findings.some((f) => f.id.includes("claude-md-env"))).toBe(true);
+    });
+
+    it("skips env var references like $VAR", () => {
+      const file = makeFile("API_KEY=$MY_REAL_KEY", "claude-md");
+      const findings = runAllSecretRules(file);
+      const claudeMdFindings = findings.filter((f) => f.id.includes("claude-md-env"));
+      expect(claudeMdFindings).toHaveLength(0);
+    });
+
+    it("skips non-CLAUDE.md files", () => {
+      const file = makeFile("API_KEY=real-secret-here-1234", "settings-json");
+      const findings = runAllSecretRules(file);
+      const claudeMdFindings = findings.filter((f) => f.id.includes("claude-md-env"));
+      expect(claudeMdFindings).toHaveLength(0);
+    });
+
+    it("skips non-sensitive variable names", () => {
+      const file = makeFile("LOG_LEVEL=debug", "claude-md");
+      const findings = runAllSecretRules(file);
+      const claudeMdFindings = findings.filter((f) => f.id.includes("claude-md-env"));
+      expect(claudeMdFindings).toHaveLength(0);
+    });
+
+    it("redacts evidence in findings", () => {
+      const file = makeFile("API_KEY=super-secret-value-1234", "claude-md");
+      const findings = runAllSecretRules(file);
+      const finding = findings.find((f) => f.id.includes("claude-md-env"));
+      expect(finding?.evidence).toContain("<redacted>");
+      expect(finding?.evidence).not.toContain("super-secret");
+    });
+  });
+
+  describe("sensitive env passthrough", () => {
+    it("flags servers with more than 5 sensitive env vars", () => {
+      const file: ConfigFile = {
+        path: "mcp.json",
+        type: "mcp-json",
+        content: JSON.stringify({
+          mcpServers: {
+            myserver: {
+              command: "node",
+              env: {
+                API_KEY: "$API_KEY",
+                AUTH_TOKEN: "$AUTH_TOKEN",
+                SECRET_VALUE: "$SECRET_VALUE",
+                DB_PASSWORD: "$DB_PASSWORD",
+                AWS_SECRET_KEY: "$AWS_SECRET_KEY",
+                GITHUB_TOKEN: "$GITHUB_TOKEN",
+              },
+            },
+          },
+        }),
+      };
+      const findings = runAllSecretRules(file);
+      expect(findings.some((f) => f.id.includes("env-passthrough") && f.severity === "medium")).toBe(true);
+    });
+
+    it("does not flag servers with 5 or fewer sensitive env vars", () => {
+      const file: ConfigFile = {
+        path: "mcp.json",
+        type: "mcp-json",
+        content: JSON.stringify({
+          mcpServers: {
+            myserver: {
+              command: "node",
+              env: {
+                API_KEY: "$API_KEY",
+                AUTH_TOKEN: "$AUTH_TOKEN",
+                NODE_ENV: "production",
+              },
+            },
+          },
+        }),
+      };
+      const findings = runAllSecretRules(file);
+      const passthroughFindings = findings.filter((f) => f.id.includes("env-passthrough"));
+      expect(passthroughFindings).toHaveLength(0);
+    });
+
+    it("skips non-mcp-json files", () => {
+      const file = makeFile("some content", "settings-json");
+      const findings = runAllSecretRules(file);
+      const passthroughFindings = findings.filter((f) => f.id.includes("env-passthrough"));
+      expect(passthroughFindings).toHaveLength(0);
+    });
+  });
 });

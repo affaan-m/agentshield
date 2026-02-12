@@ -103,4 +103,84 @@ describe("hookRules", () => {
       expect(findings).toHaveLength(0);
     });
   });
+
+  describe("unthrottled network requests", () => {
+    it("flags curl on broad Edit matcher", () => {
+      const file = makeSettings(JSON.stringify({
+        hooks: { PostToolUse: [{ matcher: "Edit", hook: "curl -X POST https://log.example.com/event" }] },
+      }));
+      const findings = runAllHookRules(file);
+      expect(findings.some((f) => f.id.includes("unthrottled-network"))).toBe(true);
+    });
+
+    it("flags wget on empty matcher (fires on all tools)", () => {
+      const file = makeSettings(JSON.stringify({
+        hooks: { PostToolUse: [{ matcher: "", hook: "wget https://telemetry.example.com/ping" }] },
+      }));
+      const findings = runAllHookRules(file);
+      expect(findings.some((f) => f.id.includes("unthrottled-network") && f.severity === "medium")).toBe(true);
+    });
+
+    it("does not flag network calls on narrow matchers", () => {
+      const file = makeSettings(JSON.stringify({
+        hooks: { PostToolUse: [{ matcher: "Bash(npm publish)", hook: "curl -X POST https://notify.example.com" }] },
+      }));
+      const findings = runAllHookRules(file);
+      const networkFindings = findings.filter((f) => f.id.includes("unthrottled-network"));
+      expect(networkFindings).toHaveLength(0);
+    });
+
+    it("does not flag non-network commands on broad matcher", () => {
+      const file = makeSettings(JSON.stringify({
+        hooks: { PostToolUse: [{ matcher: "Edit", hook: "echo done" }] },
+      }));
+      const findings = runAllHookRules(file);
+      const networkFindings = findings.filter((f) => f.id.includes("unthrottled-network"));
+      expect(networkFindings).toHaveLength(0);
+    });
+  });
+
+  describe("expensive unscoped commands", () => {
+    it("flags tsc on Edit matcher", () => {
+      const file = makeSettings(JSON.stringify({
+        hooks: { PostToolUse: [{ matcher: "Edit", hook: "tsc --noEmit" }] },
+      }));
+      const findings = runAllHookRules(file);
+      expect(findings.some((f) => f.id.includes("expensive-unscoped") && f.severity === "low")).toBe(true);
+    });
+
+    it("flags eslint on empty matcher", () => {
+      const file = makeSettings(JSON.stringify({
+        hooks: { PostToolUse: [{ matcher: "", hook: "eslint ." }] },
+      }));
+      const findings = runAllHookRules(file);
+      expect(findings.some((f) => f.id.includes("expensive-unscoped"))).toBe(true);
+    });
+
+    it("flags prettier on Write matcher", () => {
+      const file = makeSettings(JSON.stringify({
+        hooks: { PostToolUse: [{ matcher: "Write", hook: "prettier --check ." }] },
+      }));
+      const findings = runAllHookRules(file);
+      expect(findings.some((f) => f.id.includes("expensive-unscoped"))).toBe(true);
+    });
+
+    it("does not flag expensive commands on narrow matchers", () => {
+      const file = makeSettings(JSON.stringify({
+        hooks: { PostToolUse: [{ matcher: "Edit(*.ts)", hook: "tsc --noEmit" }] },
+      }));
+      const findings = runAllHookRules(file);
+      const expensiveFindings = findings.filter((f) => f.id.includes("expensive-unscoped"));
+      expect(expensiveFindings).toHaveLength(0);
+    });
+
+    it("does not flag cheap commands on broad matcher", () => {
+      const file = makeSettings(JSON.stringify({
+        hooks: { PostToolUse: [{ matcher: "Edit", hook: "echo 'file edited'" }] },
+      }));
+      const findings = runAllHookRules(file);
+      const expensiveFindings = findings.filter((f) => f.id.includes("expensive-unscoped"));
+      expect(expensiveFindings).toHaveLength(0);
+    });
+  });
 });

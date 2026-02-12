@@ -130,4 +130,117 @@ describe("mcpRules", () => {
       expect(descFindings).toHaveLength(0);
     });
   });
+
+  describe("unrestricted root path", () => {
+    it("flags filesystem server with / path", () => {
+      const file = makeMcpConfig({
+        filesystem: { command: "npx", args: ["-y", "@modelcontextprotocol/server-filesystem", "/"] },
+      });
+      const findings = runAllMcpRules(file);
+      expect(findings.some((f) => f.id.includes("root-path") && f.severity === "high")).toBe(true);
+    });
+
+    it("flags server with ~ home directory path", () => {
+      const file = makeMcpConfig({
+        myfs: { command: "node", args: ["server.js", "~"] },
+      });
+      const findings = runAllMcpRules(file);
+      expect(findings.some((f) => f.id.includes("root-path"))).toBe(true);
+    });
+
+    it("flags server with C:\\ Windows root path", () => {
+      const file = makeMcpConfig({
+        myfs: { command: "node", args: ["server.js", "C:\\"] },
+      });
+      const findings = runAllMcpRules(file);
+      expect(findings.some((f) => f.id.includes("root-path"))).toBe(true);
+    });
+
+    it("does not flag restricted paths", () => {
+      const file = makeMcpConfig({
+        filesystem: { command: "npx", args: ["-y", "@modelcontextprotocol/server-filesystem", "./src"] },
+      });
+      const findings = runAllMcpRules(file);
+      const rootFindings = findings.filter((f) => f.id.includes("root-path"));
+      expect(rootFindings).toHaveLength(0);
+    });
+
+    it("provides fix suggestion", () => {
+      const file = makeMcpConfig({
+        filesystem: { command: "npx", args: ["-y", "server", "/"] },
+      });
+      const findings = runAllMcpRules(file);
+      const rootFinding = findings.find((f) => f.id.includes("root-path"));
+      expect(rootFinding?.fix).toBeDefined();
+      expect(rootFinding?.fix?.after).toContain("./src");
+    });
+  });
+
+  describe("no version pin", () => {
+    it("flags npx with unversioned scoped package", () => {
+      const file = makeMcpConfig({
+        myserver: { command: "npx", args: ["-y", "@example/server"] },
+      });
+      const findings = runAllMcpRules(file);
+      expect(findings.some((f) => f.id.includes("no-version") && f.severity === "medium")).toBe(true);
+    });
+
+    it("does not flag versioned scoped package", () => {
+      const file = makeMcpConfig({
+        myserver: { command: "npx", args: ["-y", "@example/server@1.2.3"] },
+      });
+      const findings = runAllMcpRules(file);
+      const versionFindings = findings.filter((f) => f.id.includes("no-version"));
+      expect(versionFindings).toHaveLength(0);
+    });
+
+    it("does not flag non-npx commands", () => {
+      const file = makeMcpConfig({
+        myserver: { command: "node", args: ["@example/server"] },
+      });
+      const findings = runAllMcpRules(file);
+      const versionFindings = findings.filter((f) => f.id.includes("no-version"));
+      expect(versionFindings).toHaveLength(0);
+    });
+
+    it("skips packages without scope/slash", () => {
+      const file = makeMcpConfig({
+        myserver: { command: "npx", args: ["-y", "simple-package"] },
+      });
+      const findings = runAllMcpRules(file);
+      const versionFindings = findings.filter((f) => f.id.includes("no-version"));
+      expect(versionFindings).toHaveLength(0);
+    });
+  });
+
+  describe("excessive server count", () => {
+    it("flags more than 10 servers", () => {
+      const servers: Record<string, unknown> = {};
+      for (let i = 0; i < 12; i++) {
+        servers[`server-${i}`] = { command: "node", description: `Server ${i}` };
+      }
+      const file = makeMcpConfig(servers);
+      const findings = runAllMcpRules(file);
+      expect(findings.some((f) => f.id === "mcp-excessive-servers" && f.severity === "low")).toBe(true);
+      expect(findings.some((f) => f.title.includes("12"))).toBe(true);
+    });
+
+    it("does not flag 10 or fewer servers", () => {
+      const servers: Record<string, unknown> = {};
+      for (let i = 0; i < 10; i++) {
+        servers[`server-${i}`] = { command: "node", description: `Server ${i}` };
+      }
+      const file = makeMcpConfig(servers);
+      const findings = runAllMcpRules(file);
+      const countFindings = findings.filter((f) => f.id === "mcp-excessive-servers");
+      expect(countFindings).toHaveLength(0);
+    });
+
+    it("does not flag empty config", () => {
+      const file = makeMcpConfig({});
+      const findings = runAllMcpRules(file);
+      const countFindings = findings.filter((f) => f.id === "mcp-excessive-servers");
+      expect(countFindings).toHaveLength(0);
+    });
+  });
 });

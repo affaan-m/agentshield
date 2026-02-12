@@ -223,4 +223,110 @@ export const hookRules: ReadonlyArray<Rule> = [
       return [];
     },
   },
+  {
+    id: "hooks-unthrottled-network",
+    name: "Hook Unthrottled Network Requests",
+    description: "Checks for PostToolUse hooks making HTTP requests on frequent tool calls without throttling",
+    severity: "medium",
+    category: "hooks",
+    check(file: ConfigFile): ReadonlyArray<Finding> {
+      if (file.type !== "settings-json") return [];
+
+      const findings: Finding[] = [];
+
+      try {
+        const config = JSON.parse(file.content);
+        const postHooks = config?.hooks?.PostToolUse ?? [];
+
+        const broadMatchers = ["Edit", "Write", "Read", "Bash", ""];
+        const networkPatterns = /\b(curl|wget|fetch|http|nc|netcat)\b/i;
+
+        for (const hook of postHooks) {
+          const hookConfig = hook as { matcher?: string; hook?: string };
+          const matcher = hookConfig.matcher ?? "";
+          const command = hookConfig.hook ?? "";
+
+          const isBroadMatcher =
+            matcher === "" ||
+            broadMatchers.some((m) => m !== "" && matcher === m);
+
+          if (isBroadMatcher && networkPatterns.test(command)) {
+            findings.push({
+              id: `hooks-unthrottled-network-${findings.length}`,
+              severity: "medium",
+              category: "hooks",
+              title: `PostToolUse hook makes network request on broad matcher "${matcher || "*"}"`,
+              description: `A PostToolUse hook fires on "${matcher || "every tool call"}" and runs a network command (${command.substring(0, 60)}...). Without throttling, this fires on every matching tool call — potentially hundreds per session — causing performance degradation and potential data exposure.`,
+              file: file.path,
+              evidence: `matcher: "${matcher}", hook: "${command.substring(0, 80)}"`,
+              fix: {
+                description: "Add rate limiting or narrow the matcher",
+                before: `"matcher": "${matcher}"`,
+                after: `"matcher": "Bash(npm publish)" or add throttle logic`,
+                auto: false,
+              },
+            });
+          }
+        }
+      } catch {
+        // JSON parse errors handled elsewhere
+      }
+
+      return findings;
+    },
+  },
+  {
+    id: "hooks-expensive-unscoped",
+    name: "Hook Expensive Unscoped Command",
+    description: "Checks for PostToolUse hooks running expensive build/lint commands with broad matchers",
+    severity: "low",
+    category: "hooks",
+    check(file: ConfigFile): ReadonlyArray<Finding> {
+      if (file.type !== "settings-json") return [];
+
+      const findings: Finding[] = [];
+
+      try {
+        const config = JSON.parse(file.content);
+        const postHooks = config?.hooks?.PostToolUse ?? [];
+
+        const expensiveCommands =
+          /\b(tsc|eslint|prettier|webpack|jest|vitest|mocha|esbuild|rollup|turbo)\b/;
+        const broadMatchers = ["Edit", "Write", ""];
+
+        for (const hook of postHooks) {
+          const hookConfig = hook as { matcher?: string; hook?: string };
+          const matcher = hookConfig.matcher ?? "";
+          const command = hookConfig.hook ?? "";
+
+          const isBroadMatcher =
+            matcher === "" ||
+            broadMatchers.some((m) => m !== "" && matcher === m);
+
+          const expensiveMatch = command.match(expensiveCommands);
+          if (isBroadMatcher && expensiveMatch) {
+            findings.push({
+              id: `hooks-expensive-unscoped-${findings.length}`,
+              severity: "low",
+              category: "hooks",
+              title: `PostToolUse runs "${expensiveMatch[0]}" on broad matcher "${matcher || "*"}"`,
+              description: `A PostToolUse hook runs "${expensiveMatch[0]}" on every "${matcher || "tool call"}" event. Build tools and linters can take seconds to run — firing on every edit wastes resources and slows down the agent. Scope the matcher to specific file types or add conditional checks.`,
+              file: file.path,
+              evidence: `matcher: "${matcher}", hook: "${command.substring(0, 80)}"`,
+              fix: {
+                description: "Scope the matcher to reduce unnecessary runs",
+                before: `"matcher": "${matcher}"`,
+                after: `"matcher": "Edit(*.ts)" or add file-extension check in the hook script`,
+                auto: false,
+              },
+            });
+          }
+        }
+      } catch {
+        // JSON parse errors handled elsewhere
+      }
+
+      return findings;
+    },
+  },
 ];

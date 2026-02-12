@@ -213,4 +213,145 @@ export const mcpRules: ReadonlyArray<Rule> = [
       return findings;
     },
   },
+  {
+    id: "mcp-unrestricted-root-path",
+    name: "MCP Unrestricted Root Path",
+    description: "Checks for MCP servers with filesystem access to root or home directory",
+    severity: "high",
+    category: "mcp",
+    check(file: ConfigFile): ReadonlyArray<Finding> {
+      if (file.type !== "mcp-json" && file.type !== "settings-json") return [];
+
+      const findings: Finding[] = [];
+
+      try {
+        const config = JSON.parse(file.content);
+        const servers = config.mcpServers ?? {};
+
+        const rootPaths = ["/", "~", "C:\\", "C:/"];
+
+        for (const [name, server] of Object.entries(servers)) {
+          const serverConfig = server as Record<string, unknown>;
+          const args = (serverConfig.args ?? []) as string[];
+
+          for (const arg of args) {
+            if (rootPaths.includes(arg)) {
+              findings.push({
+                id: `mcp-root-path-${name}`,
+                severity: "high",
+                category: "mcp",
+                title: `MCP server "${name}" has unrestricted path: ${arg}`,
+                description: `The MCP server "${name}" is configured with path "${arg}" which grants access to the entire filesystem. This allows an agent to read, write, or delete any file on the system.`,
+                file: file.path,
+                evidence: `args: ${JSON.stringify(args)}`,
+                fix: {
+                  description: "Restrict to project-specific directories",
+                  before: `"${arg}"`,
+                  after: `"./src", "./docs"`,
+                  auto: false,
+                },
+              });
+            }
+          }
+        }
+      } catch {
+        // Not valid JSON
+      }
+
+      return findings;
+    },
+  },
+  {
+    id: "mcp-no-version-pin",
+    name: "MCP No Version Pin",
+    description: "Checks for MCP servers using npx with unversioned packages",
+    severity: "medium",
+    category: "mcp",
+    check(file: ConfigFile): ReadonlyArray<Finding> {
+      if (file.type !== "mcp-json" && file.type !== "settings-json") return [];
+
+      const findings: Finding[] = [];
+
+      try {
+        const config = JSON.parse(file.content);
+        const servers = config.mcpServers ?? {};
+
+        for (const [name, server] of Object.entries(servers)) {
+          const serverConfig = server as Record<string, unknown>;
+          const command = serverConfig.command as string;
+          const args = (serverConfig.args ?? []) as string[];
+
+          if (command !== "npx") continue;
+
+          // Find the package name arg (skip flags like -y, --yes)
+          const packageArg = args.find(
+            (a) => !a.startsWith("-") && a.includes("/")
+          );
+          if (!packageArg) continue;
+
+          // Check if it has a version pin (contains @ after the scope)
+          // Scoped packages look like @scope/name@version
+          const afterScope = packageArg.startsWith("@")
+            ? packageArg.substring(packageArg.indexOf("/"))
+            : packageArg;
+          const hasVersion = afterScope.includes("@");
+
+          if (!hasVersion) {
+            findings.push({
+              id: `mcp-no-version-${name}`,
+              severity: "medium",
+              category: "mcp",
+              title: `MCP server "${name}" uses unversioned package: ${packageArg}`,
+              description: `The MCP server "${name}" uses "${packageArg}" without a pinned version. A compromised package update would run automatically via npx.`,
+              file: file.path,
+              evidence: `command: npx, package: ${packageArg}`,
+              fix: {
+                description: "Pin to a specific version",
+                before: `"${packageArg}"`,
+                after: `"${packageArg}@1.0.0"`,
+                auto: false,
+              },
+            });
+          }
+        }
+      } catch {
+        // Not valid JSON
+      }
+
+      return findings;
+    },
+  },
+  {
+    id: "mcp-excessive-server-count",
+    name: "MCP Excessive Server Count",
+    description: "Flags configurations with too many MCP servers",
+    severity: "low",
+    category: "mcp",
+    check(file: ConfigFile): ReadonlyArray<Finding> {
+      if (file.type !== "mcp-json" && file.type !== "settings-json") return [];
+
+      try {
+        const config = JSON.parse(file.content);
+        const servers = config.mcpServers ?? {};
+        const count = Object.keys(servers).length;
+
+        if (count > 10) {
+          return [
+            {
+              id: "mcp-excessive-servers",
+              severity: "low",
+              category: "mcp",
+              title: `${count} MCP servers configured — large attack surface`,
+              description: `This configuration has ${count} MCP servers. Each server expands the attack surface through supply chain risk, environment variable exposure, and additional capabilities granted to the agent. Consider removing servers that are not actively needed.`,
+              file: file.path,
+            },
+          ];
+        }
+      } catch {
+        // Not valid JSON
+      }
+
+      return [];
+    },
+  },
 ];

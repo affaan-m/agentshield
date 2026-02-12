@@ -157,4 +157,101 @@ export const secretRules: ReadonlyArray<Rule> = [
       return findings;
     },
   },
+  {
+    id: "secrets-env-in-claude-md",
+    name: "Secrets in CLAUDE.md",
+    description: "Checks for sensitive env var assignments in CLAUDE.md files which are often committed to repos",
+    severity: "high",
+    category: "secrets",
+    check(file: ConfigFile): ReadonlyArray<Finding> {
+      if (file.type !== "claude-md") return [];
+
+      const findings: Finding[] = [];
+
+      // Detect patterns like KEY=value, export KEY=value, KEY: value
+      const envAssignmentPattern =
+        /(?:export\s+)?\b(\w*(?:API_KEY|SECRET_KEY|AUTH_TOKEN|ACCESS_TOKEN|PRIVATE_KEY|PASSWORD|CREDENTIAL|API_SECRET)\w*)\s*[=:]\s*["']?([^\s"']{4,})["']?/gi;
+      const matches = findAllMatches(file.content, envAssignmentPattern);
+
+      for (const match of matches) {
+        const varName = match[1];
+        const idx = match.index ?? 0;
+
+        // Skip env var references like ${VAR} or $VAR
+        const value = match[2];
+        if (value.startsWith("${") || value.startsWith("$")) continue;
+
+        findings.push({
+          id: `secrets-claude-md-env-${idx}`,
+          severity: "high",
+          category: "secrets",
+          title: `Sensitive env var in CLAUDE.md: ${varName}`,
+          description: `CLAUDE.md contains an assignment for "${varName}". CLAUDE.md files are typically committed to version control, exposing secrets to anyone who clones the repository.`,
+          file: file.path,
+          line: findLineNumber(file.content, idx),
+          evidence: `${varName}=<redacted>`,
+          fix: {
+            description: "Move to .env file and reference via environment variable",
+            before: match[0],
+            after: `# Set ${varName} in your .env file`,
+            auto: false,
+          },
+        });
+      }
+
+      return findings;
+    },
+  },
+  {
+    id: "secrets-sensitive-env-passthrough",
+    name: "Sensitive Env Var Passthrough",
+    description: "Checks for MCP servers passing through excessive sensitive environment variables",
+    severity: "medium",
+    category: "secrets",
+    check(file: ConfigFile): ReadonlyArray<Finding> {
+      if (file.type !== "mcp-json") return [];
+
+      const findings: Finding[] = [];
+
+      try {
+        const config = JSON.parse(file.content);
+        const servers = config.mcpServers ?? {};
+
+        const sensitivePatterns =
+          /KEY|TOKEN|SECRET|PASSWORD|CREDENTIAL|AUTH/i;
+
+        for (const [name, server] of Object.entries(servers)) {
+          const serverConfig = server as Record<string, unknown>;
+          const env = (serverConfig.env ?? {}) as Record<string, string>;
+
+          const sensitiveVars = Object.keys(env).filter((key) =>
+            sensitivePatterns.test(key)
+          );
+
+          if (sensitiveVars.length > 5) {
+            findings.push({
+              id: `secrets-env-passthrough-${name}`,
+              severity: "medium",
+              category: "secrets",
+              title: `MCP server "${name}" receives ${sensitiveVars.length} sensitive env vars`,
+              description: `The MCP server "${name}" has ${sensitiveVars.length} sensitive environment variables passed through (${sensitiveVars.slice(0, 3).join(", ")}...). Over-sharing secrets increases the blast radius if the server is compromised. Only pass env vars that the server actually needs.`,
+              file: file.path,
+              evidence: `Sensitive vars: ${sensitiveVars.join(", ")}`,
+              fix: {
+                description:
+                  "Remove env vars that the server does not need",
+                before: `${sensitiveVars.length} sensitive env vars`,
+                after: "Only the required env vars for this server",
+                auto: false,
+              },
+            });
+          }
+        }
+      } catch {
+        // Not valid JSON
+      }
+
+      return findings;
+    },
+  },
 ];
