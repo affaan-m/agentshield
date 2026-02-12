@@ -363,4 +363,39 @@ describe("permissionRules", () => {
       expect(findings.find((f) => f.evidence?.includes("chown"))?.severity).toBe("high");
     });
   });
+
+  describe("edge cases", () => {
+    it("handles multiple permission violations simultaneously", () => {
+      const file = makeSettings(JSON.stringify({
+        permissions: {
+          allow: ["Bash(*)", "Write(*)", "Edit(*)", "Bash(git push --force)", "Read(/etc/passwd)", "Write(/*)"],
+          deny: [],
+        },
+      }));
+      const findings = runAllPermRules(file);
+      // Should find: Bash(*), Write(*), Edit(*), no deny list, all mutable, destructive git, sensitive path, wildcard root
+      expect(findings.length).toBeGreaterThanOrEqual(6);
+    });
+
+    it("handles config with permissions but no allow field", () => {
+      const file = makeSettings(JSON.stringify({ permissions: {} }));
+      const findings = runAllPermRules(file);
+      // Should not crash; no deny-list should NOT be flagged since allow is empty
+      const noDenyFindings = findings.filter((f) => f.id === "permissions-no-deny-list");
+      expect(noDenyFindings).toHaveLength(0);
+    });
+
+    it("handles deeply nested permission strings", () => {
+      const file = makeSettings(JSON.stringify({
+        permissions: {
+          allow: ["Bash(git push --force-with-lease origin main)"],
+          deny: [],
+        },
+      }));
+      const findings = runAllPermRules(file);
+      // --force-with-lease should NOT trigger destructive git (it's the safe version)
+      const destructiveFindings = findings.filter((f) => f.id.includes("destructive-git"));
+      expect(destructiveFindings).toHaveLength(0);
+    });
+  });
 });

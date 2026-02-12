@@ -203,7 +203,7 @@ var secretRules = [
         for (const match of matches) {
           const idx = match.index ?? 0;
           const context = file.content.substring(
-            Math.max(0, idx - 10),
+            Math.max(0, idx - 20),
             idx + match[0].length + 10
           );
           if (context.includes("${") || context.includes("process.env")) {
@@ -419,7 +419,7 @@ function parsePermissionLists(content) {
 }
 var DESTRUCTIVE_GIT_PATTERNS = [
   {
-    pattern: /push\s+--force|push\s+-f\b/,
+    pattern: /push\s+--force(?!-with-lease)|push\s+-f\b/,
     description: "Force push can overwrite remote history, destroying teammates' work",
     suggestion: "Use --force-with-lease instead, or move to deny list"
   },
@@ -2081,6 +2081,39 @@ var mcpRules = [
                 }
               });
             }
+          }
+        }
+      } catch {
+      }
+      return findings;
+    }
+  },
+  {
+    id: "mcp-dual-transport",
+    name: "MCP Server Has Both URL and Command",
+    description: "Checks for MCP servers with both url and command fields, which is ambiguous and potentially dangerous",
+    severity: "medium",
+    category: "misconfiguration",
+    check(file) {
+      if (file.type !== "mcp-json" && file.type !== "settings-json") return [];
+      const findings = [];
+      try {
+        const config = JSON.parse(file.content);
+        const servers = config.mcpServers ?? {};
+        for (const [name, server] of Object.entries(servers)) {
+          const serverConfig = server;
+          const hasUrl = !!serverConfig.url;
+          const hasCommand = !!serverConfig.command;
+          if (hasUrl && hasCommand) {
+            findings.push({
+              id: `mcp-dual-transport-${name}`,
+              severity: "medium",
+              category: "misconfiguration",
+              title: `MCP server "${name}" has both url and command`,
+              description: `The MCP server "${name}" specifies both a URL transport and a stdio command. This is ambiguous \u2014 it's unclear which transport will be used, and the unused one could be an injection attempt. Use only one transport method.`,
+              file: file.path,
+              evidence: `url: ${serverConfig.url.substring(0, 40)}, command: ${serverConfig.command}`
+            });
           }
         }
       } catch {

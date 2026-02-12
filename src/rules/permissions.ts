@@ -108,7 +108,7 @@ const DESTRUCTIVE_GIT_PATTERNS: ReadonlyArray<{
   readonly suggestion: string;
 }> = [
   {
-    pattern: /push\s+--force|push\s+-f\b/,
+    pattern: /push\s+--force(?!-with-lease)|push\s+-f\b/,
     description: "Force push can overwrite remote history, destroying teammates' work",
     suggestion: "Use --force-with-lease instead, or move to deny list",
   },

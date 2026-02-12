@@ -151,7 +151,7 @@ export const secretRules: ReadonlyArray<Rule> = [
           // Skip if it's inside an env var reference like ${VAR_NAME}
           const idx = match.index ?? 0;
           const context = file.content.substring(
-            Math.max(0, idx - 10),
+            Math.max(0, idx - 20),
             idx + match[0].length + 10
           );
           if (context.includes("${") || context.includes("process.env")) {
