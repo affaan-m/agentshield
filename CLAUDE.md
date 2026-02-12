@@ -6,7 +6,7 @@ Security auditor for AI agent configurations (Claude Code, MCP servers, hooks, a
 
 ```bash
 npm run build      # tsc + tsup → dist/
-npm test           # vitest (520 tests)
+npm test           # vitest (531 tests)
 npm run dev        # tsx watch mode
 ```
 
@@ -21,11 +21,11 @@ src/
     index.ts        # Orchestrates discovery → rules → sorted findings
   rules/
     index.ts        # Barrel export of all rule modules
-    secrets.ts      # Hardcoded API keys/tokens (14 patterns), env exposure, CLAUDE.md secrets
-    permissions.ts  # Allow/deny list analysis, dangerous flags, destructive git, mutable tools, sensitive paths
-    hooks.ts        # Injection, exfiltration, error suppression, sensitive files, session hooks, chained commands
-    mcp.ts          # Risky servers, hardcoded env, npx supply chain, url transport, root paths, env override
-    agents.ts       # Tool restrictions, prompt injection, unicode tricks, CLAUDE.md injection
+    secrets.ts      # 4 rules, 17 patterns — API keys, tokens, passwords, env exposure, CLAUDE.md secrets
+    permissions.ts  # 6 rules — allow/deny analysis, dangerous flags, destructive git, mutable tools, sensitive paths
+    hooks.ts        # 12 rules — injection, exfiltration, background processes, error suppression, chained commands
+    mcp.ts          # 11 rules — risky servers, env override, npx supply chain, url transport, root paths, metacharacters
+    agents.ts       # 7 rules — tool restrictions, prompt injection, unicode tricks, CLAUDE.md injection
   reporter/
     score.ts        # Scoring engine (severity deductions, grade A-F, category breakdown)
     terminal.ts     # Colored terminal output

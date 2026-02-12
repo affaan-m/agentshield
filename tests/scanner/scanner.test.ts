@@ -61,5 +61,57 @@ describe("scanner", () => {
       const result = scan(VULNERABLE_PATH);
       expect(result.findings.some((f) => f.title.includes("Bash access"))).toBe(true);
     });
+
+    it("detects destructive git commands in allow list", () => {
+      const result = scan(VULNERABLE_PATH);
+      expect(result.findings.some((f) => f.id.includes("destructive-git"))).toBe(true);
+    });
+
+    it("detects MCP env override attacks", () => {
+      const result = scan(VULNERABLE_PATH);
+      expect(result.findings.some((f) => f.id.includes("env-override"))).toBe(true);
+    });
+
+    it("detects prompt injection patterns in agent files", () => {
+      const result = scan(VULNERABLE_PATH);
+      expect(result.findings.some((f) => f.id.includes("injection-pattern"))).toBe(true);
+    });
+
+    it("detects unrestricted agent (no tools field)", () => {
+      const result = scan(VULNERABLE_PATH);
+      expect(result.findings.some((f) => f.id.includes("no-tools"))).toBe(true);
+    });
+
+    it("detects sensitive path access in allow list", () => {
+      const result = scan(VULNERABLE_PATH);
+      expect(result.findings.some((f) => f.id.includes("sensitive-path"))).toBe(true);
+    });
+
+    it("detects SessionStart remote downloads", () => {
+      const result = scan(VULNERABLE_PATH);
+      expect(result.findings.some((f) => f.id.includes("session-start-download"))).toBe(true);
+    });
+
+    it("detects MCP URL transport to external hosts", () => {
+      const result = scan(VULNERABLE_PATH);
+      expect(result.findings.some((f) => f.id.includes("url-transport"))).toBe(true);
+    });
+
+    it("detects JWT tokens in CLAUDE.md", () => {
+      const result = scan(VULNERABLE_PATH);
+      expect(result.findings.some((f) => f.title.includes("JWT token"))).toBe(true);
+    });
+
+    it("produces expected number of findings", () => {
+      const result = scan(VULNERABLE_PATH);
+      // With 40 rules and the vulnerable example, we expect 70+ findings
+      expect(result.findings.length).toBeGreaterThanOrEqual(70);
+    });
+
+    it("includes auto-fixable findings", () => {
+      const result = scan(VULNERABLE_PATH);
+      const autoFixable = result.findings.filter((f) => f.fix?.auto === true);
+      expect(autoFixable.length).toBeGreaterThanOrEqual(1);
+    });
   });
 });
