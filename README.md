@@ -12,10 +12,10 @@ Built at the [Claude Code Hackathon](https://cerebralvalley.ai/e/claude-code-hac
 
 ```bash
 # Scan your Claude Code config (no install required)
-npx agentshield scan
+npx ecc-agentshield scan
 
 # Or install globally
-npm install -g agentshield
+npm install -g ecc-agentshield
 agentshield scan
 
 # Scan a specific directory
@@ -32,6 +32,9 @@ agentshield scan --opus --stream
 
 # Generate a secure baseline config
 agentshield init
+
+# Launch MiniClaw secure agent server
+npx ecc-agentshield miniclaw start
 ```
 
 ## Features
@@ -198,16 +201,24 @@ open report.html
 ## CLI Reference
 
 ```
-agentshield scan [options]      Scan a configuration directory
-  -p, --path <path>             Path to scan (default: ~/.claude or cwd)
-  -f, --format <format>         Output: terminal, json, markdown, html
-  --fix                         Auto-apply safe fixes
-  --opus                        Enable Opus 4.6 multi-agent analysis
-  --stream                      Stream Opus analysis in real-time
-  --min-severity <severity>     Filter: critical, high, medium, low, info
-  -v, --verbose                 Show detailed output
+agentshield scan [options]         Scan a configuration directory
+  -p, --path <path>                Path to scan (default: ~/.claude or cwd)
+  -f, --format <format>            Output: terminal, json, markdown, html
+  --fix                            Auto-apply safe fixes
+  --opus                           Enable Opus 4.6 multi-agent analysis
+  --stream                         Stream Opus analysis in real-time
+  --min-severity <severity>        Filter: critical, high, medium, low, info
+  -v, --verbose                    Show detailed output
 
-agentshield init [options]      Generate secure baseline config
+agentshield init [options]         Generate secure baseline config
+
+agentshield miniclaw start [opts]  Launch MiniClaw secure agent server
+  -p, --port <port>                Port to listen on (default: 3847)
+  -H, --hostname <hostname>        Hostname to bind to (default: localhost)
+  --network <policy>               Network policy: none, localhost, allowlist
+  --rate-limit <limit>             Max requests per minute per IP (default: 10)
+  --sandbox-root <path>            Root path for sandboxes
+  --max-duration <ms>              Max session duration in ms (default: 300000)
 ```
 
 ## Architecture
@@ -276,7 +287,30 @@ MiniClaw is a minimal, secure, sandboxed AI agent runtime — the antithesis of 
 | Network exposure | Multiple ports, services | Minimal, single entry point |
 | Blast radius | Everything agent can access | Sandboxed to session directory |
 
-### Quick Start
+### Quick Start (CLI)
+
+Launch MiniClaw with a single command — no code required:
+
+```bash
+# Start with secure defaults (localhost:3847, no network, safe tools only)
+npx ecc-agentshield miniclaw start
+
+# Custom port and network policy
+npx ecc-agentshield miniclaw start --port 4000 --network localhost
+
+# Full configuration
+npx ecc-agentshield miniclaw start \
+  --port 4000 \
+  --hostname 127.0.0.1 \
+  --network localhost \
+  --rate-limit 20 \
+  --sandbox-root /tmp/my-sandboxes \
+  --max-duration 600000
+```
+
+### Quick Start (Library)
+
+Use MiniClaw programmatically in your Node.js application:
 
 ```typescript
 import { startMiniClaw } from 'ecc-agentshield/miniclaw';
@@ -298,16 +332,46 @@ const response = await routePrompt({ sessionId: session.id, prompt: 'Read index.
 
 ### Security Model
 
-**Defense in depth** — four layers, each independently enforced:
+**Defense in depth** — four independently enforced layers:
 
-1. **Server Layer** — Rate limiting (10 req/min per IP), CORS restriction, request size cap (10KB), security headers, localhost-only binding
-2. **Prompt Router** — Strips 12+ injection pattern categories: system prompt overrides, identity reassignment, jailbreak attempts, tool invocation syntax, data exfiltration URLs, zero-width Unicode, base64-encoded payloads. Output filtering removes leaked system prompt content.
-3. **Tool Whitelist** — Three-tier authorization:
-   - **Safe** (auto-approved): read, search, list
-   - **Guarded** (session opt-in): write, edit, glob
-   - **Restricted** (disabled by default): bash, network, external API
-   - Unknown tools are **blocked by default** (fail-closed)
-4. **Sandbox** — Isolated filesystem per session. Path traversal blocked, symlink escape detection, allowed extensions whitelist, 10MB file size limit, 5-minute session timeout. No network access by default.
+```
+  Request → [Rate Limit] → [CORS] → [Size Cap] → [Sanitize Prompt]
+                                                        ↓
+                                                  [Tool Whitelist]
+                                                        ↓
+                                                    [Sandbox FS]
+                                                        ↓
+                                                  [Filter Output] → Response
+```
+
+1. **Server Layer** — Rate limiting (10 req/min per IP), CORS restriction to configured origins, request size cap (10KB), security headers (`X-Content-Type-Options`, `X-Frame-Options`, `Cache-Control: no-store`), localhost-only binding by default.
+
+2. **Prompt Router** — Strips 12+ injection pattern categories before processing:
+   - System prompt override attempts ("ignore previous instructions")
+   - Identity reassignment ("you are now DAN")
+   - Jailbreak and roleplay attacks
+   - Direct tool invocation syntax
+   - Data exfiltration URLs and encoded payloads
+   - Zero-width Unicode hidden instructions
+   - Base64-encoded command injection
+   - Output filtering removes any leaked system prompt content from responses.
+
+3. **Tool Whitelist** — Three-tier authorization (fail-closed for unknown tools):
+
+   | Tier | Tools | Behavior |
+   |------|-------|----------|
+   | **Safe** | read, search, list | Auto-approved, sandbox-scoped |
+   | **Guarded** | write, edit, glob | Requires session-level opt-in |
+   | **Restricted** | bash, network, external API | Disabled by default, explicit config required |
+
+4. **Sandbox** — Isolated filesystem per session:
+   - Unique directory per session under configurable root
+   - Path traversal (`../`) blocked at validation layer
+   - Symlink escape detection (resolves real paths before access)
+   - Allowed file extensions whitelist (no `.sh`, `.exe`, `.bat`)
+   - 10MB max file size (prevents resource exhaustion)
+   - 5-minute session timeout (prevents runaway processes)
+   - No network access by default (prevents data exfiltration)
 
 ### API Endpoints
 
@@ -319,6 +383,24 @@ const response = await routePrompt({ sessionId: session.id, prompt: 'Read index.
 | `DELETE` | `/api/session/:id` | Destroy session and cleanup sandbox |
 | `GET` | `/api/events/:sessionId` | Retrieve security audit events |
 | `GET` | `/api/health` | Health check |
+
+**Example: Create a session and send a prompt**
+
+```bash
+# Create a session
+curl -X POST http://localhost:3847/api/session
+
+# Send a prompt (use the sessionId from the response above)
+curl -X POST http://localhost:3847/api/prompt \
+  -H "Content-Type: application/json" \
+  -d '{"sessionId": "SESSION_ID", "prompt": "Read the file src/index.ts"}'
+
+# Check security events
+curl http://localhost:3847/api/events/SESSION_ID
+
+# Destroy session when done
+curl -X DELETE http://localhost:3847/api/session/SESSION_ID
+```
 
 ### Dashboard
 
@@ -334,25 +416,44 @@ Features: dark theme, prompt input, streaming response display, session status i
 
 ### Configuration Defaults
 
+All defaults follow the principle of **maximum security posture** — users relax them as needed, never the reverse.
+
 ```typescript
-// Sandbox defaults — maximum security posture
+// Sandbox defaults
 {
   rootPath: '/tmp/miniclaw-sandboxes',
   maxFileSize: 10_485_760,          // 10MB
-  allowedExtensions: ['.ts', '.tsx', '.js', '.jsx', '.json', '.md', '.txt', ...],
-  networkPolicy: 'none',            // No network access
+  allowedExtensions: ['.ts', '.tsx', '.js', '.jsx', '.json', '.md', '.txt',
+                      '.css', '.html', '.yaml', '.yml', '.toml', '.xml',
+                      '.csv', '.svg', '.env.example'],
+  networkPolicy: 'none',            // No network access — no exfiltration possible
   maxDuration: 300_000,             // 5 minutes
 }
 
-// Server defaults — locked to localhost
+// Server defaults
 {
   port: 3847,
   hostname: 'localhost',            // Never 0.0.0.0 by default
   corsOrigins: ['http://localhost:3847', 'http://localhost:3000'],
   rateLimit: 10,                    // 10 req/min per IP
-  maxRequestSize: 10_240,           // 10KB
+  maxRequestSize: 10_240,           // 10KB — plenty for a prompt
 }
 ```
+
+### Architecture
+
+```
+src/miniclaw/
+├── types.ts          Core type system (all readonly, all immutable)
+├── sandbox.ts        Sandbox lifecycle, path validation, symlink detection
+├── router.ts         Prompt sanitization (12+ injection patterns) + output filtering
+├── tools.ts          Tool registry, whitelist creation, call validation + scoping
+├── server.ts         HTTP server (native Node.js http, no frameworks)
+├── dashboard.tsx     React dashboard component
+└── index.ts          Entry point, re-exports, startMiniClaw() convenience function
+```
+
+MiniClaw has **zero external runtime dependencies** — it uses only Node.js built-in modules (`http`, `fs`, `path`, `crypto`). The dashboard requires React 18+ as a peer dependency.
 
 ## Development
 
@@ -363,7 +464,7 @@ npm install
 # Development mode
 npm run dev scan --path examples/vulnerable
 
-# Run tests (202 tests)
+# Run tests (342 tests)
 npm test
 
 # Run tests with coverage

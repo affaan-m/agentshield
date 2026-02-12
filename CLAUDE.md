@@ -6,7 +6,7 @@ Security auditor for AI agent configurations (Claude Code, MCP servers, hooks, a
 
 ```bash
 npm run build      # tsc + tsup → dist/
-npm test           # vitest (82 tests)
+npm test           # vitest (342 tests)
 npm run dev        # tsx watch mode
 ```
 
@@ -36,6 +36,14 @@ src/
     pipeline.ts     # Opus 4.6 three-agent adversarial pipeline
     render.ts       # Opus analysis terminal + markdown rendering
     index.ts        # Pipeline entry point
+  miniclaw/
+    types.ts        # Core types (immutable, readonly)
+    sandbox.ts      # Sandbox lifecycle + path validation
+    router.ts       # Prompt sanitization + output filtering
+    tools.ts        # Whitelist-based tool authorization
+    server.ts       # HTTP server with rate limiting + CORS
+    dashboard.tsx   # React dashboard component
+    index.ts        # Entry point + startMiniClaw()
 ```
 
 ## Key Patterns
@@ -64,6 +72,8 @@ agentshield scan [path]              # Static analysis
 agentshield scan --opus              # + Opus 4.6 adversarial pipeline
 agentshield scan --format json|md    # Output format
 agentshield scan --fix               # Show auto-fix suggestions
+agentshield miniclaw start           # Launch MiniClaw secure agent server
+agentshield miniclaw start --port N  # Custom port
 ```
 
 ## Testing
