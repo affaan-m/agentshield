@@ -201,6 +201,84 @@ var secretRules = [
       }
       return findings;
     }
+  },
+  {
+    id: "secrets-env-in-claude-md",
+    name: "Secrets in CLAUDE.md",
+    description: "Checks for sensitive env var assignments in CLAUDE.md files which are often committed to repos",
+    severity: "high",
+    category: "secrets",
+    check(file) {
+      if (file.type !== "claude-md") return [];
+      const findings = [];
+      const envAssignmentPattern = /(?:export\s+)?\b(\w*(?:API_KEY|SECRET_KEY|AUTH_TOKEN|ACCESS_TOKEN|PRIVATE_KEY|PASSWORD|CREDENTIAL|API_SECRET)\w*)\s*[=:]\s*["']?([^\s"']{4,})["']?/gi;
+      const matches = findAllMatches(file.content, envAssignmentPattern);
+      for (const match of matches) {
+        const varName = match[1];
+        const idx = match.index ?? 0;
+        const value = match[2];
+        if (value.startsWith("${") || value.startsWith("$")) continue;
+        findings.push({
+          id: `secrets-claude-md-env-${idx}`,
+          severity: "high",
+          category: "secrets",
+          title: `Sensitive env var in CLAUDE.md: ${varName}`,
+          description: `CLAUDE.md contains an assignment for "${varName}". CLAUDE.md files are typically committed to version control, exposing secrets to anyone who clones the repository.`,
+          file: file.path,
+          line: findLineNumber(file.content, idx),
+          evidence: `${varName}=<redacted>`,
+          fix: {
+            description: "Move to .env file and reference via environment variable",
+            before: match[0],
+            after: `# Set ${varName} in your .env file`,
+            auto: false
+          }
+        });
+      }
+      return findings;
+    }
+  },
+  {
+    id: "secrets-sensitive-env-passthrough",
+    name: "Sensitive Env Var Passthrough",
+    description: "Checks for MCP servers passing through excessive sensitive environment variables",
+    severity: "medium",
+    category: "secrets",
+    check(file) {
+      if (file.type !== "mcp-json") return [];
+      const findings = [];
+      try {
+        const config = JSON.parse(file.content);
+        const servers = config.mcpServers ?? {};
+        const sensitivePatterns = /KEY|TOKEN|SECRET|PASSWORD|CREDENTIAL|AUTH/i;
+        for (const [name, server] of Object.entries(servers)) {
+          const serverConfig = server;
+          const env = serverConfig.env ?? {};
+          const sensitiveVars = Object.keys(env).filter(
+            (key) => sensitivePatterns.test(key)
+          );
+          if (sensitiveVars.length > 5) {
+            findings.push({
+              id: `secrets-env-passthrough-${name}`,
+              severity: "medium",
+              category: "secrets",
+              title: `MCP server "${name}" receives ${sensitiveVars.length} sensitive env vars`,
+              description: `The MCP server "${name}" has ${sensitiveVars.length} sensitive environment variables passed through (${sensitiveVars.slice(0, 3).join(", ")}...). Over-sharing secrets increases the blast radius if the server is compromised. Only pass env vars that the server actually needs.`,
+              file: file.path,
+              evidence: `Sensitive vars: ${sensitiveVars.join(", ")}`,
+              fix: {
+                description: "Remove env vars that the server does not need",
+                before: `${sensitiveVars.length} sensitive env vars`,
+                after: "Only the required env vars for this server",
+                auto: false
+              }
+            });
+          }
+        }
+      } catch {
+      }
+      return findings;
+    }
   }
 ];
 
@@ -621,6 +699,91 @@ var hookRules = [
       }
       return [];
     }
+  },
+  {
+    id: "hooks-unthrottled-network",
+    name: "Hook Unthrottled Network Requests",
+    description: "Checks for PostToolUse hooks making HTTP requests on frequent tool calls without throttling",
+    severity: "medium",
+    category: "hooks",
+    check(file) {
+      if (file.type !== "settings-json") return [];
+      const findings = [];
+      try {
+        const config = JSON.parse(file.content);
+        const postHooks = config?.hooks?.PostToolUse ?? [];
+        const broadMatchers = ["Edit", "Write", "Read", "Bash", ""];
+        const networkPatterns = /\b(curl|wget|fetch|http|nc|netcat)\b/i;
+        for (const hook of postHooks) {
+          const hookConfig = hook;
+          const matcher = hookConfig.matcher ?? "";
+          const command = hookConfig.hook ?? "";
+          const isBroadMatcher = matcher === "" || broadMatchers.some((m) => m !== "" && matcher === m);
+          if (isBroadMatcher && networkPatterns.test(command)) {
+            findings.push({
+              id: `hooks-unthrottled-network-${findings.length}`,
+              severity: "medium",
+              category: "hooks",
+              title: `PostToolUse hook makes network request on broad matcher "${matcher || "*"}"`,
+              description: `A PostToolUse hook fires on "${matcher || "every tool call"}" and runs a network command (${command.substring(0, 60)}...). Without throttling, this fires on every matching tool call \u2014 potentially hundreds per session \u2014 causing performance degradation and potential data exposure.`,
+              file: file.path,
+              evidence: `matcher: "${matcher}", hook: "${command.substring(0, 80)}"`,
+              fix: {
+                description: "Add rate limiting or narrow the matcher",
+                before: `"matcher": "${matcher}"`,
+                after: `"matcher": "Bash(npm publish)" or add throttle logic`,
+                auto: false
+              }
+            });
+          }
+        }
+      } catch {
+      }
+      return findings;
+    }
+  },
+  {
+    id: "hooks-expensive-unscoped",
+    name: "Hook Expensive Unscoped Command",
+    description: "Checks for PostToolUse hooks running expensive build/lint commands with broad matchers",
+    severity: "low",
+    category: "hooks",
+    check(file) {
+      if (file.type !== "settings-json") return [];
+      const findings = [];
+      try {
+        const config = JSON.parse(file.content);
+        const postHooks = config?.hooks?.PostToolUse ?? [];
+        const expensiveCommands = /\b(tsc|eslint|prettier|webpack|jest|vitest|mocha|esbuild|rollup|turbo)\b/;
+        const broadMatchers = ["Edit", "Write", ""];
+        for (const hook of postHooks) {
+          const hookConfig = hook;
+          const matcher = hookConfig.matcher ?? "";
+          const command = hookConfig.hook ?? "";
+          const isBroadMatcher = matcher === "" || broadMatchers.some((m) => m !== "" && matcher === m);
+          const expensiveMatch = command.match(expensiveCommands);
+          if (isBroadMatcher && expensiveMatch) {
+            findings.push({
+              id: `hooks-expensive-unscoped-${findings.length}`,
+              severity: "low",
+              category: "hooks",
+              title: `PostToolUse runs "${expensiveMatch[0]}" on broad matcher "${matcher || "*"}"`,
+              description: `A PostToolUse hook runs "${expensiveMatch[0]}" on every "${matcher || "tool call"}" event. Build tools and linters can take seconds to run \u2014 firing on every edit wastes resources and slows down the agent. Scope the matcher to specific file types or add conditional checks.`,
+              file: file.path,
+              evidence: `matcher: "${matcher}", hook: "${command.substring(0, 80)}"`,
+              fix: {
+                description: "Scope the matcher to reduce unnecessary runs",
+                before: `"matcher": "${matcher}"`,
+                after: `"matcher": "Edit(*.ts)" or add file-extension check in the hook script`,
+                auto: false
+              }
+            });
+          }
+        }
+      } catch {
+      }
+      return findings;
+    }
   }
 ];
 
@@ -798,6 +961,122 @@ var mcpRules = [
       } catch {
       }
       return findings;
+    }
+  },
+  {
+    id: "mcp-unrestricted-root-path",
+    name: "MCP Unrestricted Root Path",
+    description: "Checks for MCP servers with filesystem access to root or home directory",
+    severity: "high",
+    category: "mcp",
+    check(file) {
+      if (file.type !== "mcp-json" && file.type !== "settings-json") return [];
+      const findings = [];
+      try {
+        const config = JSON.parse(file.content);
+        const servers = config.mcpServers ?? {};
+        const rootPaths = ["/", "~", "C:\\", "C:/"];
+        for (const [name, server] of Object.entries(servers)) {
+          const serverConfig = server;
+          const args = serverConfig.args ?? [];
+          for (const arg of args) {
+            if (rootPaths.includes(arg)) {
+              findings.push({
+                id: `mcp-root-path-${name}`,
+                severity: "high",
+                category: "mcp",
+                title: `MCP server "${name}" has unrestricted path: ${arg}`,
+                description: `The MCP server "${name}" is configured with path "${arg}" which grants access to the entire filesystem. This allows an agent to read, write, or delete any file on the system.`,
+                file: file.path,
+                evidence: `args: ${JSON.stringify(args)}`,
+                fix: {
+                  description: "Restrict to project-specific directories",
+                  before: `"${arg}"`,
+                  after: `"./src", "./docs"`,
+                  auto: false
+                }
+              });
+            }
+          }
+        }
+      } catch {
+      }
+      return findings;
+    }
+  },
+  {
+    id: "mcp-no-version-pin",
+    name: "MCP No Version Pin",
+    description: "Checks for MCP servers using npx with unversioned packages",
+    severity: "medium",
+    category: "mcp",
+    check(file) {
+      if (file.type !== "mcp-json" && file.type !== "settings-json") return [];
+      const findings = [];
+      try {
+        const config = JSON.parse(file.content);
+        const servers = config.mcpServers ?? {};
+        for (const [name, server] of Object.entries(servers)) {
+          const serverConfig = server;
+          const command = serverConfig.command;
+          const args = serverConfig.args ?? [];
+          if (command !== "npx") continue;
+          const packageArg = args.find(
+            (a) => !a.startsWith("-") && a.includes("/")
+          );
+          if (!packageArg) continue;
+          const afterScope = packageArg.startsWith("@") ? packageArg.substring(packageArg.indexOf("/")) : packageArg;
+          const hasVersion = afterScope.includes("@");
+          if (!hasVersion) {
+            findings.push({
+              id: `mcp-no-version-${name}`,
+              severity: "medium",
+              category: "mcp",
+              title: `MCP server "${name}" uses unversioned package: ${packageArg}`,
+              description: `The MCP server "${name}" uses "${packageArg}" without a pinned version. A compromised package update would run automatically via npx.`,
+              file: file.path,
+              evidence: `command: npx, package: ${packageArg}`,
+              fix: {
+                description: "Pin to a specific version",
+                before: `"${packageArg}"`,
+                after: `"${packageArg}@1.0.0"`,
+                auto: false
+              }
+            });
+          }
+        }
+      } catch {
+      }
+      return findings;
+    }
+  },
+  {
+    id: "mcp-excessive-server-count",
+    name: "MCP Excessive Server Count",
+    description: "Flags configurations with too many MCP servers",
+    severity: "low",
+    category: "mcp",
+    check(file) {
+      if (file.type !== "mcp-json" && file.type !== "settings-json") return [];
+      try {
+        const config = JSON.parse(file.content);
+        const servers = config.mcpServers ?? {};
+        const count = Object.keys(servers).length;
+        if (count > 10) {
+          return [
+            {
+              id: "mcp-excessive-servers",
+              severity: "low",
+              category: "mcp",
+              title: `${count} MCP servers configured \u2014 large attack surface`,
+              description: `This configuration has ${count} MCP servers. Each server expands the attack surface through supply chain risk, environment variable exposure, and additional capabilities granted to the agent. Consider removing servers that are not actively needed.`,
+              file: file.path
+            }
+          ];
+        }
+      } catch {
+      }
+      return [];
     }
   }
 ];
