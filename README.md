@@ -96,7 +96,7 @@ agentshield init
 
 ## What It Catches
 
-**97 rules** across 5 categories, graded A–F with a 0–100 numeric score.
+**91 rules** across 5 categories, graded A–F with a 0–100 numeric score.
 
 ### Secrets Detection (10 rules, 14 patterns)
 
@@ -107,7 +107,7 @@ agentshield init
 | Credentials | Hardcoded passwords, database connection strings (postgres/mongo/mysql/redis), private key material |
 | Env leaks | Secrets passed through environment variables in configs, `echo $SECRET` in hooks |
 
-### Permission Audit (12 rules)
+### Permission Audit (9 rules)
 
 | What | Examples |
 |------|----------|
@@ -117,7 +117,7 @@ agentshield init
 | Mutable tool exposure | All mutable tools (Write, Edit, Bash) allowed without scoping |
 | Destructive git | `git push --force`, `git reset --hard` in allowed commands |
 
-### Hook Analysis (32 rules)
+### Hook Analysis (30 rules)
 
 | What | Examples |
 |------|----------|
@@ -130,7 +130,7 @@ agentshield init
 | Package installs | Global `npm install -g`, `pip install`, `gem install`, `cargo install` in hooks |
 | Container escape | Docker `--privileged`, `--pid=host`, `--network=host`, root volume mounts |
 
-### MCP Server Security (22 rules)
+### MCP Server Security (21 rules)
 
 | What | Examples |
 |------|----------|
@@ -269,11 +269,11 @@ agentshield miniclaw start [opts]  Launch MiniClaw secure agent server
 | Category | Rules | Patterns | Severity Range |
 |----------|-------|----------|----------------|
 | Secrets | 10 | 14 | Critical -- Medium |
-| Permissions | 12 | -- | Critical -- Medium |
-| Hooks | 32 | -- | Critical -- Low |
-| MCP Servers | 22 | -- | Critical -- Info |
+| Permissions | 9 | -- | Critical -- Medium |
+| Hooks | 30 | -- | Critical -- Low |
+| MCP Servers | 21 | -- | Critical -- Info |
 | Agents | 21 | -- | Critical -- Info |
-| **Total** | **97** | **14** | |
+| **Total** | **91** | **14** | |
 
 ## Architecture
 
@@ -288,9 +288,9 @@ src/
 ├── rules/
 │   ├── index.ts          Rule registry
 │   ├── secrets.ts        Secret detection (10 rules, 14 patterns)
-│   ├── permissions.ts    Permission audit (12 rules)
-│   ├── mcp.ts            MCP server security (22 rules)
-│   ├── hooks.ts          Hook analysis (32 rules)
+│   ├── permissions.ts    Permission audit (9 rules)
+│   ├── mcp.ts            MCP server security (21 rules)
+│   ├── hooks.ts          Hook analysis (30 rules)
 │   └── agents.ts         Agent config review (21 rules)
 ├── reporter/
 │   ├── score.ts          Scoring engine (A-F grades)
