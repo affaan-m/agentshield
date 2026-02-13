@@ -9,7 +9,7 @@ hook injection, MCP server risks, and agent prompt injection vectors.
 
 [![npm version](https://img.shields.io/npm/v/ecc-agentshield)](https://www.npmjs.com/package/ecc-agentshield)
 [![npm downloads](https://img.shields.io/npm/dm/ecc-agentshield)](https://www.npmjs.com/package/ecc-agentshield)
-[![tests](https://img.shields.io/badge/tests-851%20passed-brightgreen)]()
+[![tests](https://img.shields.io/badge/tests-876%20passed-brightgreen)]()
 [![coverage](https://img.shields.io/badge/coverage-98%25-brightgreen)]()
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
@@ -96,7 +96,7 @@ agentshield init
 
 ## What It Catches
 
-**91 rules** across 5 categories, graded A–F with a 0–100 numeric score.
+**96 rules** across 5 categories, graded A–F with a 0–100 numeric score.
 
 ### Secrets Detection (10 rules, 14 patterns)
 
@@ -107,7 +107,7 @@ agentshield init
 | Credentials | Hardcoded passwords, database connection strings (postgres/mongo/mysql/redis), private key material |
 | Env leaks | Secrets passed through environment variables in configs, `echo $SECRET` in hooks |
 
-### Permission Audit (9 rules)
+### Permission Audit (10 rules)
 
 | What | Examples |
 |------|----------|
@@ -116,8 +116,9 @@ agentshield init
 | Dangerous flags | `--dangerously-skip-permissions` usage |
 | Mutable tool exposure | All mutable tools (Write, Edit, Bash) allowed without scoping |
 | Destructive git | `git push --force`, `git reset --hard` in allowed commands |
+| Unrestricted network | `curl *`, `wget`, `ssh *`, `scp *` in allow list without scope |
 
-### Hook Analysis (30 rules)
+### Hook Analysis (32 rules)
 
 | What | Examples |
 |------|----------|
@@ -129,6 +130,8 @@ agentshield init
 | Session startup | SessionStart hooks that download and execute remote scripts |
 | Package installs | Global `npm install -g`, `pip install`, `gem install`, `cargo install` in hooks |
 | Container escape | Docker `--privileged`, `--pid=host`, `--network=host`, root volume mounts |
+| Credential access | macOS Keychain, GNOME Keyring, /etc/shadow reads |
+| Reverse shells | `/dev/tcp`, `mkfifo + nc`, Python/Perl socket shells |
 
 ### MCP Server Security (21 rules)
 
@@ -143,7 +146,7 @@ agentshield init
 | Sensitive file args | `.env`, `.pem`, `credentials.json` passed as server arguments |
 | Network exposure | Binding to `0.0.0.0` instead of localhost |
 
-### Agent Config Review (21 rules)
+### Agent Config Review (23 rules)
 
 | What | Examples |
 |------|----------|
@@ -269,11 +272,11 @@ agentshield miniclaw start [opts]  Launch MiniClaw secure agent server
 | Category | Rules | Patterns | Severity Range |
 |----------|-------|----------|----------------|
 | Secrets | 10 | 14 | Critical -- Medium |
-| Permissions | 9 | -- | Critical -- Medium |
-| Hooks | 30 | -- | Critical -- Low |
+| Permissions | 10 | -- | Critical -- Medium |
+| Hooks | 32 | -- | Critical -- Low |
 | MCP Servers | 21 | -- | Critical -- Info |
-| Agents | 21 | -- | Critical -- Info |
-| **Total** | **91** | **14** | |
+| Agents | 23 | -- | Critical -- Info |
+| **Total** | **96** | **14** | |
 
 ## Architecture
 
@@ -288,10 +291,10 @@ src/
 ├── rules/
 │   ├── index.ts          Rule registry
 │   ├── secrets.ts        Secret detection (10 rules, 14 patterns)
-│   ├── permissions.ts    Permission audit (9 rules)
+│   ├── permissions.ts    Permission audit (10 rules)
 │   ├── mcp.ts            MCP server security (21 rules)
-│   ├── hooks.ts          Hook analysis (30 rules)
-│   └── agents.ts         Agent config review (21 rules)
+│   ├── hooks.ts          Hook analysis (32 rules)
+│   └── agents.ts         Agent config review (23 rules)
 ├── reporter/
 │   ├── score.ts          Scoring engine (A-F grades)
 │   ├── terminal.ts       Color terminal output
@@ -374,7 +377,7 @@ MiniClaw has **zero external runtime dependencies** — Node.js built-ins only (
 ```bash
 npm install          # Install dependencies
 npm run dev          # Development mode
-npm test             # Run tests (851 tests)
+npm test             # Run tests (876 tests)
 npm run test:coverage # Coverage report
 npm run typecheck    # Type check
 npm run build        # Build

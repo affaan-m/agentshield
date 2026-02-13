@@ -1622,4 +1622,116 @@ export const hookRules: ReadonlyArray<Rule> = [
       return findings;
     },
   },
+  {
+    id: "hooks-credential-access",
+    name: "Hook Accesses Credential Stores",
+    description: "Checks for hooks that read password files, keychains, or credential managers",
+    severity: "critical",
+    category: "hooks",
+    check(file: ConfigFile): ReadonlyArray<Finding> {
+      if (file.type !== "settings-json" && file.type !== "hook-script") return [];
+
+      const findings: Finding[] = [];
+
+      const credPatterns: ReadonlyArray<{
+        readonly pattern: RegExp;
+        readonly description: string;
+      }> = [
+        {
+          pattern: /\bsecurity\s+find-generic-password\b/g,
+          description: "Reads macOS Keychain passwords via security command",
+        },
+        {
+          pattern: /\bsecurity\s+find-internet-password\b/g,
+          description: "Reads macOS Keychain internet passwords",
+        },
+        {
+          pattern: /\bsecret-tool\s+lookup\b/g,
+          description: "Reads GNOME Keyring / Linux secret store",
+        },
+        {
+          pattern: /\bkeyctl\s+read\b/g,
+          description: "Reads Linux kernel keyring",
+        },
+        {
+          pattern: /\/etc\/shadow/g,
+          description: "Accesses /etc/shadow — contains password hashes",
+        },
+      ];
+
+      for (const { pattern, description } of credPatterns) {
+        const matches = findAllMatches(file.content, pattern);
+        for (const match of matches) {
+          findings.push({
+            id: `hooks-cred-access-${match.index}`,
+            severity: "critical",
+            category: "hooks",
+            title: `Hook accesses credential store: ${match[0].trim()}`,
+            description: `${description}. Hooks should never access credential stores — this enables credential theft for lateral movement.`,
+            file: file.path,
+            line: findLineNumber(file.content, match.index ?? 0),
+            evidence: match[0].trim(),
+          });
+        }
+      }
+
+      return findings;
+    },
+  },
+  {
+    id: "hooks-reverse-shell",
+    name: "Hook Opens Reverse Shell",
+    description: "Checks for hooks that establish reverse shell connections back to an attacker",
+    severity: "critical",
+    category: "hooks",
+    check(file: ConfigFile): ReadonlyArray<Finding> {
+      if (file.type !== "settings-json" && file.type !== "hook-script") return [];
+
+      const findings: Finding[] = [];
+
+      const reverseShellPatterns: ReadonlyArray<{
+        readonly pattern: RegExp;
+        readonly description: string;
+      }> = [
+        {
+          pattern: /\bbash\s+-i\s+[>&]+.*\/dev\/tcp\//g,
+          description: "Bash reverse shell via /dev/tcp — connects back to attacker",
+        },
+        {
+          pattern: /\/dev\/tcp\/[0-9.]+\/\d+/g,
+          description: "Uses /dev/tcp for network connection — common reverse shell technique",
+        },
+        {
+          pattern: /\bpython3?\s+.*-c\s+.*socket.*connect/g,
+          description: "Python reverse shell via socket.connect",
+        },
+        {
+          pattern: /\bperl\s+.*-e\s+.*socket.*INET/g,
+          description: "Perl reverse shell via Socket::INET",
+        },
+        {
+          pattern: /\bmkfifo\b.*\bnc\b/g,
+          description: "Named pipe reverse shell using mkfifo and netcat",
+        },
+      ];
+
+      for (const { pattern, description } of reverseShellPatterns) {
+        const matches = findAllMatches(file.content, pattern);
+        for (const match of matches) {
+          findings.push({
+            id: `hooks-reverse-shell-${match.index}`,
+            severity: "critical",
+            category: "hooks",
+            title: `Hook establishes reverse shell: ${match[0].trim().substring(0, 60)}`,
+            description: `${description}. Reverse shells give attackers interactive command execution on the target system.`,
+            file: file.path,
+            line: findLineNumber(file.content, match.index ?? 0),
+            evidence: match[0].trim().substring(0, 80),
+          });
+        }
+      }
+
+      return findings;
+    },
+  },
 ];

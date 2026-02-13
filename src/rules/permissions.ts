@@ -663,6 +663,72 @@ export const permissionRules: ReadonlyArray<Rule> = [
       return findings;
     },
   },
+  {
+    id: "permissions-unrestricted-network",
+    name: "Unrestricted Network Tool Access",
+    description: "Checks for allow rules that grant unrestricted access to network tools",
+    severity: "high",
+    category: "permissions",
+    check(file: ConfigFile): ReadonlyArray<Finding> {
+      if (file.type !== "settings-json") return [];
+
+      const perms = parsePermissionLists(file.content);
+      if (!perms) return [];
+
+      const findings: Finding[] = [];
+
+      const networkPatterns: ReadonlyArray<{
+        readonly pattern: RegExp;
+        readonly description: string;
+      }> = [
+        {
+          pattern: /^Bash\(curl\s*\*?\)$/i,
+          description: "Allows unrestricted curl — can exfiltrate data to any URL",
+        },
+        {
+          pattern: /^Bash\(wget\s*\*?\)$/i,
+          description: "Allows unrestricted wget — can download from any URL",
+        },
+        {
+          pattern: /^Bash\(nc\b/i,
+          description: "Allows netcat — can open listeners or connect to remote hosts",
+        },
+        {
+          pattern: /^Bash\(ssh\s*\*?\)$/i,
+          description: "Allows unrestricted SSH — can connect to any remote host",
+        },
+        {
+          pattern: /^Bash\(scp\s*\*?\)$/i,
+          description: "Allows unrestricted scp — can copy files to/from any host",
+        },
+      ];
+
+      for (const entry of perms.allow) {
+        for (const { pattern, description } of networkPatterns) {
+          if (pattern.test(entry)) {
+            findings.push({
+              id: `permissions-unrestricted-network-${findings.length}`,
+              severity: "high",
+              category: "permissions",
+              title: `Allow rule grants unrestricted network access: ${entry}`,
+              description: `The allow entry "${entry}" ${description}. Network tools should be restricted to specific hosts or purposes.`,
+              file: file.path,
+              evidence: entry,
+              fix: {
+                description: "Restrict to specific hosts or use explicit URLs",
+                before: entry,
+                after: entry.replace("*", "https://specific-host.com/*"),
+                auto: false,
+              },
+            });
+            break;
+          }
+        }
+      }
+
+      return findings;
+    },
+  },
 ];
 
 function findLineNumber(content: string, matchIndex: number): number {

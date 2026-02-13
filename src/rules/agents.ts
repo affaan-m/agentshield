@@ -1004,4 +1004,94 @@ export const agentRules: ReadonlyArray<Rule> = [
       return findings;
     },
   },
+  {
+    id: "agents-obfuscated-code",
+    name: "Agent Contains Obfuscated Code Patterns",
+    description: "Checks for agent definitions that use encoding, decoding, or obfuscation to hide malicious intent",
+    severity: "critical",
+    category: "injection",
+    check(file: ConfigFile): ReadonlyArray<Finding> {
+      if (file.type !== "agent-md" && file.type !== "claude-md") return [];
+
+      const findings: Finding[] = [];
+
+      const obfuscationPatterns = [
+        {
+          pattern: /\becho\s+[A-Za-z0-9+/]{8,}={0,2}\s*\|\s*base64\s+-d\s*\|\s*(?:bash|sh)/gi,
+          desc: "Base64-encoded shell command piped to interpreter — classic obfuscation technique",
+        },
+        {
+          pattern: /\batob\s*\(\s*['"][A-Za-z0-9+/]{10,}/gi,
+          desc: "Uses atob() to decode base64 payload — hides malicious code",
+        },
+        {
+          pattern: /\bBuffer\.from\s*\(\s*['"][A-Za-z0-9+/]{10,}.*['"],\s*['"]base64['"]\s*\)/gi,
+          desc: "Uses Buffer.from with base64 — Node.js obfuscation technique",
+        },
+      ];
+
+      for (const { pattern, desc } of obfuscationPatterns) {
+        const matches = findAllMatches(file.content, pattern);
+        for (const match of matches) {
+          findings.push({
+            id: `agents-obfuscated-code-${match.index}`,
+            severity: "critical",
+            category: "injection",
+            title: `Agent contains obfuscated code pattern`,
+            description: `Found "${match[0].substring(0, 80)}" — ${desc}. Obfuscated code in agent definitions is a strong indicator of malicious intent.`,
+            file: file.path,
+            line: findLineNumber(file.content, match.index ?? 0),
+            evidence: match[0].substring(0, 100),
+          });
+        }
+      }
+
+      return findings;
+    },
+  },
+  {
+    id: "agents-social-engineering",
+    name: "Agent Contains Social Engineering Instructions",
+    description: "Checks for agent definitions that instruct the agent to deceive or manipulate users",
+    severity: "high",
+    category: "injection",
+    check(file: ConfigFile): ReadonlyArray<Finding> {
+      if (file.type !== "agent-md" && file.type !== "claude-md") return [];
+
+      const findings: Finding[] = [];
+
+      const sePatterns = [
+        {
+          pattern: /(?:trick|deceive|mislead|manipulate)\s+(?:the\s+)?(?:user|developer|operator|human)/gi,
+          desc: "Instructs agent to deceive users — social engineering attack",
+        },
+        {
+          pattern: /(?:hide|conceal|don'?t\s+show|don'?t\s+reveal|don'?t\s+tell)\s+(?:the\s+)?(?:error|warning|finding|issue|vulnerability|problem)\s+(?:from|to)\s+(?:the\s+)?(?:user|developer)/gi,
+          desc: "Instructs agent to hide errors or issues from users",
+        },
+        {
+          pattern: /(?:convince|persuade)\s+(?:the\s+)?(?:user|developer)\s+to\s+(?:disable|turn\s+off|remove|skip)\s+(?:security|auth|verification|2fa|mfa)/gi,
+          desc: "Instructs agent to convince users to disable security measures",
+        },
+      ];
+
+      for (const { pattern, desc } of sePatterns) {
+        const matches = findAllMatches(file.content, pattern);
+        for (const match of matches) {
+          findings.push({
+            id: `agents-social-engineering-${match.index}`,
+            severity: "high",
+            category: "injection",
+            title: `Agent contains social engineering instruction`,
+            description: `Found "${match[0].substring(0, 80)}" — ${desc}. Agent definitions should never instruct deception of users.`,
+            file: file.path,
+            line: findLineNumber(file.content, match.index ?? 0),
+            evidence: match[0].substring(0, 100),
+          });
+        }
+      }
+
+      return findings;
+    },
+  },
 ];

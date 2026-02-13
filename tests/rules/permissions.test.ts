@@ -567,4 +567,54 @@ describe("permissionRules", () => {
       expect(envFindings).toHaveLength(0);
     });
   });
+
+  describe("unrestricted network tools", () => {
+    it("flags Bash(curl *) in allow list", () => {
+      const file = makeSettings(JSON.stringify({
+        permissions: { allow: ["Bash(curl *)"], deny: [] },
+      }));
+      const findings = runAllPermRules(file);
+      expect(findings.some((f) => f.id.includes("unrestricted-network") && f.severity === "high")).toBe(true);
+    });
+
+    it("flags Bash(wget) in allow list", () => {
+      const file = makeSettings(JSON.stringify({
+        permissions: { allow: ["Bash(wget)"], deny: [] },
+      }));
+      const findings = runAllPermRules(file);
+      expect(findings.some((f) => f.id.includes("unrestricted-network"))).toBe(true);
+    });
+
+    it("flags Bash(ssh *) in allow list", () => {
+      const file = makeSettings(JSON.stringify({
+        permissions: { allow: ["Bash(ssh *)"], deny: [] },
+      }));
+      const findings = runAllPermRules(file);
+      expect(findings.some((f) => f.id.includes("unrestricted-network"))).toBe(true);
+    });
+
+    it("flags Bash(scp *) in allow list", () => {
+      const file = makeSettings(JSON.stringify({
+        permissions: { allow: ["Bash(scp *)"], deny: [] },
+      }));
+      const findings = runAllPermRules(file);
+      expect(findings.some((f) => f.id.includes("unrestricted-network"))).toBe(true);
+    });
+
+    it("does not flag scoped network tools", () => {
+      const file = makeSettings(JSON.stringify({
+        permissions: { allow: ["Bash(curl https://api.myservice.com/*)"], deny: [] },
+      }));
+      const findings = runAllPermRules(file);
+      const networkFindings = findings.filter((f) => f.id.includes("unrestricted-network"));
+      expect(networkFindings).toHaveLength(0);
+    });
+
+    it("does not flag non-settings files", () => {
+      const file: ConfigFile = { path: "agent.md", type: "agent-md", content: "curl *" };
+      const findings = runAllPermRules(file);
+      const networkFindings = findings.filter((f) => f.id.includes("unrestricted-network"));
+      expect(networkFindings).toHaveLength(0);
+    });
+  });
 });
