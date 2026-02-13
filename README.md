@@ -9,7 +9,7 @@ hook injection, MCP server risks, and agent prompt injection vectors.
 
 [![npm version](https://img.shields.io/npm/v/ecc-agentshield)](https://www.npmjs.com/package/ecc-agentshield)
 [![npm downloads](https://img.shields.io/npm/dm/ecc-agentshield)](https://www.npmjs.com/package/ecc-agentshield)
-[![tests](https://img.shields.io/badge/tests-767%20passed-brightgreen)]()
+[![tests](https://img.shields.io/badge/tests-776%20passed-brightgreen)]()
 [![coverage](https://img.shields.io/badge/coverage-98%25-brightgreen)]()
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
@@ -96,7 +96,7 @@ agentshield init
 
 ## What It Catches
 
-**79 rules** across 5 categories, graded A–F with a 0–100 numeric score.
+**81 rules** across 5 categories, graded A–F with a 0–100 numeric score.
 
 ### Secrets Detection (8 rules, 14 patterns)
 
@@ -117,7 +117,7 @@ agentshield init
 | Mutable tool exposure | All mutable tools (Write, Edit, Bash) allowed without scoping |
 | Destructive git | `git push --force`, `git reset --hard` in allowed commands |
 
-### Hook Analysis (28 rules)
+### Hook Analysis (30 rules)
 
 | What | Examples |
 |------|----------|
@@ -264,10 +264,10 @@ agentshield miniclaw start [opts]  Launch MiniClaw secure agent server
 |----------|-------|----------|----------------|
 | Secrets | 8 | 14 | Critical – Medium |
 | Permissions | 9 | — | Critical – Medium |
-| Hooks | 28 | — | Critical – Low |
+| Hooks | 30 | — | Critical – Low |
 | MCP Servers | 18 | — | Critical – Info |
 | Agents | 16 | — | Critical – Info |
-| **Total** | **79** | **14** | |
+| **Total** | **81** | **14** | |
 
 ## Architecture
 
