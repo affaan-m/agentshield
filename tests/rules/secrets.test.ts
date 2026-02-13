@@ -236,6 +236,46 @@ describe("secretRules", () => {
     });
   });
 
+  describe("URL-embedded credentials", () => {
+    it("detects https://user:pass@host in agent files", () => {
+      const file: ConfigFile = { path: "agent.md", type: "agent-md", content: "Connect to https://admin:secret123@api.example.com/v1" };
+      const findings = runAllSecretRules(file);
+      expect(findings.some((f) => f.id.includes("url-credentials"))).toBe(true);
+    });
+
+    it("detects http://user:pass@host in CLAUDE.md", () => {
+      const file: ConfigFile = { path: "CLAUDE.md", type: "claude-md", content: "Registry: http://deploy:token@registry.io:5000" };
+      const findings = runAllSecretRules(file);
+      expect(findings.some((f) => f.id.includes("url-credentials"))).toBe(true);
+    });
+
+    it("masks password in evidence", () => {
+      const file: ConfigFile = { path: "agent.md", type: "agent-md", content: "https://user:mysecretpassword@host.com/api" };
+      const findings = runAllSecretRules(file);
+      const finding = findings.find((f) => f.id.includes("url-credentials"));
+      expect(finding?.evidence).toContain("****");
+      expect(finding?.evidence).not.toContain("mysecretpassword");
+    });
+
+    it("does not flag URLs without credentials", () => {
+      const file: ConfigFile = { path: "agent.md", type: "agent-md", content: "Connect to https://api.example.com/v1" };
+      const findings = runAllSecretRules(file);
+      expect(findings.some((f) => f.id.includes("url-credentials"))).toBe(false);
+    });
+
+    it("does not flag non-agent files", () => {
+      const file: ConfigFile = { path: "mcp.json", type: "mcp-json", content: "https://admin:pass@host.com" };
+      const findings = runAllSecretRules(file);
+      expect(findings.some((f) => f.id.includes("url-credentials"))).toBe(false);
+    });
+
+    it("skips env var references", () => {
+      const file: ConfigFile = { path: "agent.md", type: "agent-md", content: "${API_URL}https://user:pass@host.com" };
+      const findings = runAllSecretRules(file);
+      expect(findings.some((f) => f.id.includes("url-credentials"))).toBe(false);
+    });
+  });
+
   describe("credential file reference", () => {
     it("detects ~/.aws/credentials reference in agent", () => {
       const file: ConfigFile = { path: "agent.md", type: "agent-md", content: "Read ~/.aws/credentials for the access key" };

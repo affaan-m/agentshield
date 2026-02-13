@@ -315,6 +315,52 @@ export const secretRules: ReadonlyArray<Rule> = [
     },
   },
   {
+    id: "secrets-url-credentials",
+    name: "URL-Embedded Credentials",
+    description: "Checks for URLs containing embedded usernames and passwords",
+    severity: "high",
+    category: "secrets",
+    check(file: ConfigFile): ReadonlyArray<Finding> {
+      if (file.type !== "agent-md" && file.type !== "claude-md") return [];
+
+      const findings: Finding[] = [];
+
+      // Match https://user:password@host patterns (not just database connection strings)
+      const urlCredPattern = /https?:\/\/[^:\s]+:[^@\s]+@[^\s"']+/g;
+      const matches = findAllMatches(file.content, urlCredPattern);
+
+      for (const match of matches) {
+        const idx = match.index ?? 0;
+
+        // Skip if it's inside an env var reference
+        const context = file.content.substring(Math.max(0, idx - 20), idx);
+        if (context.includes("${") || context.includes("process.env")) continue;
+
+        // Mask the password portion
+        const masked = match[0].replace(/(:\/\/[^:]+:)[^@]+(@)/, "$1****$2");
+
+        findings.push({
+          id: `secrets-url-credentials-${idx}`,
+          severity: "high",
+          category: "secrets",
+          title: `URL contains embedded credentials`,
+          description: `Found a URL with embedded username:password in ${file.path}. Credentials in URLs are exposed in logs, browser history, and referer headers. Use environment variables or a credentials manager instead.`,
+          file: file.path,
+          line: findLineNumber(file.content, idx),
+          evidence: masked,
+          fix: {
+            description: "Use environment variables for credentials",
+            before: match[0].substring(0, 40),
+            after: "https://${USERNAME}:${PASSWORD}@...",
+            auto: false,
+          },
+        });
+      }
+
+      return findings;
+    },
+  },
+  {
     id: "secrets-credential-file-reference",
     name: "Credential File Reference",
     description: "Checks for references to credential files that should never be accessed by agents",

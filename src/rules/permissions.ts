@@ -82,6 +82,18 @@ const OVERLY_PERMISSIVE: ReadonlyArray<{
     severity: "high",
     suggestion: "Restrict to specific scripts: Bash(node scripts/build.js)",
   },
+  {
+    pattern: /^Bash\(docker\s/,
+    description: "Docker access — containers can escape to host, mount filesystems, and access host network",
+    severity: "high",
+    suggestion: "Remove docker permissions or restrict to read-only: Bash(docker ps)",
+  },
+  {
+    pattern: /^Bash\(kill\s|^Bash\(pkill\s|^Bash\(killall\s/,
+    description: "Process killing — agent can terminate system processes",
+    severity: "medium",
+    suggestion: "Move process killing to deny list",
+  },
 ];
 
 /**

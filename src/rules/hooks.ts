@@ -991,6 +991,62 @@ export const hookRules: ReadonlyArray<Rule> = [
     },
   },
   {
+    id: "hooks-user-account-modification",
+    name: "Hook Creates or Modifies User Accounts",
+    description: "Checks for hooks that create, modify, or delete user accounts",
+    severity: "critical",
+    category: "hooks",
+    check(file: ConfigFile): ReadonlyArray<Finding> {
+      if (file.type !== "settings-json" && file.type !== "hook-script") return [];
+
+      const findings: Finding[] = [];
+
+      const userModPatterns: ReadonlyArray<{
+        readonly pattern: RegExp;
+        readonly description: string;
+      }> = [
+        {
+          pattern: /\buseradd\b/g,
+          description: "Creates a new user account (useradd)",
+        },
+        {
+          pattern: /\badduser\b/g,
+          description: "Creates a new user account (adduser)",
+        },
+        {
+          pattern: /\busermod\b/g,
+          description: "Modifies an existing user account (usermod)",
+        },
+        {
+          pattern: /\buserdel\b/g,
+          description: "Deletes a user account (userdel)",
+        },
+        {
+          pattern: /\bpasswd\b/g,
+          description: "Changes a user password (passwd)",
+        },
+      ];
+
+      for (const { pattern, description } of userModPatterns) {
+        const matches = findAllMatches(file.content, pattern);
+        for (const match of matches) {
+          findings.push({
+            id: `hooks-user-mod-${match.index}`,
+            severity: "critical",
+            category: "hooks",
+            title: `Hook modifies user accounts: ${match[0].trim()}`,
+            description: `${description}. Hooks should never create, modify, or delete user accounts. A compromised hook with this capability can create backdoor accounts for persistent access.`,
+            file: file.path,
+            line: findLineNumber(file.content, match.index ?? 0),
+            evidence: match[0].trim(),
+          });
+        }
+      }
+
+      return findings;
+    },
+  },
+  {
     id: "hooks-privilege-escalation",
     name: "Hook Uses Privilege Escalation",
     description: "Checks for hooks that use sudo, su, or other privilege escalation commands",

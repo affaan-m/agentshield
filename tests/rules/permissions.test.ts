@@ -415,6 +415,31 @@ describe("permissionRules", () => {
       const sshFindings = findings.filter((f) => f.evidence?.includes("ssh") || f.evidence?.includes("nc"));
       expect(sshFindings).toHaveLength(0);
     });
+
+    it("flags Bash(docker in allow list", () => {
+      const file = makeSettings(JSON.stringify({
+        permissions: { allow: ["Bash(docker run -v /:/host ubuntu)"], deny: [] },
+      }));
+      const findings = runAllPermRules(file);
+      expect(findings.some((f) => f.evidence?.includes("docker"))).toBe(true);
+      expect(findings.find((f) => f.evidence?.includes("docker"))?.severity).toBe("high");
+    });
+
+    it("flags Bash(kill in allow list", () => {
+      const file = makeSettings(JSON.stringify({
+        permissions: { allow: ["Bash(kill -9 1234)"], deny: [] },
+      }));
+      const findings = runAllPermRules(file);
+      expect(findings.some((f) => f.evidence?.includes("kill"))).toBe(true);
+    });
+
+    it("flags Bash(pkill in allow list", () => {
+      const file = makeSettings(JSON.stringify({
+        permissions: { allow: ["Bash(pkill -f node)"], deny: [] },
+      }));
+      const findings = runAllPermRules(file);
+      expect(findings.some((f) => f.evidence?.includes("pkill"))).toBe(true);
+    });
   });
 
   describe("edge cases", () => {
