@@ -1322,4 +1322,104 @@ export const hookRules: ReadonlyArray<Rule> = [
       return findings;
     },
   },
+  {
+    id: "hooks-ssh-key-operations",
+    name: "Hook Manipulates SSH Keys",
+    description: "Checks for hooks that generate, copy, or modify SSH keys — enables lateral movement",
+    severity: "critical",
+    category: "hooks",
+    check(file: ConfigFile): ReadonlyArray<Finding> {
+      if (file.type !== "settings-json" && file.type !== "hook-script") return [];
+
+      const findings: Finding[] = [];
+
+      const sshKeyPatterns: ReadonlyArray<{
+        readonly pattern: RegExp;
+        readonly description: string;
+      }> = [
+        {
+          pattern: /\bssh-keygen\b/g,
+          description: "Generates SSH keys — could create unauthorized keys for persistent access",
+        },
+        {
+          pattern: /\bssh-copy-id\b/g,
+          description: "Copies SSH keys to remote hosts — enables passwordless lateral movement",
+        },
+        {
+          pattern: />>?\s*~\/\.ssh\/authorized_keys/g,
+          description: "Appends to authorized_keys — installs backdoor SSH access",
+        },
+      ];
+
+      for (const { pattern, description } of sshKeyPatterns) {
+        const matches = findAllMatches(file.content, pattern);
+        for (const match of matches) {
+          findings.push({
+            id: `hooks-ssh-key-${match.index}`,
+            severity: "critical",
+            category: "hooks",
+            title: `Hook manipulates SSH keys: ${match[0].trim()}`,
+            description: `${description}. Hooks should not create or distribute SSH keys as this enables unauthorized remote access.`,
+            file: file.path,
+            line: findLineNumber(file.content, match.index ?? 0),
+            evidence: match[0].trim(),
+          });
+        }
+      }
+
+      return findings;
+    },
+  },
+  {
+    id: "hooks-background-process",
+    name: "Hook Runs Background Process",
+    description: "Checks for hooks that start persistent background processes that outlive the session",
+    severity: "high",
+    category: "hooks",
+    check(file: ConfigFile): ReadonlyArray<Finding> {
+      if (file.type !== "settings-json" && file.type !== "hook-script") return [];
+
+      const findings: Finding[] = [];
+
+      const bgPatterns: ReadonlyArray<{
+        readonly pattern: RegExp;
+        readonly description: string;
+      }> = [
+        {
+          pattern: /\bnohup\b/g,
+          description: "Runs process immune to hangup signals — survives session end",
+        },
+        {
+          pattern: /\bdisown\b/g,
+          description: "Detaches process from shell — survives session end",
+        },
+        {
+          pattern: /\bscreen\s+-[dD]m/g,
+          description: "Starts detached screen session — hidden persistent process",
+        },
+        {
+          pattern: /\btmux\s+new-session\s+-d/g,
+          description: "Starts detached tmux session — hidden persistent process",
+        },
+      ];
+
+      for (const { pattern, description } of bgPatterns) {
+        const matches = findAllMatches(file.content, pattern);
+        for (const match of matches) {
+          findings.push({
+            id: `hooks-bg-process-${match.index}`,
+            severity: "high",
+            category: "hooks",
+            title: `Hook starts background process: ${match[0].trim()}`,
+            description: `${description}. Hooks that start persistent background processes can maintain execution even after the agent session ends — a common persistence technique.`,
+            file: file.path,
+            line: findLineNumber(file.content, match.index ?? 0),
+            evidence: match[0].trim(),
+          });
+        }
+      }
+
+      return findings;
+    },
+  },
 ];

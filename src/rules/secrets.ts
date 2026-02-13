@@ -427,6 +427,56 @@ export const secretRules: ReadonlyArray<Rule> = [
     },
   },
   {
+    id: "secrets-private-key-material",
+    name: "Private Key Material in Config",
+    description: "Checks for PEM-encoded private keys embedded in configuration files",
+    severity: "critical",
+    category: "secrets",
+    check(file: ConfigFile): ReadonlyArray<Finding> {
+      const findings: Finding[] = [];
+
+      const keyPatterns: ReadonlyArray<{
+        readonly pattern: RegExp;
+        readonly description: string;
+      }> = [
+        {
+          pattern: /-----BEGIN (?:RSA |EC |DSA |OPENSSH )?PRIVATE KEY-----/g,
+          description: "PEM-encoded private key",
+        },
+        {
+          pattern: /-----BEGIN PGP PRIVATE KEY BLOCK-----/g,
+          description: "PGP private key block",
+        },
+      ];
+
+      for (const { pattern, description } of keyPatterns) {
+        const matches = findAllMatches(file.content, pattern);
+        for (const match of matches) {
+          const idx = match.index ?? 0;
+
+          findings.push({
+            id: `secrets-private-key-${idx}`,
+            severity: "critical",
+            category: "secrets",
+            title: `${description} found in config`,
+            description: `Found "${match[0]}" in ${file.path}. Private keys should never be stored in configuration files — they grant authentication access and should be stored in secure key stores or referenced via file paths with restrictive permissions.`,
+            file: file.path,
+            line: findLineNumber(file.content, idx),
+            evidence: match[0],
+            fix: {
+              description: "Remove private key and reference a key file path instead",
+              before: match[0],
+              after: "Reference key file: ~/.ssh/id_ed25519",
+              auto: false,
+            },
+          });
+        }
+      }
+
+      return findings;
+    },
+  },
+  {
     id: "secrets-base64-obfuscation",
     name: "Potential Base64 Obfuscated Secret",
     description: "Checks for long base64-encoded strings that may be obfuscated secrets or payloads",

@@ -9,7 +9,7 @@ hook injection, MCP server risks, and agent prompt injection vectors.
 
 [![npm version](https://img.shields.io/npm/v/ecc-agentshield)](https://www.npmjs.com/package/ecc-agentshield)
 [![npm downloads](https://img.shields.io/npm/dm/ecc-agentshield)](https://www.npmjs.com/package/ecc-agentshield)
-[![tests](https://img.shields.io/badge/tests-751%20passed-brightgreen)]()
+[![tests](https://img.shields.io/badge/tests-767%20passed-brightgreen)]()
 [![coverage](https://img.shields.io/badge/coverage-98%25-brightgreen)]()
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
@@ -96,9 +96,9 @@ agentshield init
 
 ## What It Catches
 
-**76 rules** across 5 categories, graded A–F with a 0–100 numeric score.
+**79 rules** across 5 categories, graded A–F with a 0–100 numeric score.
 
-### Secrets Detection (7 rules, 14 patterns)
+### Secrets Detection (8 rules, 14 patterns)
 
 | What | Examples |
 |------|----------|
@@ -107,7 +107,7 @@ agentshield init
 | Credentials | Hardcoded passwords, database connection strings (postgres/mongo/mysql/redis), private key material |
 | Env leaks | Secrets passed through environment variables in configs, `echo $SECRET` in hooks |
 
-### Permission Audit (7 rules)
+### Permission Audit (9 rules)
 
 | What | Examples |
 |------|----------|
@@ -117,7 +117,7 @@ agentshield init
 | Mutable tool exposure | All mutable tools (Write, Edit, Bash) allowed without scoping |
 | Destructive git | `git push --force`, `git reset --hard` in allowed commands |
 
-### Hook Analysis (26 rules)
+### Hook Analysis (28 rules)
 
 | What | Examples |
 |------|----------|
@@ -262,12 +262,12 @@ agentshield miniclaw start [opts]  Launch MiniClaw secure agent server
 
 | Category | Rules | Patterns | Severity Range |
 |----------|-------|----------|----------------|
-| Secrets | 7 | 14 | Critical – Medium |
+| Secrets | 8 | 14 | Critical – Medium |
 | Permissions | 9 | — | Critical – Medium |
-| Hooks | 26 | — | Critical – Low |
+| Hooks | 28 | — | Critical – Low |
 | MCP Servers | 18 | — | Critical – Info |
 | Agents | 16 | — | Critical – Info |
-| **Total** | **76** | **14** | |
+| **Total** | **79** | **14** | |
 
 ## Architecture
 
@@ -283,9 +283,9 @@ src/
 │   ├── index.ts          Rule registry
 │   ├── secrets.ts        Secret detection (7 rules, 14 patterns)
 │   ├── permissions.ts    Permission audit (7 rules)
-│   ├── mcp.ts            MCP server security (15 rules)
-│   ├── hooks.ts          Hook analysis (20 rules)
-│   └── agents.ts         Agent config review (14 rules)
+│   ├── mcp.ts            MCP server security (17 rules)
+│   ├── hooks.ts          Hook analysis (26 rules)
+│   └── agents.ts         Agent config review (16 rules)
 ├── reporter/
 │   ├── score.ts          Scoring engine (A-F grades)
 │   ├── terminal.ts       Color terminal output
@@ -368,7 +368,7 @@ MiniClaw has **zero external runtime dependencies** — Node.js built-ins only (
 ```bash
 npm install          # Install dependencies
 npm run dev          # Development mode
-npm test             # Run tests (697 tests)
+npm test             # Run tests (751 tests)
 npm run test:coverage # Coverage report
 npm run typecheck    # Type check
 npm run build        # Build

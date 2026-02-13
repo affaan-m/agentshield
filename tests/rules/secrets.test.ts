@@ -463,4 +463,50 @@ describe("secretRules", () => {
       expect(findings.some((f) => f.title.includes("Hugging Face"))).toBe(false);
     });
   });
+
+  describe("private key material", () => {
+    it("detects RSA private key header", () => {
+      const file = makeFile("-----BEGIN RSA PRIVATE KEY-----\nMIIBogIBAAJBALRi...\n-----END RSA PRIVATE KEY-----");
+      const findings = runAllSecretRules(file);
+      expect(findings.some((f) => f.id.includes("private-key") && f.severity === "critical")).toBe(true);
+    });
+
+    it("detects EC private key header", () => {
+      const file = makeFile("-----BEGIN EC PRIVATE KEY-----\nMHQCAQEE...\n-----END EC PRIVATE KEY-----");
+      const findings = runAllSecretRules(file);
+      expect(findings.some((f) => f.id.includes("private-key"))).toBe(true);
+    });
+
+    it("detects generic private key header", () => {
+      const file = makeFile("-----BEGIN PRIVATE KEY-----\nMIIEvgIB...\n-----END PRIVATE KEY-----");
+      const findings = runAllSecretRules(file);
+      expect(findings.some((f) => f.id.includes("private-key"))).toBe(true);
+    });
+
+    it("detects OPENSSH private key header", () => {
+      const file = makeFile("-----BEGIN OPENSSH PRIVATE KEY-----\nb3BlbnNzaC1rZXk...\n-----END OPENSSH PRIVATE KEY-----");
+      const findings = runAllSecretRules(file);
+      expect(findings.some((f) => f.id.includes("private-key"))).toBe(true);
+    });
+
+    it("detects PGP private key block", () => {
+      const file = makeFile("-----BEGIN PGP PRIVATE KEY BLOCK-----\nVersion: GnuPG...\n-----END PGP PRIVATE KEY BLOCK-----");
+      const findings = runAllSecretRules(file);
+      expect(findings.some((f) => f.id.includes("private-key"))).toBe(true);
+    });
+
+    it("does not flag public key headers", () => {
+      const file = makeFile("-----BEGIN PUBLIC KEY-----\nMIIBIjANBg...\n-----END PUBLIC KEY-----");
+      const findings = runAllSecretRules(file);
+      const keyFindings = findings.filter((f) => f.id.includes("private-key"));
+      expect(keyFindings).toHaveLength(0);
+    });
+
+    it("provides fix suggestion", () => {
+      const file = makeFile("-----BEGIN RSA PRIVATE KEY-----\nkey-data\n-----END RSA PRIVATE KEY-----");
+      const findings = runAllSecretRules(file);
+      const finding = findings.find((f) => f.id.includes("private-key"));
+      expect(finding?.fix).toBeDefined();
+    });
+  });
 });

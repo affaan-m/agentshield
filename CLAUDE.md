@@ -6,7 +6,7 @@ Security auditor for AI agent configurations (Claude Code, MCP servers, hooks, a
 
 ```bash
 npm run build      # tsc + tsup → dist/
-npm test           # vitest (751 tests)
+npm test           # vitest (767 tests)
 npm run dev        # tsx watch mode
 ```
 
