@@ -34,6 +34,7 @@ export type FindingCategory =
   | "agents"
   | "injection"
   | "exposure"
+  | "exfiltration"
   | "misconfiguration";
 
 // ─── Fix Suggestion ────────────────────────────────────────
