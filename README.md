@@ -96,7 +96,7 @@ agentshield init
 
 ## What It Catches
 
-**84 rules** across 5 categories, graded A–F with a 0–100 numeric score.
+**90 rules** across 5 categories, graded A–F with a 0–100 numeric score.
 
 ### Secrets Detection (9 rules, 14 patterns)
 
@@ -107,7 +107,7 @@ agentshield init
 | Credentials | Hardcoded passwords, database connection strings (postgres/mongo/mysql/redis), private key material |
 | Env leaks | Secrets passed through environment variables in configs, `echo $SECRET` in hooks |
 
-### Permission Audit (9 rules)
+### Permission Audit (12 rules)
 
 | What | Examples |
 |------|----------|
@@ -117,7 +117,7 @@ agentshield init
 | Mutable tool exposure | All mutable tools (Write, Edit, Bash) allowed without scoping |
 | Destructive git | `git push --force`, `git reset --hard` in allowed commands |
 
-### Hook Analysis (28 rules)
+### Hook Analysis (30 rules)
 
 | What | Examples |
 |------|----------|
@@ -128,7 +128,7 @@ agentshield init
 | Network exposure | Unthrottled network requests in hooks, sensitive file access without filtering |
 | Session startup | SessionStart hooks that download and execute remote scripts |
 
-### MCP Server Security (19 rules)
+### MCP Server Security (20 rules)
 
 | What | Examples |
 |------|----------|
@@ -263,11 +263,11 @@ agentshield miniclaw start [opts]  Launch MiniClaw secure agent server
 | Category | Rules | Patterns | Severity Range |
 |----------|-------|----------|----------------|
 | Secrets | 9 | 14 | Critical -- Medium |
-| Permissions | 9 | -- | Critical -- Medium |
-| Hooks | 28 | -- | Critical -- Low |
-| MCP Servers | 19 | -- | Critical -- Info |
+| Permissions | 12 | -- | Critical -- Medium |
+| Hooks | 30 | -- | Critical -- Low |
+| MCP Servers | 20 | -- | Critical -- Info |
 | Agents | 19 | -- | Critical -- Info |
-| **Total** | **84** | **14** | |
+| **Total** | **90** | **14** | |
 
 ## Architecture
 

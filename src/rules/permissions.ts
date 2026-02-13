@@ -567,6 +567,102 @@ export const permissionRules: ReadonlyArray<Rule> = [
       return findings;
     },
   },
+  {
+    id: "permissions-no-permissions-block",
+    name: "No Permissions Block Configured",
+    description: "Checks if settings.json exists but has no permissions configuration at all",
+    severity: "medium",
+    category: "permissions",
+    check(file: ConfigFile): ReadonlyArray<Finding> {
+      if (file.type !== "settings-json") return [];
+
+      try {
+        const config = JSON.parse(file.content);
+
+        // Only flag if the file has other configuration but no permissions
+        const hasOtherConfig = Object.keys(config).some(
+          (k) => k !== "permissions" && k !== "$schema"
+        );
+
+        if (hasOtherConfig && !config.permissions) {
+          return [
+            {
+              id: "permissions-no-block",
+              severity: "medium",
+              category: "permissions",
+              title: "No permissions block configured",
+              description:
+                "settings.json has configuration but no permissions section. Without explicit allow/deny lists, the agent relies on default permissions which may be too broad. Add a permissions block to restrict tool access.",
+              file: file.path,
+              fix: {
+                description: "Add a permissions block with scoped allow and deny lists",
+                before: "No permissions section",
+                after:
+                  '"permissions": { "allow": ["Read(*)", "Glob(*)", "Grep(*)"], "deny": ["Bash(rm -rf *)", "Bash(sudo *)"] }',
+                auto: false,
+              },
+            },
+          ];
+        }
+      } catch {
+        // Not valid JSON
+      }
+
+      return [];
+    },
+  },
+  {
+    id: "permissions-env-in-allow",
+    name: "Environment Variable Access in Allow List",
+    description: "Checks for allow list entries that grant access to environment variables or env files",
+    severity: "high",
+    category: "permissions",
+    check(file: ConfigFile): ReadonlyArray<Finding> {
+      if (file.type !== "settings-json") return [];
+
+      const perms = parsePermissionLists(file.content);
+      if (!perms) return [];
+
+      const findings: Finding[] = [];
+
+      const envPatterns: ReadonlyArray<{
+        readonly pattern: RegExp;
+        readonly description: string;
+      }> = [
+        {
+          pattern: /\.env\b/,
+          description: "Grants access to .env files which may contain secrets",
+        },
+        {
+          pattern: /\bprintenv\b|\benv\b(?!\()/,
+          description: "Grants access to dump environment variables",
+        },
+        {
+          pattern: /\bexport\s/,
+          description: "Allows setting environment variables",
+        },
+      ];
+
+      for (const entry of perms.allow) {
+        for (const { pattern, description } of envPatterns) {
+          if (pattern.test(entry)) {
+            findings.push({
+              id: `permissions-env-access-${findings.length}`,
+              severity: "high",
+              category: "permissions",
+              title: `Allow rule grants env access: ${entry}`,
+              description: `The allow entry "${entry}" ${description}. Environment variables often contain API keys, tokens, and other secrets.`,
+              file: file.path,
+              evidence: entry,
+            });
+            break;
+          }
+        }
+      }
+
+      return findings;
+    },
+  },
 ];
 
 function findLineNumber(content: string, matchIndex: number): number {

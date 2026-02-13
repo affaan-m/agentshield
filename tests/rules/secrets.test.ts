@@ -509,4 +509,44 @@ describe("secretRules", () => {
       expect(finding?.fix).toBeDefined();
     });
   });
+
+  describe("webhook URL detection", () => {
+    it("detects Slack webhook URL", () => {
+      const file = makeFile("https://hooks.slack.com/services/T01234567/B01234567/abcdefghijklmnop");
+      const findings = runAllSecretRules(file);
+      expect(findings.some((f) => f.id.includes("webhook-url") && f.severity === "high")).toBe(true);
+    });
+
+    it("detects Discord webhook URL", () => {
+      const file = makeFile("https://discord.com/api/webhooks/1234567890/abcdef_ghijklmnopqrstuvwxyz");
+      const findings = runAllSecretRules(file);
+      expect(findings.some((f) => f.id.includes("webhook-url"))).toBe(true);
+    });
+
+    it("detects discordapp.com webhook URL", () => {
+      const file = makeFile("https://discordapp.com/api/webhooks/1234567890/abcdefghijklmnop");
+      const findings = runAllSecretRules(file);
+      expect(findings.some((f) => f.id.includes("webhook-url"))).toBe(true);
+    });
+
+    it("detects Teams webhook URL", () => {
+      const file = makeFile("https://outlook.office.com/webhook/12345678-abcd-efgh-ijkl-123456789012");
+      const findings = runAllSecretRules(file);
+      expect(findings.some((f) => f.id.includes("webhook-url"))).toBe(true);
+    });
+
+    it("does not flag normal URLs", () => {
+      const file = makeFile("Visit https://slack.com for more info. Also see https://discord.com/docs.");
+      const findings = runAllSecretRules(file);
+      const webhookFindings = findings.filter((f) => f.id.includes("webhook-url"));
+      expect(webhookFindings).toHaveLength(0);
+    });
+
+    it("provides fix suggestion", () => {
+      const file = makeFile("https://hooks.slack.com/services/T01234567/B01234567/abcdefghijklmnop");
+      const findings = runAllSecretRules(file);
+      const finding = findings.find((f) => f.id.includes("webhook-url"));
+      expect(finding?.fix).toBeDefined();
+    });
+  });
 });

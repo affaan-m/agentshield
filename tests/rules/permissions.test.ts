@@ -501,4 +501,70 @@ describe("permissionRules", () => {
       expect(destructiveFindings).toHaveLength(0);
     });
   });
+
+  describe("no permissions block", () => {
+    it("flags settings with config but no permissions section", () => {
+      const file = makeSettings(JSON.stringify({
+        hooks: { PostToolUse: [{ hook: "echo done" }] },
+      }));
+      const findings = runAllPermRules(file);
+      expect(findings.some((f) => f.id === "permissions-no-block")).toBe(true);
+    });
+
+    it("does not flag settings with permissions section", () => {
+      const file = makeSettings(JSON.stringify({
+        hooks: {},
+        permissions: { allow: ["Read(*)"], deny: [] },
+      }));
+      const findings = runAllPermRules(file);
+      expect(findings.some((f) => f.id === "permissions-no-block")).toBe(false);
+    });
+
+    it("does not flag empty settings", () => {
+      const file = makeSettings(JSON.stringify({}));
+      const findings = runAllPermRules(file);
+      expect(findings.some((f) => f.id === "permissions-no-block")).toBe(false);
+    });
+
+    it("does not flag settings with only $schema", () => {
+      const file = makeSettings(JSON.stringify({ "$schema": "https://example.com/schema" }));
+      const findings = runAllPermRules(file);
+      expect(findings.some((f) => f.id === "permissions-no-block")).toBe(false);
+    });
+  });
+
+  describe("env access in allow list", () => {
+    it("flags .env file access in allow list", () => {
+      const file = makeSettings(JSON.stringify({
+        permissions: { allow: ["Read(.env)"], deny: [] },
+      }));
+      const findings = runAllPermRules(file);
+      expect(findings.some((f) => f.id.includes("env-access"))).toBe(true);
+    });
+
+    it("flags printenv in allow list", () => {
+      const file = makeSettings(JSON.stringify({
+        permissions: { allow: ["Bash(printenv)"], deny: [] },
+      }));
+      const findings = runAllPermRules(file);
+      expect(findings.some((f) => f.id.includes("env-access"))).toBe(true);
+    });
+
+    it("flags export command in allow list", () => {
+      const file = makeSettings(JSON.stringify({
+        permissions: { allow: ["Bash(export SECRET=value)"], deny: [] },
+      }));
+      const findings = runAllPermRules(file);
+      expect(findings.some((f) => f.id.includes("env-access"))).toBe(true);
+    });
+
+    it("does not flag normal read permissions", () => {
+      const file = makeSettings(JSON.stringify({
+        permissions: { allow: ["Read(src/*)"], deny: [] },
+      }));
+      const findings = runAllPermRules(file);
+      const envFindings = findings.filter((f) => f.id.includes("env-access"));
+      expect(envFindings).toHaveLength(0);
+    });
+  });
 });

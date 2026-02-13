@@ -852,4 +852,104 @@ describe("mcpRules", () => {
       expect(finding?.fix).toBeDefined();
     });
   });
+
+  describe("privileged port detection", () => {
+    it("detects privileged port in --port arg", () => {
+      const file: ConfigFile = {
+        path: "mcp.json",
+        type: "mcp-json",
+        content: JSON.stringify({
+          mcpServers: {
+            server: { command: "node", args: ["server.js", "--port", "443"] },
+          },
+        }),
+      };
+      const findings = runAllMcpRules(file);
+      // Port 443 is excluded (standard HTTPS port)
+      const portFindings = findings.filter((f) => f.id.includes("priv-port"));
+      expect(portFindings).toHaveLength(0);
+    });
+
+    it("detects non-standard privileged port in args", () => {
+      const file: ConfigFile = {
+        path: "mcp.json",
+        type: "mcp-json",
+        content: JSON.stringify({
+          mcpServers: {
+            server: { command: "node", args: ["server.js", "-p", "22"] },
+          },
+        }),
+      };
+      const findings = runAllMcpRules(file);
+      expect(findings.some((f) => f.id.includes("priv-port"))).toBe(true);
+    });
+
+    it("detects privileged port in URL", () => {
+      const file: ConfigFile = {
+        path: "mcp.json",
+        type: "mcp-json",
+        content: JSON.stringify({
+          mcpServers: {
+            remote: { url: "http://internal-server:22/mcp" },
+          },
+        }),
+      };
+      const findings = runAllMcpRules(file);
+      expect(findings.some((f) => f.id.includes("priv-port"))).toBe(true);
+    });
+
+    it("does not flag high ports", () => {
+      const file = makeMcpConfig({
+        server: { command: "node", args: ["server.js", "--port", "3000"] },
+      });
+      const findings = runAllMcpRules(file);
+      const portFindings = findings.filter((f) => f.id.includes("priv-port"));
+      expect(portFindings).toHaveLength(0);
+    });
+  });
+
+  describe("wildcard CORS", () => {
+    it("detects --cors=* in args", () => {
+      const file: ConfigFile = {
+        path: "mcp.json",
+        type: "mcp-json",
+        content: JSON.stringify({
+          mcpServers: {
+            api: { command: "node", args: ["server.js", "--cors=*"] },
+          },
+        }),
+      };
+      const findings = runAllMcpRules(file);
+      expect(findings.some((f) => f.id.includes("wildcard-cors"))).toBe(true);
+    });
+
+    it("detects CORS_ORIGIN=* in env", () => {
+      const file: ConfigFile = {
+        path: "mcp.json",
+        type: "mcp-json",
+        content: JSON.stringify({
+          mcpServers: {
+            api: { command: "node", args: ["server.js"], env: { CORS_ORIGIN: "*" } },
+          },
+        }),
+      };
+      const findings = runAllMcpRules(file);
+      expect(findings.some((f) => f.id.includes("wildcard-cors"))).toBe(true);
+    });
+
+    it("does not flag restricted CORS", () => {
+      const file: ConfigFile = {
+        path: "mcp.json",
+        type: "mcp-json",
+        content: JSON.stringify({
+          mcpServers: {
+            api: { command: "node", args: ["server.js"], env: { CORS_ORIGIN: "https://myapp.com" } },
+          },
+        }),
+      };
+      const findings = runAllMcpRules(file);
+      const corsFindings = findings.filter((f) => f.id.includes("wildcard-cors"));
+      expect(corsFindings).toHaveLength(0);
+    });
+  });
 });

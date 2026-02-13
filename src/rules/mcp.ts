@@ -949,4 +949,123 @@ export const mcpRules: ReadonlyArray<Rule> = [
       return findings;
     },
   },
+  {
+    id: "mcp-privileged-port",
+    name: "MCP Server Binds to Privileged Port",
+    description: "Checks for MCP servers configured to listen on ports below 1024, which require root privileges",
+    severity: "medium",
+    category: "mcp",
+    check(file: ConfigFile): ReadonlyArray<Finding> {
+      if (file.type !== "mcp-json" && file.type !== "settings-json") return [];
+
+      const findings: Finding[] = [];
+
+      try {
+        const config = JSON.parse(file.content);
+        const servers = config.mcpServers ?? {};
+
+        for (const [name, server] of Object.entries(servers)) {
+          const serverConfig = server as Record<string, unknown>;
+          const args = (serverConfig.args ?? []) as string[];
+          const url = (serverConfig.url ?? "") as string;
+
+          // Check URL for privileged ports
+          const urlPortMatch = url.match(/:(\d+)/);
+          if (urlPortMatch) {
+            const port = parseInt(urlPortMatch[1], 10);
+            if (port > 0 && port < 1024 && port !== 443 && port !== 80) {
+              findings.push({
+                id: `mcp-priv-port-url-${name}`,
+                severity: "medium",
+                category: "mcp",
+                title: `MCP server "${name}" uses privileged port ${port}`,
+                description: `The MCP server "${name}" connects to port ${port}, which is a privileged port (< 1024). Privileged ports require root access and binding to them may indicate the server expects elevated privileges.`,
+                file: file.path,
+                evidence: `url: ${url.substring(0, 60)}`,
+              });
+            }
+          }
+
+          // Check args for --port or -p flags with privileged ports
+          for (let i = 0; i < args.length; i++) {
+            if (/^(?:--port|-p)$/.test(args[i]) && args[i + 1]) {
+              const port = parseInt(args[i + 1], 10);
+              if (port > 0 && port < 1024 && port !== 443 && port !== 80) {
+                findings.push({
+                  id: `mcp-priv-port-arg-${name}`,
+                  severity: "medium",
+                  category: "mcp",
+                  title: `MCP server "${name}" binds to privileged port ${port}`,
+                  description: `The MCP server "${name}" is configured to bind to port ${port}. Privileged ports (< 1024) require root access, which conflicts with the principle of least privilege.`,
+                  file: file.path,
+                  evidence: `${args[i]} ${args[i + 1]}`,
+                });
+              }
+            }
+          }
+        }
+      } catch {
+        // Not valid JSON
+      }
+
+      return findings;
+    },
+  },
+  {
+    id: "mcp-wildcard-cors",
+    name: "MCP Server Has Wildcard CORS",
+    description: "Checks for MCP servers with CORS set to * in their arguments or environment",
+    severity: "medium",
+    category: "mcp",
+    check(file: ConfigFile): ReadonlyArray<Finding> {
+      if (file.type !== "mcp-json" && file.type !== "settings-json") return [];
+
+      const findings: Finding[] = [];
+
+      try {
+        const config = JSON.parse(file.content);
+        const servers = config.mcpServers ?? {};
+
+        for (const [name, server] of Object.entries(servers)) {
+          const serverConfig = server as Record<string, unknown>;
+          const args = (serverConfig.args ?? []) as string[];
+          const env = (serverConfig.env ?? {}) as Record<string, string>;
+
+          const fullArgs = args.join(" ");
+
+          // Check for --cors=* or --cors * patterns
+          if (/--cors[= ]\*|--cors[= ]["']?\*["']?/.test(fullArgs)) {
+            findings.push({
+              id: `mcp-wildcard-cors-arg-${name}`,
+              severity: "medium",
+              category: "mcp",
+              title: `MCP server "${name}" allows CORS from any origin`,
+              description: `The MCP server "${name}" has CORS set to wildcard (*). This allows any website to make requests to the MCP server, which could be exploited by malicious web pages to interact with the agent.`,
+              file: file.path,
+              evidence: fullArgs.substring(0, 80),
+            });
+          }
+
+          // Check env for CORS_ORIGIN=*
+          for (const [envKey, envVal] of Object.entries(env)) {
+            if (/cors/i.test(envKey) && envVal === "*") {
+              findings.push({
+                id: `mcp-wildcard-cors-env-${name}`,
+                severity: "medium",
+                category: "mcp",
+                title: `MCP server "${name}" allows CORS from any origin via env`,
+                description: `The MCP server "${name}" has ${envKey}=* in its environment, allowing cross-origin requests from any website.`,
+                file: file.path,
+                evidence: `${envKey}=${envVal}`,
+              });
+            }
+          }
+        }
+      } catch {
+        // Not valid JSON
+      }
+
+      return findings;
+    },
+  },
 ];

@@ -477,6 +477,60 @@ export const secretRules: ReadonlyArray<Rule> = [
     },
   },
   {
+    id: "secrets-webhook-url",
+    name: "Webhook URL with Secret Token",
+    description: "Checks for webhook URLs that contain embedded secret tokens or API keys",
+    severity: "high",
+    category: "secrets",
+    check(file: ConfigFile): ReadonlyArray<Finding> {
+      const findings: Finding[] = [];
+
+      const webhookPatterns: ReadonlyArray<{
+        readonly pattern: RegExp;
+        readonly description: string;
+      }> = [
+        {
+          pattern: /https:\/\/hooks\.slack\.com\/services\/T[A-Z0-9]+\/B[A-Z0-9]+\/[a-zA-Z0-9]+/g,
+          description: "Slack webhook URL — allows posting messages to a Slack channel",
+        },
+        {
+          pattern: /https:\/\/discord(?:app)?\.com\/api\/webhooks\/\d+\/[a-zA-Z0-9_-]+/g,
+          description: "Discord webhook URL — allows posting messages to a Discord channel",
+        },
+        {
+          pattern: /https:\/\/outlook\.office\.com\/webhook\/[a-f0-9-]+/g,
+          description: "Microsoft Teams webhook URL",
+        },
+      ];
+
+      for (const { pattern, description } of webhookPatterns) {
+        const matches = findAllMatches(file.content, pattern);
+        for (const match of matches) {
+          const idx = match.index ?? 0;
+
+          findings.push({
+            id: `secrets-webhook-url-${idx}`,
+            severity: "high",
+            category: "secrets",
+            title: `Webhook URL found: ${description.split(" — ")[0]}`,
+            description: `Found a ${description}. Webhook URLs contain embedded secrets and should be stored in environment variables. Anyone with this URL can post messages to the channel.`,
+            file: file.path,
+            line: findLineNumber(file.content, idx),
+            evidence: match[0].substring(0, 30) + "...",
+            fix: {
+              description: "Store webhook URL in an environment variable",
+              before: match[0].substring(0, 30),
+              after: "${WEBHOOK_URL}",
+              auto: false,
+            },
+          });
+        }
+      }
+
+      return findings;
+    },
+  },
+  {
     id: "secrets-base64-obfuscation",
     name: "Potential Base64 Obfuscated Secret",
     description: "Checks for long base64-encoded strings that may be obfuscated secrets or payloads",

@@ -775,4 +775,139 @@ export const agentRules: ReadonlyArray<Rule> = [
       return findings;
     },
   },
+  {
+    id: "agents-identity-impersonation",
+    name: "Agent Instructed to Impersonate Identity",
+    description: "Checks for agent definitions that instruct the agent to impersonate users, systems, or other identities",
+    severity: "high",
+    category: "injection",
+    check(file: ConfigFile): ReadonlyArray<Finding> {
+      if (file.type !== "agent-md" && file.type !== "claude-md") return [];
+
+      const findings: Finding[] = [];
+
+      const impersonationPatterns = [
+        {
+          pattern: /(?:pretend|act|behave|respond)\s+(?:to\s+be|as\s+if\s+you\s+are|like)\s+(?:a\s+)?(?:different|another|the)\s+(?:user|admin|system|root|operator)/gi,
+          desc: "Instructs agent to impersonate a different identity",
+        },
+        {
+          pattern: /(?:your\s+name\s+is|you\s+are\s+now|assume\s+the\s+(?:role|identity)\s+of)\s+(?!Claude)/gi,
+          desc: "Reassigns the agent's identity — social engineering attack on downstream users",
+        },
+        {
+          pattern: /(?:sign|attribute|author)\s+(?:commits?|messages?|emails?)\s+(?:as|from|by)\s+(?!Claude)/gi,
+          desc: "Instructs agent to attribute work to someone else — impersonation via output",
+        },
+      ];
+
+      for (const { pattern, desc } of impersonationPatterns) {
+        const matches = findAllMatches(file.content, pattern);
+        for (const match of matches) {
+          findings.push({
+            id: `agents-identity-impersonation-${match.index}`,
+            severity: "high",
+            category: "injection",
+            title: `Agent identity impersonation instruction`,
+            description: `Found "${match[0].substring(0, 80)}" — ${desc}. Identity impersonation can be used for social engineering, unauthorized actions, or evading audit trails.`,
+            file: file.path,
+            line: findLineNumber(file.content, match.index ?? 0),
+            evidence: match[0].substring(0, 100),
+          });
+        }
+      }
+
+      return findings;
+    },
+  },
+  {
+    id: "agents-filesystem-destruction",
+    name: "Agent Instructed to Delete or Destroy Files",
+    description: "Checks for agent definitions that instruct destructive filesystem operations",
+    severity: "critical",
+    category: "injection",
+    check(file: ConfigFile): ReadonlyArray<Finding> {
+      if (file.type !== "agent-md" && file.type !== "claude-md") return [];
+
+      const findings: Finding[] = [];
+
+      const destructionPatterns = [
+        {
+          pattern: /(?:delete|remove|destroy|wipe|erase)\s+(?:all|every|the\s+entire)\s+(?:files?|directories?|folders?|data|contents?|codebase|repository)/gi,
+          desc: "Instructs agent to perform mass file deletion",
+        },
+        {
+          pattern: /rm\s+-rf\s+(?:\/|\~|\.\.)/g,
+          desc: "Contains literal rm -rf command targeting root, home, or parent directories",
+        },
+        {
+          pattern: /(?:overwrite|replace)\s+(?:all|every)\s+(?:files?|contents?)\s+with/gi,
+          desc: "Instructs agent to overwrite all files — data destruction via replacement",
+        },
+      ];
+
+      for (const { pattern, desc } of destructionPatterns) {
+        const matches = findAllMatches(file.content, pattern);
+        for (const match of matches) {
+          findings.push({
+            id: `agents-fs-destruction-${match.index}`,
+            severity: "critical",
+            category: "injection",
+            title: `Agent instructed to destroy files`,
+            description: `Found "${match[0].substring(0, 80)}" — ${desc}. Agent definitions should never contain bulk destruction instructions.`,
+            file: file.path,
+            line: findLineNumber(file.content, match.index ?? 0),
+            evidence: match[0].substring(0, 100),
+          });
+        }
+      }
+
+      return findings;
+    },
+  },
+  {
+    id: "agents-crypto-mining",
+    name: "Agent Contains Crypto Mining Instructions",
+    description: "Checks for agent definitions that reference cryptocurrency mining",
+    severity: "critical",
+    category: "injection",
+    check(file: ConfigFile): ReadonlyArray<Finding> {
+      if (file.type !== "agent-md" && file.type !== "claude-md") return [];
+
+      const findings: Finding[] = [];
+
+      const miningPatterns = [
+        {
+          pattern: /\b(?:xmrig|cpuminer|cgminer|bfgminer|minerd|ethminer|nbminer)\b/gi,
+          desc: "References a known cryptocurrency mining binary",
+        },
+        {
+          pattern: /(?:mine|mining)\s+(?:crypto(?:currency)?|bitcoin|monero|ethereum|xmr|btc|eth)/gi,
+          desc: "Contains cryptocurrency mining instructions",
+        },
+        {
+          pattern: /stratum\+tcp:\/\//gi,
+          desc: "Contains a Stratum mining pool URL",
+        },
+      ];
+
+      for (const { pattern, desc } of miningPatterns) {
+        const matches = findAllMatches(file.content, pattern);
+        for (const match of matches) {
+          findings.push({
+            id: `agents-crypto-mining-${match.index}`,
+            severity: "critical",
+            category: "injection",
+            title: `Agent contains crypto mining reference`,
+            description: `Found "${match[0].substring(0, 80)}" — ${desc}. Cryptojacking via agent definitions is an emerging supply chain attack vector.`,
+            file: file.path,
+            line: findLineNumber(file.content, match.index ?? 0),
+            evidence: match[0].substring(0, 100),
+          });
+        }
+      }
+
+      return findings;
+    },
+  },
 ];
