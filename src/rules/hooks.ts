@@ -1422,4 +1422,100 @@ export const hookRules: ReadonlyArray<Rule> = [
       return findings;
     },
   },
+  {
+    id: "hooks-dns-exfiltration",
+    name: "Hook Uses DNS for Data Exfiltration",
+    description: "Checks for hooks that use DNS queries with variable interpolation to exfiltrate data",
+    severity: "critical",
+    category: "exfiltration",
+    check(file: ConfigFile): ReadonlyArray<Finding> {
+      if (file.type !== "settings-json" && file.type !== "hook-script") return [];
+
+      const findings: Finding[] = [];
+
+      const dnsPatterns: ReadonlyArray<{
+        readonly pattern: RegExp;
+        readonly description: string;
+      }> = [
+        {
+          pattern: /\bdig\s+.*\$\{?\w+/g,
+          description: "Uses dig with variable interpolation — DNS exfiltration encodes data in DNS queries",
+        },
+        {
+          pattern: /\bnslookup\s+.*\$\{?\w+/g,
+          description: "Uses nslookup with variable interpolation — DNS exfiltration vector",
+        },
+        {
+          pattern: /\bhost\s+.*\$\{?\w+/g,
+          description: "Uses host command with variable interpolation — DNS exfiltration vector",
+        },
+      ];
+
+      for (const { pattern, description } of dnsPatterns) {
+        const matches = findAllMatches(file.content, pattern);
+        for (const match of matches) {
+          findings.push({
+            id: `hooks-dns-exfil-${match.index}`,
+            severity: "critical",
+            category: "exfiltration",
+            title: `Hook uses DNS for exfiltration: ${match[0].trim().substring(0, 60)}`,
+            description: `${description}. DNS queries bypass most firewalls and proxy filters, making this a common out-of-band exfiltration technique.`,
+            file: file.path,
+            line: findLineNumber(file.content, match.index ?? 0),
+            evidence: match[0].trim(),
+          });
+        }
+      }
+
+      return findings;
+    },
+  },
+  {
+    id: "hooks-firewall-modification",
+    name: "Hook Modifies Firewall Rules",
+    description: "Checks for hooks that modify iptables, ufw, or firewall rules",
+    severity: "critical",
+    category: "hooks",
+    check(file: ConfigFile): ReadonlyArray<Finding> {
+      if (file.type !== "settings-json" && file.type !== "hook-script") return [];
+
+      const findings: Finding[] = [];
+
+      const fwPatterns: ReadonlyArray<{
+        readonly pattern: RegExp;
+        readonly description: string;
+      }> = [
+        {
+          pattern: /\biptables\b/g,
+          description: "Modifies iptables firewall rules — can open ports or disable filtering",
+        },
+        {
+          pattern: /\bufw\s+(?:allow|delete|disable)/g,
+          description: "Modifies UFW firewall — can open ports or disable the firewall entirely",
+        },
+        {
+          pattern: /\bfirewall-cmd\b/g,
+          description: "Modifies firewalld rules — can change network access policies",
+        },
+      ];
+
+      for (const { pattern, description } of fwPatterns) {
+        const matches = findAllMatches(file.content, pattern);
+        for (const match of matches) {
+          findings.push({
+            id: `hooks-fw-modify-${match.index}`,
+            severity: "critical",
+            category: "hooks",
+            title: `Hook modifies firewall: ${match[0].trim()}`,
+            description: `${description}. Hooks should not modify firewall rules — this could expose the system to network attacks.`,
+            file: file.path,
+            line: findLineNumber(file.content, match.index ?? 0),
+            evidence: match[0].trim(),
+          });
+        }
+      }
+
+      return findings;
+    },
+  },
 ];
