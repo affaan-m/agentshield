@@ -1584,4 +1584,388 @@ export const agentRules: ReadonlyArray<Rule> = [
       return findings;
     },
   },
+  {
+    id: "agents-allowlist-bypass",
+    name: "Exec Allowlist / Approval Bypass",
+    description: "Checks for instructions that modify execution allowlists, approval configs, or permission settings programmatically",
+    severity: "critical",
+    category: "injection",
+    check(file: ConfigFile): ReadonlyArray<Finding> {
+      if (file.type !== "agent-md" && file.type !== "claude-md") return [];
+
+      const findings: Finding[] = [];
+
+      const allowlistPatterns = [
+        {
+          pattern: /(?:modify|edit|change|update|set|add\s+to)\s+(?:the\s+)?(?:allow\s*list|allowlist|whitelist|approved\s+(?:tools?|commands?|binaries)|exec\s*approvals?|permission\s*(?:list|config)|allowed\s*tools?)/gi,
+          desc: "Instructs agent to modify execution allowlists — bypasses security controls by pre-approving dangerous operations",
+        },
+        {
+          pattern: /(?:nodes\.invoke|system\.exec|execApprovals?\.set|approvals?\.add|allowedTools?\s*[.=])/gi,
+          desc: "References internal allowlist APIs — direct programmatic bypass of execution approval controls",
+        },
+        {
+          pattern: /(?:auto[_-]?approve|skip[_-]?approval|bypass[_-]?confirmation)\s*[=:]\s*true/gi,
+          desc: "Sets auto-approve flags — disables human-in-the-loop safety for tool execution",
+        },
+        {
+          pattern: /(?:add|append|insert)\s+(?:.*\s+)?(?:to\s+)?(?:the\s+)?(?:permissions?\s*\.\s*allow|allowedTools|trusted\s*(?:tools?|commands?))/gi,
+          desc: "Adds entries to permission allow lists — expands agent capabilities beyond intended scope",
+        },
+      ];
+
+      for (const { pattern, desc } of allowlistPatterns) {
+        const matches = findAllMatches(file.content, pattern);
+        for (const match of matches) {
+          findings.push({
+            id: `agents-allowlist-bypass-${match.index}`,
+            severity: "critical",
+            category: "injection",
+            title: `Execution allowlist bypass instruction detected`,
+            description: `Found "${match[0].substring(0, 80)}" — ${desc}. Reported as an active attack vector in OpenClaw #security channel (jluk).`,
+            file: file.path,
+            line: findLineNumber(file.content, match.index ?? 0),
+            evidence: match[0].substring(0, 100),
+          });
+        }
+      }
+
+      return findings;
+    },
+  },
+  {
+    id: "agents-skill-tampering",
+    name: "Skill Tampering / Unsigned Skill Loading",
+    description: "Checks for instructions to load, import, or execute skills without verification or from untrusted sources",
+    severity: "high",
+    category: "injection",
+    check(file: ConfigFile): ReadonlyArray<Finding> {
+      if (file.type !== "agent-md" && file.type !== "claude-md") return [];
+
+      const findings: Finding[] = [];
+
+      const skillTamperPatterns = [
+        {
+          pattern: /(?:load|import|install|add)\s+(?:a\s+)?(?:skill|plugin|extension)\s+(?:from\s+)?https?:\/\//gi,
+          desc: "Loads skill from external URL — untrusted skill definitions can contain prompt injection payloads",
+        },
+        {
+          pattern: /(?:skip|bypass|ignore|disable)\s+(?:skill\s+)?(?:verification|validation|signature|hash\s+check|integrity\s+check)/gi,
+          desc: "Instructs agent to skip skill verification — allows tampered skills to execute",
+        },
+        {
+          pattern: /(?:modify|edit|replace|overwrite)\s+(?:the\s+)?(?:skill|plugin)\s+(?:definition|instructions?|content|source)/gi,
+          desc: "Instructs agent to modify skill definitions — runtime skill tampering",
+        },
+        {
+          pattern: /(?:create|write|add)\s+(?:a\s+)?(?:new\s+)?(?:skill|plugin)\s+(?:that|which)\s+(?:runs?|executes?|calls?|invokes?)/gi,
+          desc: "Instructs agent to create new skills with execution capabilities — skill injection",
+        },
+      ];
+
+      for (const { pattern, desc } of skillTamperPatterns) {
+        const matches = findAllMatches(file.content, pattern);
+        for (const match of matches) {
+          findings.push({
+            id: `agents-skill-tamper-${match.index}`,
+            severity: "high",
+            category: "injection",
+            title: `Skill tampering or unsigned skill loading instruction`,
+            description: `Found "${match[0].substring(0, 80)}" — ${desc}. Reference: OpenClaw skill verification gate (vgzotta PR #14893).`,
+            file: file.path,
+            line: findLineNumber(file.content, match.index ?? 0),
+            evidence: match[0].substring(0, 100),
+          });
+        }
+      }
+
+      return findings;
+    },
+  },
+  {
+    id: "agents-config-secret-leakage",
+    name: "Config File Secret Leakage",
+    description: "Checks for instructions to write, copy, or inline secrets from env vars into config files as plaintext",
+    severity: "critical",
+    category: "secrets",
+    check(file: ConfigFile): ReadonlyArray<Finding> {
+      if (file.type !== "agent-md" && file.type !== "claude-md") return [];
+
+      const findings: Finding[] = [];
+
+      const leakagePatterns = [
+        {
+          pattern: /(?:write|save|store|put|copy|inline|embed|hardcode)\s+(?:the\s+)?(?:actual|real|raw|resolved|plaintext)\s+(?:\w+\s+)?(?:value|secret|key|token|password|credential)s?\s+(?:into|in|to)\s+(?:the\s+)?(?:config|configuration|settings|\.env|\w+\.json|\w+\.ya?ml)/gi,
+          desc: "Instructs agent to write resolved secret values into config files — converts env var references to plaintext",
+        },
+        {
+          pattern: /(?:replace|expand|resolve|substitute|inline)\s+(?:all\s+)?(?:env(?:ironment)?\s+)?(?:var(?:iable)?s?\s+)?(?:references?\s+)?(?:with\s+)?(?:their\s+)?(?:actual|real|plaintext|resolved|literal)\s+(?:\w+\s+)?values?/gi,
+          desc: "Instructs agent to resolve environment variables to plaintext — destroys secret indirection",
+        },
+        {
+          pattern: /(?:writeConfig(?:File)?|write_config|save_config)\s*\([\s\S]*?(?:process\.env|os\.environ|env\[)/gi,
+          desc: "Writes config files using env var values directly — leaks secrets from environment to disk",
+        },
+      ];
+
+      for (const { pattern, desc } of leakagePatterns) {
+        const matches = findAllMatches(file.content, pattern);
+        for (const match of matches) {
+          findings.push({
+            id: `agents-config-secret-leak-${match.index}`,
+            severity: "critical",
+            category: "secrets",
+            title: `Config file secret leakage instruction detected`,
+            description: `Found "${match[0].substring(0, 80)}" — ${desc}. Reference: OpenClaw config writeConfigFile bug (psyalien PR #11560).`,
+            file: file.path,
+            line: findLineNumber(file.content, match.index ?? 0),
+            evidence: match[0].substring(0, 100),
+          });
+        }
+      }
+
+      return findings;
+    },
+  },
+  {
+    id: "agents-secrets-in-output",
+    name: "Secrets Exposed in Tool Output / Transcripts",
+    description: "Checks for instructions to log, print, or persist secrets from tool output to disk or transcripts",
+    severity: "high",
+    category: "secrets",
+    check(file: ConfigFile): ReadonlyArray<Finding> {
+      if (file.type !== "agent-md" && file.type !== "claude-md") return [];
+
+      const findings: Finding[] = [];
+
+      const outputSecretPatterns = [
+        {
+          pattern: /(?:log|print|output|display|show|echo|write)\s+(?:the\s+)?(?:full|complete|entire|raw)\s+(?:api\s+)?(?:response|output|result|tool\s+output|tool\s+result)/gi,
+          desc: "Instructs agent to log full tool output which may contain API keys, tokens, or credentials",
+        },
+        {
+          pattern: /(?:save|write|persist|store|append)\s+(?:the\s+)?(?:session\s+)?(?:transcript|conversation|chat\s+log|tool\s+output)\s+(?:to|in|into)\s+(?:a\s+)?(?:file|disk|log)/gi,
+          desc: "Instructs agent to persist session transcripts to disk — tool outputs may contain secrets",
+        },
+        {
+          pattern: /(?:include|keep|preserve|don'?t\s+(?:strip|remove|redact))\s+(?:all\s+)?(?:api\s+)?(?:keys?|tokens?|credentials?|secrets?|passwords?)\s+(?:in|from)\s+(?:the\s+)?(?:output|response|log|transcript)/gi,
+          desc: "Instructs agent to preserve secrets in output — prevents automatic redaction",
+        },
+      ];
+
+      for (const { pattern, desc } of outputSecretPatterns) {
+        const matches = findAllMatches(file.content, pattern);
+        for (const match of matches) {
+          findings.push({
+            id: `agents-secrets-in-output-${match.index}`,
+            severity: "high",
+            category: "secrets",
+            title: `Secret exposure in tool output / transcript`,
+            description: `Found "${match[0].substring(0, 80)}" — ${desc}. Session transcripts and logs written to disk can expose secrets from API responses.`,
+            file: file.path,
+            line: findLineNumber(file.content, match.index ?? 0),
+            evidence: match[0].substring(0, 100),
+          });
+        }
+      }
+
+      return findings;
+    },
+  },
+  {
+    id: "agents-system-prompt-extraction",
+    name: "System Prompt Extraction Attempt",
+    description: "Checks for instructions that attempt to extract, leak, or reveal system prompts",
+    severity: "high",
+    category: "injection",
+    check(file: ConfigFile): ReadonlyArray<Finding> {
+      if (file.type !== "agent-md" && file.type !== "claude-md") return [];
+
+      const findings: Finding[] = [];
+
+      const extractionPatterns = [
+        {
+          pattern: /(?:show|print|reveal|display|output|repeat|leak|dump)\s+(?:me\s+)?(?:your\s+)?(?:the\s+)?(?:full\s+|complete\s+|entire\s+)?(?:system\s+)?(?:prompt|instructions?|rules?|guidelines?|constraints?)/gi,
+          desc: "Attempts to extract the agent's system prompt — reconnaissance for crafting targeted injection attacks",
+        },
+        {
+          pattern: /(?:what\s+(?:are|is|were)\s+)?(?:your\s+)?(?:original|initial|system|hidden|secret)\s+(?:instructions?|prompt|rules?|guidelines?)/gi,
+          desc: "Probes for the agent's system instructions — prompt leaking technique",
+        },
+        {
+          pattern: /(?:output|repeat|recite|echo)\s+(?:everything|all)\s+(?:before|above|that\s+was\s+said|from\s+the\s+(?:beginning|start))/gi,
+          desc: "Attempts to dump the full context including system prompt via repetition",
+        },
+      ];
+
+      for (const { pattern, desc } of extractionPatterns) {
+        const matches = findAllMatches(file.content, pattern);
+        for (const match of matches) {
+          findings.push({
+            id: `agents-prompt-extraction-${match.index}`,
+            severity: "high",
+            category: "injection",
+            title: `System prompt extraction attempt detected`,
+            description: `Found "${match[0].substring(0, 80)}" — ${desc}. From openclaw-security-guard prompt injection patterns.`,
+            file: file.path,
+            line: findLineNumber(file.content, match.index ?? 0),
+            evidence: match[0].substring(0, 100),
+          });
+        }
+      }
+
+      return findings;
+    },
+  },
+  {
+    id: "agents-jailbreak-framing",
+    name: "Jailbreak Framing / Hypothetical Bypass",
+    description: "Checks for instructions that use fictional, hypothetical, or educational framing to bypass safety constraints",
+    severity: "high",
+    category: "injection",
+    check(file: ConfigFile): ReadonlyArray<Finding> {
+      if (file.type !== "agent-md" && file.type !== "claude-md") return [];
+
+      const findings: Finding[] = [];
+
+      const framingPatterns = [
+        {
+          pattern: /(?:in\s+a\s+)?(?:hypothetical|fictional|imaginary)\s+(?:scenario|world|story|context)\s+(?:where\s+)?(?:there\s+are\s+)?(?:no\s+)?(?:rules?|restrictions?|limits?|safety|guidelines?)/gi,
+          desc: "Uses fictional framing to establish a context without safety restrictions — jailbreak technique",
+        },
+        {
+          pattern: /(?:for\s+)?(?:educational|research|academic|testing)\s+purposes?\s+(?:only\s*[,;:]?\s*)?(?:show|demonstrate|explain|output|generate)/gi,
+          desc: "Uses 'educational purposes' framing to justify bypassing safety — common jailbreak wrapper",
+        },
+        {
+          pattern: /(?:this\s+is\s+(?:just|only)\s+a\s+)?(?:test|experiment|simulation|drill|exercise)\s*[,;:]\s*(?:so\s+)?(?:you\s+can|please|go\s+ahead)/gi,
+          desc: "Frames request as a 'test' to reduce the agent's resistance to unsafe actions",
+        },
+        {
+          pattern: /(?:developer|maintenance|debug|test|admin)\s+mode\s+(?:enabled|activated|on|engaged)/gi,
+          desc: "Claims a special operational mode is active to unlock restricted capabilities — mode spoofing",
+        },
+        {
+          pattern: /(?:no\s+(?:ethical|moral)\s+(?:guidelines?|restrictions?|limits?|constraints?))/gi,
+          desc: "Declares ethical guidelines removed — attempts to eliminate the agent's safety boundaries",
+        },
+      ];
+
+      for (const { pattern, desc } of framingPatterns) {
+        const matches = findAllMatches(file.content, pattern);
+        for (const match of matches) {
+          findings.push({
+            id: `agents-jailbreak-framing-${match.index}`,
+            severity: "high",
+            category: "injection",
+            title: `Jailbreak framing / hypothetical bypass detected`,
+            description: `Found "${match[0].substring(0, 80)}" — ${desc}. From openclaw-security-guard jailbreak pattern database.`,
+            file: file.path,
+            line: findLineNumber(file.content, match.index ?? 0),
+            evidence: match[0].substring(0, 100),
+          });
+        }
+      }
+
+      return findings;
+    },
+  },
+  {
+    id: "agents-role-hijacking",
+    name: "Role Hijacking / Persona Override",
+    description: "Checks for instructions that reassign the agent's role, persona, or behavioral constraints",
+    severity: "high",
+    category: "injection",
+    check(file: ConfigFile): ReadonlyArray<Finding> {
+      if (file.type !== "agent-md" && file.type !== "claude-md") return [];
+
+      const findings: Finding[] = [];
+
+      const rolePatterns = [
+        {
+          pattern: /(?:roleplay|role-play)\s+as\s+(?:a|an|the)\s+/gi,
+          desc: "Instructs agent to roleplay a different identity — can override safety behaviors",
+        },
+        {
+          pattern: /(?:pretend|act)\s+(?:to\s+be|as\s+if\s+you\s+(?:are|were)|like\s+you\s+(?:are|were))\s+(?:a|an|the)\s+/gi,
+          desc: "Instructs agent to pretend to be a different entity — persona override technique",
+        },
+        {
+          pattern: /(?:from\s+now\s+on|starting\s+now|henceforth)\s*[,;:]?\s*(?:you\s+are|act\s+as|behave\s+like|respond\s+as)/gi,
+          desc: "Temporal role reassignment — attempts to permanently change agent behavior from this point forward",
+        },
+        {
+          pattern: /(?:switch|change)\s+(?:to|into)\s+(?:a\s+)?(?:different|new|unrestricted|unfiltered|uncensored)\s+(?:mode|personality|character|persona|role)/gi,
+          desc: "Requests mode switch to an unrestricted persona — jailbreak via persona change",
+        },
+      ];
+
+      for (const { pattern, desc } of rolePatterns) {
+        const matches = findAllMatches(file.content, pattern);
+        for (const match of matches) {
+          findings.push({
+            id: `agents-role-hijacking-${match.index}`,
+            severity: "high",
+            category: "injection",
+            title: `Role hijacking / persona override detected`,
+            description: `Found "${match[0].substring(0, 80)}" — ${desc}. From openclaw-security-guard role hijacking patterns.`,
+            file: file.path,
+            line: findLineNumber(file.content, match.index ?? 0),
+            evidence: match[0].substring(0, 100),
+          });
+        }
+      }
+
+      return findings;
+    },
+  },
+  {
+    id: "agents-destructive-tool-usage",
+    name: "Destructive Tool Usage Instructions",
+    description: "Checks for instructions that direct the agent to use tools for destructive operations like deleting data or dropping tables",
+    severity: "high",
+    category: "injection",
+    check(file: ConfigFile): ReadonlyArray<Finding> {
+      if (file.type !== "agent-md" && file.type !== "claude-md") return [];
+
+      const findings: Finding[] = [];
+
+      const destructiveToolPatterns = [
+        {
+          pattern: /(?:use|call|invoke)\s+(?:the\s+)?\w+\s+tool\s+to\s+(?:delete|remove|destroy|drop|truncate|wipe|purge|erase)/gi,
+          desc: "Directs agent to use a specific tool for destructive operations",
+        },
+        {
+          pattern: /(?:drop\s+(?:all\s+)?(?:tables?|databases?|collections?|indexes?)|truncate\s+(?:all\s+)?tables?|delete\s+from\s+\w+\s+where\s+1\s*=\s*1)/gi,
+          desc: "Contains destructive SQL/database operations — drop tables, truncate, mass delete",
+        },
+        {
+          pattern: /(?:git\s+push\s+--force(?!-with-lease)(?:\s+origin\s+main|\s+origin\s+master)?)/gi,
+          desc: "Force push to main/master — can overwrite remote history and destroy team changes",
+        },
+        {
+          pattern: /(?:invoke|call|execute)\s+(?:the\s+)?\w+\s+(?:tool|function)\s+(?:without\s+(?:asking|confirmation|review|approval))/gi,
+          desc: "Instructs agent to invoke tools without user confirmation — bypasses human-in-the-loop safety",
+        },
+      ];
+
+      for (const { pattern, desc } of destructiveToolPatterns) {
+        const matches = findAllMatches(file.content, pattern);
+        for (const match of matches) {
+          findings.push({
+            id: `agents-destructive-tool-${match.index}`,
+            severity: "high",
+            category: "injection",
+            title: `Destructive tool usage instruction detected`,
+            description: `Found "${match[0].substring(0, 80)}" — ${desc}. From openclaw-security-guard tool manipulation patterns.`,
+            file: file.path,
+            line: findLineNumber(file.content, match.index ?? 0),
+            evidence: match[0].substring(0, 100),
+          });
+        }
+      }
+
+      return findings;
+    },
+  },
 ];
