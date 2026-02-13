@@ -1224,4 +1224,116 @@ export const mcpRules: ReadonlyArray<Rule> = [
       return findings;
     },
   },
+  {
+    id: "mcp-auto-approve",
+    name: "MCP Server Has Auto-Approve Enabled",
+    description: "Checks for MCP servers with autoApprove settings that skip user confirmation for tool calls",
+    severity: "high",
+    category: "mcp",
+    check(file: ConfigFile): ReadonlyArray<Finding> {
+      if (file.type !== "mcp-json" && file.type !== "settings-json") return [];
+
+      const findings: Finding[] = [];
+
+      try {
+        const config = JSON.parse(file.content);
+        const servers = config.mcpServers ?? {};
+
+        for (const [name, server] of Object.entries(servers)) {
+          const serverConfig = server as Record<string, unknown>;
+
+          // Check for autoApprove, auto_approve, or autoConfirm fields
+          const autoApproveKeys = ["autoApprove", "auto_approve", "autoConfirm", "auto_confirm"];
+
+          for (const key of autoApproveKeys) {
+            if (key in serverConfig) {
+              const value = serverConfig[key];
+              // Check if it's truthy (boolean true, non-empty array, etc.)
+              const isEnabled = Array.isArray(value)
+                ? value.length > 0
+                : !!value;
+
+              if (isEnabled) {
+                findings.push({
+                  id: `mcp-auto-approve-${name}`,
+                  severity: "high",
+                  category: "mcp",
+                  title: `MCP server "${name}" has auto-approve enabled`,
+                  description: `The MCP server "${name}" has "${key}" configured, which skips user confirmation for tool calls. This defeats the human-in-the-loop security model — a compromised server can silently execute destructive operations without user review.`,
+                  file: file.path,
+                  evidence: `${key}: ${JSON.stringify(value).substring(0, 80)}`,
+                  fix: {
+                    description: "Remove auto-approve to require user confirmation for all tool calls",
+                    before: `"${key}": ${JSON.stringify(value).substring(0, 30)}`,
+                    after: `# Remove "${key}" — require user confirmation`,
+                    auto: false,
+                  },
+                });
+              }
+            }
+          }
+        }
+      } catch {
+        // Not valid JSON
+      }
+
+      return findings;
+    },
+  },
+  {
+    id: "mcp-timeout-missing",
+    name: "MCP Server Has No Timeout Configuration",
+    description: "Checks for MCP servers without a timeout, which could hang indefinitely or be used for resource exhaustion",
+    severity: "low",
+    category: "misconfiguration",
+    check(file: ConfigFile): ReadonlyArray<Finding> {
+      if (file.type !== "mcp-json" && file.type !== "settings-json") return [];
+
+      const findings: Finding[] = [];
+
+      try {
+        const config = JSON.parse(file.content);
+        const servers = config.mcpServers ?? {};
+
+        // Only flag if there are high-risk servers without timeouts
+        for (const [name, server] of Object.entries(servers)) {
+          const serverConfig = server as Record<string, unknown>;
+          const command = (serverConfig.command ?? "") as string;
+
+          // Check if this is a potentially long-running server
+          const isHighRisk = MCP_RISK_PROFILES.some((p) =>
+            p.namePattern.test(name)
+          );
+
+          if (!isHighRisk) continue;
+
+          const hasTimeout = "timeout" in serverConfig ||
+            "requestTimeout" in serverConfig ||
+            "connectionTimeout" in serverConfig;
+
+          if (!hasTimeout) {
+            findings.push({
+              id: `mcp-no-timeout-${name}`,
+              severity: "low",
+              category: "misconfiguration",
+              title: `High-risk MCP server "${name}" has no timeout`,
+              description: `The MCP server "${name}" (${command || "unknown command"}) has no timeout configuration. Without a timeout, a malfunctioning or compromised server could hang indefinitely, consuming resources and blocking the agent. Add a timeout to limit execution time.`,
+              file: file.path,
+              evidence: `Server "${name}" has no timeout, requestTimeout, or connectionTimeout`,
+              fix: {
+                description: "Add a timeout configuration",
+                before: `"${name}": { "command": "${command}" }`,
+                after: `"${name}": { "command": "${command}", "timeout": 30000 }`,
+                auto: false,
+              },
+            });
+          }
+        }
+      } catch {
+        // Not valid JSON
+      }
+
+      return findings;
+    },
+  },
 ];

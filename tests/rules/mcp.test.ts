@@ -1043,4 +1043,124 @@ describe("mcpRules", () => {
       expect(bindFindings).toHaveLength(0);
     });
   });
+
+  describe("auto-approve detection", () => {
+    it("detects autoApprove boolean true", () => {
+      const file = makeMcpConfig({
+        dangerous: {
+          command: "node",
+          autoApprove: true,
+        },
+      });
+      const findings = runAllMcpRules(file);
+      expect(findings.some((f) => f.id.includes("auto-approve") && f.severity === "high")).toBe(true);
+    });
+
+    it("detects autoApprove with tool list", () => {
+      const file = makeMcpConfig({
+        myserver: {
+          command: "node",
+          autoApprove: ["read_file", "write_file", "run_command"],
+        },
+      });
+      const findings = runAllMcpRules(file);
+      expect(findings.some((f) => f.id.includes("auto-approve"))).toBe(true);
+    });
+
+    it("detects auto_approve snake_case variant", () => {
+      const file = makeMcpConfig({
+        myserver: {
+          command: "node",
+          auto_approve: true,
+        },
+      });
+      const findings = runAllMcpRules(file);
+      expect(findings.some((f) => f.id.includes("auto-approve"))).toBe(true);
+    });
+
+    it("does not flag autoApprove set to false", () => {
+      const file = makeMcpConfig({
+        safe: {
+          command: "node",
+          autoApprove: false,
+        },
+      });
+      const findings = runAllMcpRules(file);
+      expect(findings.some((f) => f.id.includes("auto-approve"))).toBe(false);
+    });
+
+    it("does not flag autoApprove with empty array", () => {
+      const file = makeMcpConfig({
+        safe: {
+          command: "node",
+          autoApprove: [],
+        },
+      });
+      const findings = runAllMcpRules(file);
+      expect(findings.some((f) => f.id.includes("auto-approve"))).toBe(false);
+    });
+
+    it("does not flag servers without autoApprove", () => {
+      const file = makeMcpConfig({
+        normal: {
+          command: "node",
+          args: ["server.js"],
+        },
+      });
+      const findings = runAllMcpRules(file);
+      expect(findings.some((f) => f.id.includes("auto-approve"))).toBe(false);
+    });
+  });
+
+  describe("timeout missing", () => {
+    it("flags high-risk filesystem server without timeout", () => {
+      const file = makeMcpConfig({
+        filesystem: {
+          command: "node",
+          args: ["./server.js"],
+        },
+      });
+      const findings = runAllMcpRules(file);
+      expect(findings.some((f) => f.id.includes("no-timeout"))).toBe(true);
+    });
+
+    it("flags high-risk shell server without timeout", () => {
+      const file = makeMcpConfig({
+        "shell-runner": {
+          command: "node",
+          args: ["./shell.js"],
+        },
+      });
+      const findings = runAllMcpRules(file);
+      expect(findings.some((f) => f.id.includes("no-timeout"))).toBe(true);
+    });
+
+    it("does not flag high-risk server WITH timeout", () => {
+      const file = makeMcpConfig({
+        filesystem: {
+          command: "node",
+          timeout: 30000,
+        },
+      });
+      const findings = runAllMcpRules(file);
+      expect(findings.some((f) => f.id.includes("no-timeout"))).toBe(false);
+    });
+
+    it("does not flag low-risk server without timeout", () => {
+      const file = makeMcpConfig({
+        memory: {
+          command: "node",
+          args: ["./memory.js"],
+        },
+      });
+      const findings = runAllMcpRules(file);
+      expect(findings.some((f) => f.id.includes("no-timeout"))).toBe(false);
+    });
+
+    it("does not flag non-MCP files", () => {
+      const file: ConfigFile = { path: "agent.md", type: "agent-md", content: "filesystem" };
+      const findings = runAllMcpRules(file);
+      expect(findings.some((f) => f.id.includes("no-timeout"))).toBe(false);
+    });
+  });
 });

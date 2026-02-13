@@ -1734,4 +1734,124 @@ export const hookRules: ReadonlyArray<Rule> = [
       return findings;
     },
   },
+  {
+    id: "hooks-clipboard-access",
+    name: "Hook Accesses System Clipboard",
+    description: "Checks for hooks that read or write the system clipboard, which can be used for data exfiltration",
+    severity: "high",
+    category: "hooks",
+    check(file: ConfigFile): ReadonlyArray<Finding> {
+      if (file.type !== "settings-json" && file.type !== "hook-script") return [];
+
+      const findings: Finding[] = [];
+
+      const clipboardPatterns: ReadonlyArray<{
+        readonly pattern: RegExp;
+        readonly description: string;
+      }> = [
+        {
+          pattern: /\bpbcopy\b/g,
+          description: "Uses macOS pbcopy to write to clipboard — can silently exfiltrate data",
+        },
+        {
+          pattern: /\bpbpaste\b/g,
+          description: "Uses macOS pbpaste to read clipboard — may capture sensitive copied content",
+        },
+        {
+          pattern: /\bxclip\b/g,
+          description: "Uses xclip to access X11 clipboard — can read or write clipboard data",
+        },
+        {
+          pattern: /\bxsel\b/g,
+          description: "Uses xsel to access X11 selection — can read or write clipboard data",
+        },
+        {
+          pattern: /\bwl-copy\b/g,
+          description: "Uses wl-copy to write to Wayland clipboard",
+        },
+        {
+          pattern: /\bwl-paste\b/g,
+          description: "Uses wl-paste to read from Wayland clipboard",
+        },
+      ];
+
+      for (const { pattern, description } of clipboardPatterns) {
+        const matches = findAllMatches(file.content, pattern);
+        for (const match of matches) {
+          findings.push({
+            id: `hooks-clipboard-${match.index}`,
+            severity: "high",
+            category: "hooks",
+            title: `Hook accesses clipboard: ${match[0].trim()}`,
+            description: `${description}. Clipboard access in hooks can be used to steal passwords, tokens, and other sensitive data that users copy.`,
+            file: file.path,
+            line: findLineNumber(file.content, match.index ?? 0),
+            evidence: match[0].trim(),
+          });
+        }
+      }
+
+      return findings;
+    },
+  },
+  {
+    id: "hooks-log-tampering",
+    name: "Hook Tampers with System Logs",
+    description: "Checks for hooks that delete, truncate, or modify system log files to cover tracks",
+    severity: "critical",
+    category: "hooks",
+    check(file: ConfigFile): ReadonlyArray<Finding> {
+      if (file.type !== "settings-json" && file.type !== "hook-script") return [];
+
+      const findings: Finding[] = [];
+
+      const logTamperPatterns: ReadonlyArray<{
+        readonly pattern: RegExp;
+        readonly description: string;
+      }> = [
+        {
+          pattern: /\bjournalctl\s+--vacuum/g,
+          description: "Purges systemd journal logs — destroys audit trail",
+        },
+        {
+          pattern: /\brm\s+(?:-[rf]+\s+)?\/var\/log\b/g,
+          description: "Deletes system log files — destroys audit evidence",
+        },
+        {
+          pattern: /\btruncate\s+.*\/var\/log\b/g,
+          description: "Truncates system log files — erases log contents",
+        },
+        {
+          pattern: />\s*\/var\/log\/(?:syslog|auth\.log|messages|secure)/g,
+          description: "Overwrites system log file with redirection — clears log contents",
+        },
+        {
+          pattern: /\bhistory\s+-c\b/g,
+          description: "Clears shell command history — covers tracks of executed commands",
+        },
+        {
+          pattern: /\bunset\s+HISTFILE\b/g,
+          description: "Disables shell history recording — prevents command audit trail",
+        },
+      ];
+
+      for (const { pattern, description } of logTamperPatterns) {
+        const matches = findAllMatches(file.content, pattern);
+        for (const match of matches) {
+          findings.push({
+            id: `hooks-log-tamper-${match.index}`,
+            severity: "critical",
+            category: "hooks",
+            title: `Hook tampers with logs: ${match[0].trim()}`,
+            description: `${description}. Log tampering is a strong indicator of malicious intent — attackers erase evidence of their actions.`,
+            file: file.path,
+            line: findLineNumber(file.content, match.index ?? 0),
+            evidence: match[0].trim(),
+          });
+        }
+      }
+
+      return findings;
+    },
+  },
 ];

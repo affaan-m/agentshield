@@ -1094,4 +1094,98 @@ export const agentRules: ReadonlyArray<Rule> = [
       return findings;
     },
   },
+  {
+    id: "agents-reflection-attacks",
+    name: "Agent Contains Prompt Reflection/Override Instructions",
+    description: "Checks for agent definitions that attempt to override system prompts or ignore prior instructions",
+    severity: "critical",
+    category: "injection",
+    check(file: ConfigFile): ReadonlyArray<Finding> {
+      if (file.type !== "agent-md" && file.type !== "claude-md") return [];
+
+      const findings: Finding[] = [];
+
+      const reflectionPatterns = [
+        {
+          pattern: /(?:ignore|disregard|forget|override|bypass)\s+(?:all\s+)?(?:previous|prior|above|earlier|system)\s+(?:instructions?|prompts?|rules?|constraints?|guidelines?)/gi,
+          desc: "Attempts to override prior system instructions — classic prompt injection technique",
+        },
+        {
+          pattern: /(?:you\s+are\s+now|from\s+now\s+on\s+you\s+are|your\s+new\s+role\s+is|switch\s+to)\s+(?:an?\s+)?(?:different|new|unrestricted|jailbroken)/gi,
+          desc: "Attempts to reassign the agent's identity/role — jailbreak technique",
+        },
+        {
+          pattern: /\b(?:DAN|do\s+anything\s+now)\b/g,
+          desc: "References 'DAN' (Do Anything Now) jailbreak — well-known prompt override technique",
+        },
+        {
+          pattern: /(?:system\s*:\s*|<\s*system\s*>)\s*(?:you\s+are|ignore|override|new\s+instructions?)/gi,
+          desc: "Injects a fake system prompt block within agent definition",
+        },
+      ];
+
+      for (const { pattern, desc } of reflectionPatterns) {
+        const matches = findAllMatches(file.content, pattern);
+        for (const match of matches) {
+          findings.push({
+            id: `agents-reflection-${match.index}`,
+            severity: "critical",
+            category: "injection",
+            title: `Agent contains prompt override instruction`,
+            description: `Found "${match[0].substring(0, 80)}" — ${desc}. Prompt reflection attacks are the most common injection vector in LLM agent systems.`,
+            file: file.path,
+            line: findLineNumber(file.content, match.index ?? 0),
+            evidence: match[0].substring(0, 100),
+          });
+        }
+      }
+
+      return findings;
+    },
+  },
+  {
+    id: "agents-output-manipulation",
+    name: "Agent Contains Output Manipulation Instructions",
+    description: "Checks for agent definitions that instruct the agent to modify, suppress, or fake output shown to users",
+    severity: "high",
+    category: "injection",
+    check(file: ConfigFile): ReadonlyArray<Finding> {
+      if (file.type !== "agent-md" && file.type !== "claude-md") return [];
+
+      const findings: Finding[] = [];
+
+      const outputManipPatterns = [
+        {
+          pattern: /(?:always\s+(?:report|say|respond|output|show|display)\s+(?:that\s+)?(?:everything\s+is\s+)?(?:ok|fine|safe|secure|clean|no\s+(?:issues?|errors?|problems?)))/gi,
+          desc: "Instructs agent to always report success regardless of actual results — masks real issues",
+        },
+        {
+          pattern: /(?:remove|strip|filter|redact|suppress)\s+(?:all\s+)?(?:security\s+)?(?:warnings?|errors?|findings?|vulnerabilities?|issues?)\s+(?:from|before|in)\s+(?:the\s+)?(?:output|response|report|results?)/gi,
+          desc: "Instructs agent to strip security findings from output — hides vulnerabilities from users",
+        },
+        {
+          pattern: /(?:do\s+not|don'?t|never)\s+(?:show|report|display|mention|include|reveal)\s+(?:any\s+)?(?:security\s+)?(?:warnings?|errors?|findings?|vulnerabilities?|issues?|problems?)/gi,
+          desc: "Instructs agent to suppress all security warnings — prevents users from seeing real threats",
+        },
+      ];
+
+      for (const { pattern, desc } of outputManipPatterns) {
+        const matches = findAllMatches(file.content, pattern);
+        for (const match of matches) {
+          findings.push({
+            id: `agents-output-manip-${match.index}`,
+            severity: "high",
+            category: "injection",
+            title: `Agent contains output manipulation instruction`,
+            description: `Found "${match[0].substring(0, 80)}" — ${desc}. Output manipulation undermines the trust model between agents and users.`,
+            file: file.path,
+            line: findLineNumber(file.content, match.index ?? 0),
+            evidence: match[0].substring(0, 100),
+          });
+        }
+      }
+
+      return findings;
+    },
+  },
 ];

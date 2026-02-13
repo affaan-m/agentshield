@@ -9,7 +9,7 @@ hook injection, MCP server risks, and agent prompt injection vectors.
 
 [![npm version](https://img.shields.io/npm/v/ecc-agentshield)](https://www.npmjs.com/package/ecc-agentshield)
 [![npm downloads](https://img.shields.io/npm/dm/ecc-agentshield)](https://www.npmjs.com/package/ecc-agentshield)
-[![tests](https://img.shields.io/badge/tests-876%20passed-brightgreen)]()
+[![tests](https://img.shields.io/badge/tests-912%20passed-brightgreen)]()
 [![coverage](https://img.shields.io/badge/coverage-98%25-brightgreen)]()
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
@@ -96,7 +96,7 @@ agentshield init
 
 ## What It Catches
 
-**96 rules** across 5 categories, graded A–F with a 0–100 numeric score.
+**102 rules** across 5 categories, graded A–F with a 0–100 numeric score.
 
 ### Secrets Detection (10 rules, 14 patterns)
 
@@ -118,7 +118,7 @@ agentshield init
 | Destructive git | `git push --force`, `git reset --hard` in allowed commands |
 | Unrestricted network | `curl *`, `wget`, `ssh *`, `scp *` in allow list without scope |
 
-### Hook Analysis (32 rules)
+### Hook Analysis (34 rules)
 
 | What | Examples |
 |------|----------|
@@ -132,8 +132,10 @@ agentshield init
 | Container escape | Docker `--privileged`, `--pid=host`, `--network=host`, root volume mounts |
 | Credential access | macOS Keychain, GNOME Keyring, /etc/shadow reads |
 | Reverse shells | `/dev/tcp`, `mkfifo + nc`, Python/Perl socket shells |
+| Clipboard access | `pbcopy`, `xclip`, `xsel`, `wl-copy` — exfiltration via clipboard |
+| Log tampering | `journalctl --vacuum`, `rm /var/log`, `history -c` — anti-forensics |
 
-### MCP Server Security (21 rules)
+### MCP Server Security (23 rules)
 
 | What | Examples |
 |------|----------|
@@ -145,8 +147,10 @@ agentshield init
 | Missing metadata | No version pin, no description, excessive server count |
 | Sensitive file args | `.env`, `.pem`, `credentials.json` passed as server arguments |
 | Network exposure | Binding to `0.0.0.0` instead of localhost |
+| Auto-approve | `autoApprove` settings that skip user confirmation for tool calls |
+| Missing timeouts | High-risk servers without timeout — resource exhaustion risk |
 
-### Agent Config Review (23 rules)
+### Agent Config Review (25 rules)
 
 | What | Examples |
 |------|----------|
@@ -157,6 +161,8 @@ agentshield init
 | URL execution | `CLAUDE.md` instructing agents to fetch and execute remote URLs |
 | Time bombs | Delayed execution instructions triggered by time or absence conditions |
 | Data harvesting | Bulk collection of passwords, credentials, or database dumps |
+| Prompt reflection | `ignore previous instructions`, `you are now`, DAN jailbreak, fake system prompts |
+| Output manipulation | `always report ok`, `remove warnings from output`, suppress security findings |
 
 ## Features
 
@@ -273,10 +279,10 @@ agentshield miniclaw start [opts]  Launch MiniClaw secure agent server
 |----------|-------|----------|----------------|
 | Secrets | 10 | 14 | Critical -- Medium |
 | Permissions | 10 | -- | Critical -- Medium |
-| Hooks | 32 | -- | Critical -- Low |
-| MCP Servers | 21 | -- | Critical -- Info |
-| Agents | 23 | -- | Critical -- Info |
-| **Total** | **96** | **14** | |
+| Hooks | 34 | -- | Critical -- Low |
+| MCP Servers | 23 | -- | Critical -- Info |
+| Agents | 25 | -- | Critical -- Info |
+| **Total** | **102** | **14** | |
 
 ## Architecture
 
@@ -292,9 +298,9 @@ src/
 │   ├── index.ts          Rule registry
 │   ├── secrets.ts        Secret detection (10 rules, 14 patterns)
 │   ├── permissions.ts    Permission audit (10 rules)
-│   ├── mcp.ts            MCP server security (21 rules)
-│   ├── hooks.ts          Hook analysis (32 rules)
-│   └── agents.ts         Agent config review (23 rules)
+│   ├── mcp.ts            MCP server security (23 rules)
+│   ├── hooks.ts          Hook analysis (34 rules)
+│   └── agents.ts         Agent config review (25 rules)
 ├── reporter/
 │   ├── score.ts          Scoring engine (A-F grades)
 │   ├── terminal.ts       Color terminal output
@@ -377,7 +383,7 @@ MiniClaw has **zero external runtime dependencies** — Node.js built-ins only (
 ```bash
 npm install          # Install dependencies
 npm run dev          # Development mode
-npm test             # Run tests (876 tests)
+npm test             # Run tests (912 tests)
 npm run test:coverage # Coverage report
 npm run typecheck    # Type check
 npm run build        # Build

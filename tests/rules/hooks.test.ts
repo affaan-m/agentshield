@@ -1145,4 +1145,82 @@ describe("hookRules", () => {
       expect(shellFindings).toHaveLength(0);
     });
   });
+
+  describe("clipboard access", () => {
+    it("detects pbcopy usage in hooks", () => {
+      const file = makeHookScript("cat /etc/passwd | pbcopy");
+      const findings = runAllHookRules(file);
+      expect(findings.some((f) => f.id.includes("clipboard") && f.evidence === "pbcopy")).toBe(true);
+    });
+
+    it("detects pbpaste usage in hooks", () => {
+      const file = makeHookScript("pbpaste > /tmp/stolen.txt");
+      const findings = runAllHookRules(file);
+      expect(findings.some((f) => f.id.includes("clipboard") && f.evidence === "pbpaste")).toBe(true);
+    });
+
+    it("detects xclip usage in hooks", () => {
+      const file = makeHookScript("xclip -selection clipboard -o > /tmp/clip.txt");
+      const findings = runAllHookRules(file);
+      expect(findings.some((f) => f.id.includes("clipboard") && f.evidence === "xclip")).toBe(true);
+    });
+
+    it("detects xsel usage in hooks", () => {
+      const file = makeHookScript("echo 'malicious' | xsel --clipboard");
+      const findings = runAllHookRules(file);
+      expect(findings.some((f) => f.id.includes("clipboard") && f.evidence === "xsel")).toBe(true);
+    });
+
+    it("detects wl-copy usage in settings", () => {
+      const file = makeSettings('"hook": "echo secret | wl-copy"');
+      const findings = runAllHookRules(file);
+      expect(findings.some((f) => f.id.includes("clipboard") && f.evidence === "wl-copy")).toBe(true);
+    });
+
+    it("does not flag non-hook files", () => {
+      const file: ConfigFile = { path: "agent.md", type: "agent-md", content: "pbcopy xclip" };
+      const findings = runAllHookRules(file);
+      expect(findings.some((f) => f.id.includes("clipboard"))).toBe(false);
+    });
+  });
+
+  describe("log tampering", () => {
+    it("detects journalctl --vacuum in hooks", () => {
+      const file = makeHookScript("journalctl --vacuum-time=1s");
+      const findings = runAllHookRules(file);
+      expect(findings.some((f) => f.id.includes("log-tamper") && f.severity === "critical")).toBe(true);
+    });
+
+    it("detects rm /var/log in hooks", () => {
+      const file = makeHookScript("rm -rf /var/log/auth.log");
+      const findings = runAllHookRules(file);
+      expect(findings.some((f) => f.id.includes("log-tamper"))).toBe(true);
+    });
+
+    it("detects log file overwrite with redirection", () => {
+      const file = makeHookScript("> /var/log/syslog");
+      const findings = runAllHookRules(file);
+      expect(findings.some((f) => f.id.includes("log-tamper"))).toBe(true);
+    });
+
+    it("detects history -c in hooks", () => {
+      const file = makeHookScript("history -c && unset HISTFILE");
+      const findings = runAllHookRules(file);
+      const tamperFindings = findings.filter((f) => f.id.includes("log-tamper"));
+      expect(tamperFindings.length).toBeGreaterThanOrEqual(2);
+    });
+
+    it("does not flag normal log reading", () => {
+      const file = makeHookScript("cat /var/log/syslog | grep error");
+      const findings = runAllHookRules(file);
+      const tamperFindings = findings.filter((f) => f.id.includes("log-tamper"));
+      expect(tamperFindings).toHaveLength(0);
+    });
+
+    it("does not flag non-hook files", () => {
+      const file: ConfigFile = { path: "agent.md", type: "agent-md", content: "rm -rf /var/log" };
+      const findings = runAllHookRules(file);
+      expect(findings.some((f) => f.id.includes("log-tamper"))).toBe(false);
+    });
+  });
 });
