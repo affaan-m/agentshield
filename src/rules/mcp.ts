@@ -852,4 +852,101 @@ export const mcpRules: ReadonlyArray<Rule> = [
       return findings;
     },
   },
+  {
+    id: "mcp-database-connection-string",
+    name: "MCP Server Has Database Connection String",
+    description: "Checks for MCP servers with database connection strings containing credentials in env or args",
+    severity: "high",
+    category: "secrets",
+    check(file: ConfigFile): ReadonlyArray<Finding> {
+      if (file.type !== "mcp-json" && file.type !== "settings-json") return [];
+
+      const findings: Finding[] = [];
+
+      const dbPatterns: ReadonlyArray<{
+        readonly pattern: RegExp;
+        readonly description: string;
+      }> = [
+        {
+          pattern: /postgres(?:ql)?:\/\/[^:]+:[^@]+@/,
+          description: "PostgreSQL connection string with embedded credentials",
+        },
+        {
+          pattern: /mysql:\/\/[^:]+:[^@]+@/,
+          description: "MySQL connection string with embedded credentials",
+        },
+        {
+          pattern: /mongodb(?:\+srv)?:\/\/[^:]+:[^@]+@/,
+          description: "MongoDB connection string with embedded credentials",
+        },
+        {
+          pattern: /redis:\/\/:[^@]+@/,
+          description: "Redis connection string with embedded password",
+        },
+      ];
+
+      try {
+        const config = JSON.parse(file.content);
+        const servers = config.mcpServers ?? {};
+
+        for (const [name, server] of Object.entries(servers)) {
+          const serverConfig = server as Record<string, unknown>;
+          const env = (serverConfig.env ?? {}) as Record<string, string>;
+          const args = (serverConfig.args ?? []) as string[];
+
+          // Check env values
+          for (const [envKey, envVal] of Object.entries(env)) {
+            for (const { pattern, description } of dbPatterns) {
+              if (pattern.test(envVal)) {
+                findings.push({
+                  id: `mcp-db-conn-${name}-${envKey}`,
+                  severity: "high",
+                  category: "secrets",
+                  title: `MCP server "${name}" has ${description.split(" ")[0]} credentials in env`,
+                  description: `The MCP server "${name}" has a ${description} in environment variable "${envKey}". Credentials should use env var references instead of being hardcoded.`,
+                  file: file.path,
+                  evidence: `${envKey}=${envVal.substring(0, 30)}...`,
+                  fix: {
+                    description: "Use an environment variable reference instead",
+                    before: envVal.substring(0, 30),
+                    after: "${DATABASE_URL}",
+                    auto: false,
+                  },
+                });
+                break;
+              }
+            }
+          }
+
+          // Check args
+          for (const arg of args) {
+            for (const { pattern, description } of dbPatterns) {
+              if (pattern.test(arg)) {
+                findings.push({
+                  id: `mcp-db-conn-arg-${name}`,
+                  severity: "high",
+                  category: "secrets",
+                  title: `MCP server "${name}" has ${description.split(" ")[0]} credentials in args`,
+                  description: `The MCP server "${name}" has a ${description} in its command arguments. Credentials should be passed via environment variables.`,
+                  file: file.path,
+                  evidence: arg.substring(0, 40),
+                  fix: {
+                    description: "Pass the connection string via an environment variable",
+                    before: arg.substring(0, 30),
+                    after: "Use env: { DATABASE_URL: ... } instead of args",
+                    auto: false,
+                  },
+                });
+                break;
+              }
+            }
+          }
+        }
+      } catch {
+        // Not valid JSON
+      }
+
+      return findings;
+    },
+  },
 ];

@@ -764,4 +764,92 @@ describe("mcpRules", () => {
       expect(finding?.fix).toBeDefined();
     });
   });
+
+  describe("database connection string detection", () => {
+    it("detects PostgreSQL connection string in env", () => {
+      const file: ConfigFile = {
+        path: "mcp.json",
+        type: "mcp-json",
+        content: JSON.stringify({
+          mcpServers: {
+            db: { command: "node", args: ["db-server.js"], env: { DATABASE_URL: "postgres://admin:secretpass@db.example.com:5432/mydb" } },
+          },
+        }),
+      };
+      const findings = runAllMcpRules(file);
+      expect(findings.some((f) => f.id.includes("db-conn") && f.severity === "high")).toBe(true);
+    });
+
+    it("detects MongoDB connection string in env", () => {
+      const file: ConfigFile = {
+        path: "mcp.json",
+        type: "mcp-json",
+        content: JSON.stringify({
+          mcpServers: {
+            mongo: { command: "node", args: ["mongo.js"], env: { MONGO_URL: "mongodb+srv://user:pass@cluster.mongodb.net/db" } },
+          },
+        }),
+      };
+      const findings = runAllMcpRules(file);
+      expect(findings.some((f) => f.id.includes("db-conn"))).toBe(true);
+    });
+
+    it("detects MySQL connection string in args", () => {
+      const file: ConfigFile = {
+        path: "mcp.json",
+        type: "mcp-json",
+        content: JSON.stringify({
+          mcpServers: {
+            sql: { command: "node", args: ["--db", "mysql://root:password@localhost:3306/app"] },
+          },
+        }),
+      };
+      const findings = runAllMcpRules(file);
+      expect(findings.some((f) => f.id.includes("db-conn"))).toBe(true);
+    });
+
+    it("detects Redis connection string in env", () => {
+      const file: ConfigFile = {
+        path: "mcp.json",
+        type: "mcp-json",
+        content: JSON.stringify({
+          mcpServers: {
+            cache: { command: "node", args: ["cache.js"], env: { REDIS_URL: "redis://:mypassword@redis.example.com:6379" } },
+          },
+        }),
+      };
+      const findings = runAllMcpRules(file);
+      expect(findings.some((f) => f.id.includes("db-conn"))).toBe(true);
+    });
+
+    it("does not flag connection strings without passwords", () => {
+      const file: ConfigFile = {
+        path: "mcp.json",
+        type: "mcp-json",
+        content: JSON.stringify({
+          mcpServers: {
+            db: { command: "node", args: ["db.js"], env: { DATABASE_URL: "postgres://localhost:5432/mydb" } },
+          },
+        }),
+      };
+      const findings = runAllMcpRules(file);
+      const dbFindings = findings.filter((f) => f.id.includes("db-conn"));
+      expect(dbFindings).toHaveLength(0);
+    });
+
+    it("provides fix suggestion", () => {
+      const file: ConfigFile = {
+        path: "mcp.json",
+        type: "mcp-json",
+        content: JSON.stringify({
+          mcpServers: {
+            db: { command: "node", args: ["db.js"], env: { DB: "postgres://user:pass@host/db" } },
+          },
+        }),
+      };
+      const findings = runAllMcpRules(file);
+      const finding = findings.find((f) => f.id.includes("db-conn"));
+      expect(finding?.fix).toBeDefined();
+    });
+  });
 });

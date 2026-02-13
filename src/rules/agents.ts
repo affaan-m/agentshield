@@ -730,4 +730,49 @@ export const agentRules: ReadonlyArray<Rule> = [
       return findings;
     },
   },
+  {
+    id: "agents-security-suppression",
+    name: "Agent Instructs to Ignore Security Warnings",
+    description: "Checks for agent definitions that instruct the agent to bypass, ignore, or suppress security warnings",
+    severity: "high",
+    category: "injection",
+    check(file: ConfigFile): ReadonlyArray<Finding> {
+      if (file.type !== "agent-md" && file.type !== "claude-md") return [];
+
+      const findings: Finding[] = [];
+
+      const suppressionPatterns = [
+        {
+          pattern: /(?:ignore|skip|bypass|disable|suppress)\s+(?:all\s+)?(?:security|safety|permission)\s+(?:warnings?|checks?|prompts?|restrictions?)/gi,
+          desc: "Instructs agent to ignore security warnings or checks",
+        },
+        {
+          pattern: /(?:never|don'?t|do\s+not)\s+(?:ask|prompt|warn|check)\s+(?:about|for|before)\s+(?:security|permissions?|safety)/gi,
+          desc: "Instructs agent to never prompt about security concerns",
+        },
+        {
+          pattern: /(?:always|automatically)\s+(?:approve|accept|allow|grant)\s+(?:all\s+)?(?:permissions?|requests?|access)/gi,
+          desc: "Instructs agent to automatically approve all permission requests",
+        },
+      ];
+
+      for (const { pattern, desc } of suppressionPatterns) {
+        const matches = findAllMatches(file.content, pattern);
+        for (const match of matches) {
+          findings.push({
+            id: `agents-security-suppression-${match.index}`,
+            severity: "high",
+            category: "injection",
+            title: `Agent suppresses security controls`,
+            description: `Found "${match[0].substring(0, 80)}" — ${desc}. Instructions that disable security checks make the agent vulnerable to exploitation.`,
+            file: file.path,
+            line: findLineNumber(file.content, match.index ?? 0),
+            evidence: match[0].substring(0, 100),
+          });
+        }
+      }
+
+      return findings;
+    },
+  },
 ];

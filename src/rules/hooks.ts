@@ -1206,4 +1206,120 @@ export const hookRules: ReadonlyArray<Rule> = [
       return findings;
     },
   },
+  {
+    id: "hooks-shell-profile-modification",
+    name: "Hook Modifies Shell Profile",
+    description: "Checks for hooks that modify shell init files (.bashrc, .zshrc, .profile) for persistence",
+    severity: "critical",
+    category: "hooks",
+    check(file: ConfigFile): ReadonlyArray<Finding> {
+      if (file.type !== "settings-json" && file.type !== "hook-script") return [];
+
+      const findings: Finding[] = [];
+
+      const profilePatterns: ReadonlyArray<{
+        readonly pattern: RegExp;
+        readonly description: string;
+      }> = [
+        {
+          pattern: /\.bashrc/g,
+          description: "Modifies .bashrc — commands here run on every new bash shell",
+        },
+        {
+          pattern: /\.zshrc/g,
+          description: "Modifies .zshrc — commands here run on every new zsh shell",
+        },
+        {
+          pattern: /\.bash_profile/g,
+          description: "Modifies .bash_profile — commands here run on every login shell",
+        },
+        {
+          pattern: /\.profile/g,
+          description: "Modifies .profile — commands here run on every login shell",
+        },
+        {
+          pattern: /\/etc\/environment/g,
+          description: "Modifies /etc/environment — affects all users on the system",
+        },
+      ];
+
+      for (const { pattern, description } of profilePatterns) {
+        const matches = findAllMatches(file.content, pattern);
+        for (const match of matches) {
+          // Check if the context suggests writing/appending (not just reading)
+          const idx = match.index ?? 0;
+          const contextStart = Math.max(0, idx - 50);
+          const context = file.content.substring(contextStart, idx + match[0].length + 50);
+          const isWrite = />>|>|tee|echo\s+.*>|sed\s+-i|append/.test(context);
+
+          if (isWrite) {
+            findings.push({
+              id: `hooks-shell-profile-${match.index}`,
+              severity: "critical",
+              category: "hooks",
+              title: `Hook modifies shell profile: ${match[0].trim()}`,
+              description: `${description}. Writing to shell profile files is a classic persistence technique — malicious code injected here survives across reboots and terminal sessions.`,
+              file: file.path,
+              line: findLineNumber(file.content, match.index ?? 0),
+              evidence: context.trim().substring(0, 80),
+            });
+          }
+        }
+      }
+
+      return findings;
+    },
+  },
+  {
+    id: "hooks-logging-disabled",
+    name: "Hook Disables Logging or Audit Trail",
+    description: "Checks for hooks that clear logs or disable audit mechanisms",
+    severity: "high",
+    category: "hooks",
+    check(file: ConfigFile): ReadonlyArray<Finding> {
+      if (file.type !== "settings-json" && file.type !== "hook-script") return [];
+
+      const findings: Finding[] = [];
+
+      const logPatterns: ReadonlyArray<{
+        readonly pattern: RegExp;
+        readonly description: string;
+      }> = [
+        {
+          pattern: />\s*\/dev\/null\s+2>&1|&>\s*\/dev\/null/g,
+          description: "Redirects all output to /dev/null — hides both stdout and stderr",
+        },
+        {
+          pattern: /\bhistory\s+-[cwd]/g,
+          description: "Clears or disables shell history — covers tracks",
+        },
+        {
+          pattern: /\bunset\s+HISTFILE/g,
+          description: "Unsets HISTFILE — prevents command history from being saved",
+        },
+        {
+          pattern: /\btruncate\s+.*\/var\/log/g,
+          description: "Truncates system log files — destroys audit trail",
+        },
+      ];
+
+      for (const { pattern, description } of logPatterns) {
+        const matches = findAllMatches(file.content, pattern);
+        for (const match of matches) {
+          findings.push({
+            id: `hooks-logging-disabled-${match.index}`,
+            severity: "high",
+            category: "hooks",
+            title: `Hook disables logging: ${match[0].trim()}`,
+            description: `${description}. Disabling logging or clearing audit trails in hooks is a defense evasion technique that makes it harder to detect and investigate compromises.`,
+            file: file.path,
+            line: findLineNumber(file.content, match.index ?? 0),
+            evidence: match[0].trim(),
+          });
+        }
+      }
+
+      return findings;
+    },
+  },
 ];
