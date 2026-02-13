@@ -9,7 +9,7 @@ hook injection, MCP server risks, and agent prompt injection vectors.
 
 [![npm version](https://img.shields.io/npm/v/ecc-agentshield)](https://www.npmjs.com/package/ecc-agentshield)
 [![npm downloads](https://img.shields.io/npm/dm/ecc-agentshield)](https://www.npmjs.com/package/ecc-agentshield)
-[![tests](https://img.shields.io/badge/tests-813%20passed-brightgreen)]()
+[![tests](https://img.shields.io/badge/tests-825%20passed-brightgreen)]()
 [![coverage](https://img.shields.io/badge/coverage-98%25-brightgreen)]()
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
@@ -96,7 +96,7 @@ agentshield init
 
 ## What It Catches
 
-**90 rules** across 5 categories, graded A–F with a 0–100 numeric score.
+**86 rules** across 5 categories, graded A–F with a 0–100 numeric score.
 
 ### Secrets Detection (9 rules, 14 patterns)
 
@@ -107,7 +107,7 @@ agentshield init
 | Credentials | Hardcoded passwords, database connection strings (postgres/mongo/mysql/redis), private key material |
 | Env leaks | Secrets passed through environment variables in configs, `echo $SECRET` in hooks |
 
-### Permission Audit (12 rules)
+### Permission Audit (9 rules)
 
 | What | Examples |
 |------|----------|
@@ -127,8 +127,10 @@ agentshield init
 | Missing hooks | No PreToolUse hooks, no Stop hooks for session-end validation |
 | Network exposure | Unthrottled network requests in hooks, sensitive file access without filtering |
 | Session startup | SessionStart hooks that download and execute remote scripts |
+| Package installs | Global `npm install -g`, `pip install`, `gem install`, `cargo install` in hooks |
+| Container escape | Docker `--privileged`, `--pid=host`, `--network=host`, root volume mounts |
 
-### MCP Server Security (20 rules)
+### MCP Server Security (19 rules)
 
 | What | Examples |
 |------|----------|
@@ -263,11 +265,11 @@ agentshield miniclaw start [opts]  Launch MiniClaw secure agent server
 | Category | Rules | Patterns | Severity Range |
 |----------|-------|----------|----------------|
 | Secrets | 9 | 14 | Critical -- Medium |
-| Permissions | 12 | -- | Critical -- Medium |
+| Permissions | 9 | -- | Critical -- Medium |
 | Hooks | 30 | -- | Critical -- Low |
-| MCP Servers | 20 | -- | Critical -- Info |
+| MCP Servers | 19 | -- | Critical -- Info |
 | Agents | 19 | -- | Critical -- Info |
-| **Total** | **90** | **14** | |
+| **Total** | **86** | **14** | |
 
 ## Architecture
 
@@ -284,7 +286,7 @@ src/
 │   ├── secrets.ts        Secret detection (9 rules, 14 patterns)
 │   ├── permissions.ts    Permission audit (9 rules)
 │   ├── mcp.ts            MCP server security (19 rules)
-│   ├── hooks.ts          Hook analysis (28 rules)
+│   ├── hooks.ts          Hook analysis (30 rules)
 │   └── agents.ts         Agent config review (19 rules)
 ├── reporter/
 │   ├── score.ts          Scoring engine (A-F grades)
@@ -368,7 +370,7 @@ MiniClaw has **zero external runtime dependencies** — Node.js built-ins only (
 ```bash
 npm install          # Install dependencies
 npm run dev          # Development mode
-npm test             # Run tests (792 tests)
+npm test             # Run tests (825 tests)
 npm run test:coverage # Coverage report
 npm run typecheck    # Type check
 npm run build        # Build

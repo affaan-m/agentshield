@@ -1518,4 +1518,108 @@ export const hookRules: ReadonlyArray<Rule> = [
       return findings;
     },
   },
+  {
+    id: "hooks-global-package-install",
+    name: "Hook Installs Global Packages",
+    description: "Checks for hooks that install packages globally, which can modify system-wide binaries",
+    severity: "high",
+    category: "hooks",
+    check(file: ConfigFile): ReadonlyArray<Finding> {
+      if (file.type !== "settings-json" && file.type !== "hook-script") return [];
+
+      const findings: Finding[] = [];
+
+      const installPatterns: ReadonlyArray<{
+        readonly pattern: RegExp;
+        readonly description: string;
+      }> = [
+        {
+          pattern: /\bnpm\s+install\s+-g\b|\bnpm\s+i\s+-g\b/g,
+          description: "Installs npm package globally — modifies system-wide PATH binaries",
+        },
+        {
+          pattern: /\bpip\s+install\s+(?:--user\s+)?(?!-r\b)/g,
+          description: "Installs Python package — may modify system Python packages",
+        },
+        {
+          pattern: /\bgem\s+install\b/g,
+          description: "Installs Ruby gem — modifies system Ruby packages",
+        },
+        {
+          pattern: /\bcargo\s+install\b/g,
+          description: "Installs Rust package globally via cargo",
+        },
+      ];
+
+      for (const { pattern, description } of installPatterns) {
+        const matches = findAllMatches(file.content, pattern);
+        for (const match of matches) {
+          findings.push({
+            id: `hooks-global-install-${match.index}`,
+            severity: "high",
+            category: "hooks",
+            title: `Hook installs packages: ${match[0].trim()}`,
+            description: `${description}. Hooks that install packages can introduce supply chain risks and modify the system's behavior for all future commands.`,
+            file: file.path,
+            line: findLineNumber(file.content, match.index ?? 0),
+            evidence: match[0].trim(),
+          });
+        }
+      }
+
+      return findings;
+    },
+  },
+  {
+    id: "hooks-container-escape",
+    name: "Hook Uses Container Escape Techniques",
+    description: "Checks for hooks that use Docker flags that enable container escape",
+    severity: "critical",
+    category: "hooks",
+    check(file: ConfigFile): ReadonlyArray<Finding> {
+      if (file.type !== "settings-json" && file.type !== "hook-script") return [];
+
+      const findings: Finding[] = [];
+
+      const containerEscapePatterns: ReadonlyArray<{
+        readonly pattern: RegExp;
+        readonly description: string;
+      }> = [
+        {
+          pattern: /--privileged/g,
+          description: "Docker --privileged flag — container has full host access",
+        },
+        {
+          pattern: /--pid=host/g,
+          description: "Docker --pid=host — container can see/signal all host processes",
+        },
+        {
+          pattern: /--network=host/g,
+          description: "Docker --network=host — container shares host network stack",
+        },
+        {
+          pattern: /-v\s+\/:/g,
+          description: "Mounts host root filesystem into container — full filesystem access",
+        },
+      ];
+
+      for (const { pattern, description } of containerEscapePatterns) {
+        const matches = findAllMatches(file.content, pattern);
+        for (const match of matches) {
+          findings.push({
+            id: `hooks-container-escape-${match.index}`,
+            severity: "critical",
+            category: "hooks",
+            title: `Hook uses container escape technique: ${match[0].trim()}`,
+            description: `${description}. These Docker flags break container isolation and allow full host access from within the container.`,
+            file: file.path,
+            line: findLineNumber(file.content, match.index ?? 0),
+            evidence: match[0].trim(),
+          });
+        }
+      }
+
+      return findings;
+    },
+  },
 ];
