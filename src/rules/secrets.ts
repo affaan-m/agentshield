@@ -572,4 +572,59 @@ export const secretRules: ReadonlyArray<Rule> = [
       return findings;
     },
   },
+  {
+    id: "secrets-hardcoded-ip-port",
+    name: "Hardcoded Internal IP Address with Port",
+    description: "Checks for hardcoded internal/private IP addresses with ports, which may expose internal services",
+    severity: "medium",
+    category: "secrets",
+    check(file: ConfigFile): ReadonlyArray<Finding> {
+      const findings: Finding[] = [];
+
+      // Match private IP ranges with ports: 10.x.x.x, 172.16-31.x.x, 192.168.x.x
+      const ipPatterns: ReadonlyArray<{
+        readonly pattern: RegExp;
+        readonly description: string;
+      }> = [
+        {
+          pattern: /\b10\.\d{1,3}\.\d{1,3}\.\d{1,3}:\d{2,5}\b/g,
+          description: "Class A private IP (10.x.x.x) with port",
+        },
+        {
+          pattern: /\b172\.(?:1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3}:\d{2,5}\b/g,
+          description: "Class B private IP (172.16-31.x.x) with port",
+        },
+        {
+          pattern: /\b192\.168\.\d{1,3}\.\d{1,3}:\d{2,5}\b/g,
+          description: "Class C private IP (192.168.x.x) with port",
+        },
+      ];
+
+      for (const { pattern, description } of ipPatterns) {
+        const matches = findAllMatches(file.content, pattern);
+        for (const match of matches) {
+          const idx = match.index ?? 0;
+
+          findings.push({
+            id: `secrets-hardcoded-ip-${idx}`,
+            severity: "medium",
+            category: "secrets",
+            title: `Hardcoded internal IP with port: ${match[0]}`,
+            description: `Found "${match[0]}" — ${description}. Hardcoded internal IPs expose network topology and service locations. Use environment variables or DNS names instead.`,
+            file: file.path,
+            line: findLineNumber(file.content, idx),
+            evidence: match[0],
+            fix: {
+              description: "Replace with environment variable or DNS name",
+              before: match[0],
+              after: "${INTERNAL_SERVICE_URL}",
+              auto: false,
+            },
+          });
+        }
+      }
+
+      return findings;
+    },
+  },
 ];

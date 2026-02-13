@@ -1068,4 +1068,160 @@ export const mcpRules: ReadonlyArray<Rule> = [
       return findings;
     },
   },
+  {
+    id: "mcp-sensitive-file-args",
+    name: "MCP Server References Sensitive Files in Arguments",
+    description: "Checks for MCP servers with credential files (.env, .pem, credentials.json) passed as arguments",
+    severity: "high",
+    category: "secrets",
+    check(file: ConfigFile): ReadonlyArray<Finding> {
+      if (file.type !== "mcp-json" && file.type !== "settings-json") return [];
+
+      const findings: Finding[] = [];
+
+      try {
+        const config = JSON.parse(file.content);
+        const servers = config.mcpServers ?? {};
+
+        const sensitiveFilePatterns: ReadonlyArray<{
+          readonly pattern: RegExp;
+          readonly description: string;
+        }> = [
+          {
+            pattern: /\.env\b/,
+            description: "References .env file — may contain API keys and secrets",
+          },
+          {
+            pattern: /\.pem\b/,
+            description: "References .pem file — may contain private key material",
+          },
+          {
+            pattern: /credentials\.json/,
+            description: "References credentials.json — likely contains authentication credentials",
+          },
+          {
+            pattern: /service[_-]?account.*\.json/i,
+            description: "References a service account key file",
+          },
+          {
+            pattern: /\.p12\b|\.pfx\b/,
+            description: "References PKCS#12 certificate file — contains private keys",
+          },
+          {
+            pattern: /id_(?:rsa|ed25519|ecdsa)(?:\.pub)?$/,
+            description: "References SSH key file",
+          },
+        ];
+
+        for (const [name, server] of Object.entries(servers)) {
+          const serverConfig = server as Record<string, unknown>;
+          const args = (serverConfig.args ?? []) as string[];
+
+          for (const arg of args) {
+            for (const { pattern, description } of sensitiveFilePatterns) {
+              if (pattern.test(arg)) {
+                findings.push({
+                  id: `mcp-sensitive-file-${name}-${arg.substring(0, 20)}`,
+                  severity: "high",
+                  category: "secrets",
+                  title: `MCP server "${name}" references sensitive file: ${arg}`,
+                  description: `The MCP server "${name}" has "${arg}" in its arguments. ${description}. Sensitive files passed as arguments may be logged or exposed.`,
+                  file: file.path,
+                  evidence: `args: [..., "${arg}"]`,
+                  fix: {
+                    description: "Use environment variables instead of passing sensitive file paths as arguments",
+                    before: arg,
+                    after: "Use env: { CONFIG_PATH: ... } instead",
+                    auto: false,
+                  },
+                });
+                break; // Only report once per arg
+              }
+            }
+          }
+        }
+      } catch {
+        // Not valid JSON
+      }
+
+      return findings;
+    },
+  },
+  {
+    id: "mcp-bind-all-interfaces",
+    name: "MCP Server Binds to All Network Interfaces",
+    description: "Checks for MCP servers configured to listen on 0.0.0.0, exposing the server to the network",
+    severity: "high",
+    category: "mcp",
+    check(file: ConfigFile): ReadonlyArray<Finding> {
+      if (file.type !== "mcp-json" && file.type !== "settings-json") return [];
+
+      const findings: Finding[] = [];
+
+      try {
+        const config = JSON.parse(file.content);
+        const servers = config.mcpServers ?? {};
+
+        for (const [name, server] of Object.entries(servers)) {
+          const serverConfig = server as Record<string, unknown>;
+          const args = (serverConfig.args ?? []) as string[];
+          const env = (serverConfig.env ?? {}) as Record<string, string>;
+          const url = (serverConfig.url ?? "") as string;
+
+          const fullArgs = args.join(" ");
+
+          // Check for 0.0.0.0 in args (--host 0.0.0.0, --bind 0.0.0.0, -H 0.0.0.0)
+          if (/0\.0\.0\.0/.test(fullArgs)) {
+            findings.push({
+              id: `mcp-bind-all-${name}-args`,
+              severity: "high",
+              category: "mcp",
+              title: `MCP server "${name}" binds to all interfaces (0.0.0.0)`,
+              description: `The MCP server "${name}" is configured to bind to 0.0.0.0, making it accessible from any network interface. This exposes the server to the local network and potentially the internet. Bind to 127.0.0.1 (localhost) instead.`,
+              file: file.path,
+              evidence: fullArgs.substring(0, 80),
+              fix: {
+                description: "Bind to localhost instead of all interfaces",
+                before: "0.0.0.0",
+                after: "127.0.0.1",
+                auto: false,
+              },
+            });
+          }
+
+          // Check URL for 0.0.0.0
+          if (/0\.0\.0\.0/.test(url)) {
+            findings.push({
+              id: `mcp-bind-all-${name}-url`,
+              severity: "high",
+              category: "mcp",
+              title: `MCP server "${name}" connects to 0.0.0.0`,
+              description: `The MCP server "${name}" URL contains 0.0.0.0. This may indicate the server is listening on all network interfaces, exposing it beyond localhost.`,
+              file: file.path,
+              evidence: url.substring(0, 60),
+            });
+          }
+
+          // Check env for HOST=0.0.0.0
+          for (const [envKey, envVal] of Object.entries(env)) {
+            if (/^(?:HOST|BIND|LISTEN)$/i.test(envKey) && envVal === "0.0.0.0") {
+              findings.push({
+                id: `mcp-bind-all-${name}-env`,
+                severity: "high",
+                category: "mcp",
+                title: `MCP server "${name}" binds to all interfaces via env`,
+                description: `The MCP server "${name}" has ${envKey}=0.0.0.0, which exposes the server on all network interfaces.`,
+                file: file.path,
+                evidence: `${envKey}=${envVal}`,
+              });
+            }
+          }
+        }
+      } catch {
+        // Not valid JSON
+      }
+
+      return findings;
+    },
+  },
 ];

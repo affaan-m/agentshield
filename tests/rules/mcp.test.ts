@@ -952,4 +952,95 @@ describe("mcpRules", () => {
       expect(corsFindings).toHaveLength(0);
     });
   });
+
+  describe("sensitive file args", () => {
+    it("detects .env file in args", () => {
+      const file = makeMcpConfig({
+        server: { command: "node", args: ["server.js", "--config", ".env"] },
+      });
+      const findings = runAllMcpRules(file);
+      expect(findings.some((f) => f.id.includes("sensitive-file") && f.severity === "high")).toBe(true);
+    });
+
+    it("detects .pem file in args", () => {
+      const file = makeMcpConfig({
+        server: { command: "node", args: ["server.js", "--cert", "server.pem"] },
+      });
+      const findings = runAllMcpRules(file);
+      expect(findings.some((f) => f.id.includes("sensitive-file"))).toBe(true);
+    });
+
+    it("detects credentials.json in args", () => {
+      const file = makeMcpConfig({
+        gcp: { command: "node", args: ["gcp-server.js", "--key", "credentials.json"] },
+      });
+      const findings = runAllMcpRules(file);
+      expect(findings.some((f) => f.id.includes("sensitive-file"))).toBe(true);
+    });
+
+    it("detects service account key file in args", () => {
+      const file = makeMcpConfig({
+        gcp: { command: "node", args: ["--service-account", "service_account.json"] },
+      });
+      const findings = runAllMcpRules(file);
+      expect(findings.some((f) => f.id.includes("sensitive-file"))).toBe(true);
+    });
+
+    it("does not flag normal file args", () => {
+      const file = makeMcpConfig({
+        server: { command: "node", args: ["server.js", "--config", "config.yaml"] },
+      });
+      const findings = runAllMcpRules(file);
+      const sensitiveFindings = findings.filter((f) => f.id.includes("sensitive-file"));
+      expect(sensitiveFindings).toHaveLength(0);
+    });
+  });
+
+  describe("bind all interfaces", () => {
+    it("detects 0.0.0.0 in args", () => {
+      const file = makeMcpConfig({
+        server: { command: "node", args: ["server.js", "--host", "0.0.0.0"] },
+      });
+      const findings = runAllMcpRules(file);
+      expect(findings.some((f) => f.id.includes("bind-all") && f.severity === "high")).toBe(true);
+    });
+
+    it("detects 0.0.0.0 in URL", () => {
+      const file: ConfigFile = {
+        path: "mcp.json",
+        type: "mcp-json",
+        content: JSON.stringify({
+          mcpServers: {
+            server: { url: "http://0.0.0.0:3000/mcp" },
+          },
+        }),
+      };
+      const findings = runAllMcpRules(file);
+      expect(findings.some((f) => f.id.includes("bind-all"))).toBe(true);
+    });
+
+    it("detects HOST=0.0.0.0 in env", () => {
+      const file = makeMcpConfig({
+        server: { command: "node", args: ["server.js"], env: { HOST: "0.0.0.0" } },
+      });
+      const findings = runAllMcpRules(file);
+      expect(findings.some((f) => f.id.includes("bind-all"))).toBe(true);
+    });
+
+    it("does not flag localhost binding", () => {
+      const file = makeMcpConfig({
+        server: { command: "node", args: ["server.js", "--host", "127.0.0.1"] },
+      });
+      const findings = runAllMcpRules(file);
+      const bindFindings = findings.filter((f) => f.id.includes("bind-all"));
+      expect(bindFindings).toHaveLength(0);
+    });
+
+    it("does not flag non-MCP files", () => {
+      const file: ConfigFile = { path: "settings.json", type: "settings-json", content: "0.0.0.0" };
+      const findings = runAllMcpRules(file);
+      const bindFindings = findings.filter((f) => f.id.includes("bind-all"));
+      expect(bindFindings).toHaveLength(0);
+    });
+  });
 });

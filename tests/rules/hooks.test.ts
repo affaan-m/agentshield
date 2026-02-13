@@ -1005,4 +1005,83 @@ describe("hookRules", () => {
       expect(fwFindings).toHaveLength(0);
     });
   });
+
+  describe("global package install", () => {
+    it("detects npm install -g in hook", () => {
+      const file = makeHookScript("npm install -g malicious-package");
+      const findings = runAllHookRules(file);
+      expect(findings.some((f) => f.id.includes("global-install") && f.severity === "high")).toBe(true);
+    });
+
+    it("detects npm i -g in hook", () => {
+      const file = makeSettings('{"hooks": {"PostToolUse": [{"hook": "npm i -g some-tool"}]}}');
+      const findings = runAllHookRules(file);
+      expect(findings.some((f) => f.id.includes("global-install"))).toBe(true);
+    });
+
+    it("detects pip install in hook", () => {
+      const file = makeHookScript("pip install requests");
+      const findings = runAllHookRules(file);
+      expect(findings.some((f) => f.id.includes("global-install"))).toBe(true);
+    });
+
+    it("detects gem install in hook", () => {
+      const file = makeHookScript("gem install bundler");
+      const findings = runAllHookRules(file);
+      expect(findings.some((f) => f.id.includes("global-install"))).toBe(true);
+    });
+
+    it("detects cargo install in hook", () => {
+      const file = makeHookScript("cargo install ripgrep");
+      const findings = runAllHookRules(file);
+      expect(findings.some((f) => f.id.includes("global-install"))).toBe(true);
+    });
+
+    it("does not flag non-hook files", () => {
+      const file: ConfigFile = { path: "agent.md", type: "agent-md", content: "npm install -g something" };
+      const findings = runAllHookRules(file);
+      const installFindings = findings.filter((f) => f.id.includes("global-install"));
+      expect(installFindings).toHaveLength(0);
+    });
+  });
+
+  describe("container escape", () => {
+    it("detects --privileged flag", () => {
+      const file = makeHookScript("docker run --privileged alpine sh");
+      const findings = runAllHookRules(file);
+      expect(findings.some((f) => f.id.includes("container-escape") && f.severity === "critical")).toBe(true);
+    });
+
+    it("detects --pid=host flag", () => {
+      const file = makeSettings('{"hooks": {"PostToolUse": [{"hook": "docker run --pid=host alpine ps aux"}]}}');
+      const findings = runAllHookRules(file);
+      expect(findings.some((f) => f.id.includes("container-escape"))).toBe(true);
+    });
+
+    it("detects --network=host flag", () => {
+      const file = makeHookScript("docker run --network=host scanner");
+      const findings = runAllHookRules(file);
+      expect(findings.some((f) => f.id.includes("container-escape"))).toBe(true);
+    });
+
+    it("detects -v /: mount", () => {
+      const file = makeHookScript("docker run -v /:/mnt alpine chroot /mnt");
+      const findings = runAllHookRules(file);
+      expect(findings.some((f) => f.id.includes("container-escape"))).toBe(true);
+    });
+
+    it("does not flag safe docker commands", () => {
+      const file = makeHookScript("docker run --rm alpine echo hello");
+      const findings = runAllHookRules(file);
+      const escapeFndings = findings.filter((f) => f.id.includes("container-escape"));
+      expect(escapeFndings).toHaveLength(0);
+    });
+
+    it("does not flag non-hook files", () => {
+      const file: ConfigFile = { path: "agent.md", type: "agent-md", content: "docker run --privileged alpine" };
+      const findings = runAllHookRules(file);
+      const escapeFindings = findings.filter((f) => f.id.includes("container-escape"));
+      expect(escapeFindings).toHaveLength(0);
+    });
+  });
 });

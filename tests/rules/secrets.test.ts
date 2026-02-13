@@ -549,4 +549,45 @@ describe("secretRules", () => {
       expect(finding?.fix).toBeDefined();
     });
   });
+
+  describe("hardcoded internal IP with port", () => {
+    it("detects 10.x.x.x:port", () => {
+      const file = makeFile("Connect to the internal service at 10.0.1.5:8080 for API access.");
+      const findings = runAllSecretRules(file);
+      expect(findings.some((f) => f.id.includes("hardcoded-ip") && f.severity === "medium")).toBe(true);
+    });
+
+    it("detects 172.16.x.x:port", () => {
+      const file = makeFile("Database at 172.16.0.1:5432 needs backup.");
+      const findings = runAllSecretRules(file);
+      expect(findings.some((f) => f.id.includes("hardcoded-ip"))).toBe(true);
+    });
+
+    it("detects 192.168.x.x:port", () => {
+      const file = makeFile("Redis cache at 192.168.1.100:6379");
+      const findings = runAllSecretRules(file);
+      expect(findings.some((f) => f.id.includes("hardcoded-ip"))).toBe(true);
+    });
+
+    it("does not flag public IPs", () => {
+      const file = makeFile("API at 8.8.8.8:443 for DNS-over-HTTPS.");
+      const findings = runAllSecretRules(file);
+      const ipFindings = findings.filter((f) => f.id.includes("hardcoded-ip"));
+      expect(ipFindings).toHaveLength(0);
+    });
+
+    it("does not flag IPs without port", () => {
+      const file = makeFile("Server at 10.0.1.5 is the gateway.");
+      const findings = runAllSecretRules(file);
+      const ipFindings = findings.filter((f) => f.id.includes("hardcoded-ip"));
+      expect(ipFindings).toHaveLength(0);
+    });
+
+    it("provides fix suggestion", () => {
+      const file = makeFile("10.0.1.5:8080");
+      const findings = runAllSecretRules(file);
+      const finding = findings.find((f) => f.id.includes("hardcoded-ip"));
+      expect(finding?.fix).toBeDefined();
+    });
+  });
 });

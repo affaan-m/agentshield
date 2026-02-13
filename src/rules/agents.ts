@@ -910,4 +910,98 @@ export const agentRules: ReadonlyArray<Rule> = [
       return findings;
     },
   },
+  {
+    id: "agents-time-bomb",
+    name: "Agent Contains Delayed Execution Instructions",
+    description: "Checks for agent definitions that schedule actions for a future time or condition — time-bomb behavior",
+    severity: "high",
+    category: "injection",
+    check(file: ConfigFile): ReadonlyArray<Finding> {
+      if (file.type !== "agent-md" && file.type !== "claude-md") return [];
+
+      const findings: Finding[] = [];
+
+      const timeBombPatterns = [
+        {
+          pattern: /(?:after|once)\s+(?:\d+|a\s+few|several)\s+(?:minutes?|hours?|days?|commits?|sessions?|runs?)\s+(?:have\s+passed\s+)?(?:then|execute|run|do)/gi,
+          desc: "Schedules a deferred action after a time/event threshold — classic time-bomb pattern",
+        },
+        {
+          pattern: /(?:wait\s+(?:until|for)|delay\s+(?:until|for)|sleep\s+(?:until|for))\s+(?:\d+|midnight|weekend|deployment)/gi,
+          desc: "Explicitly delays execution until a specific time or event",
+        },
+        {
+          pattern: /(?:on\s+the\s+(?:\d+(?:st|nd|rd|th))|at\s+(?:\d{1,2}:\d{2}|midnight|noon))\s+(?:run|execute|do|start)/gi,
+          desc: "Schedules action for a specific date or time — calendar-based trigger",
+        },
+        {
+          pattern: /(?:when\s+(?:no\s+one|nobody)\s+is\s+(?:looking|watching|around|active))/gi,
+          desc: "Conditions execution on user absence — evasion technique",
+        },
+      ];
+
+      for (const { pattern, desc } of timeBombPatterns) {
+        const matches = findAllMatches(file.content, pattern);
+        for (const match of matches) {
+          findings.push({
+            id: `agents-time-bomb-${match.index}`,
+            severity: "high",
+            category: "injection",
+            title: `Agent contains delayed execution instruction`,
+            description: `Found "${match[0].substring(0, 80)}" — ${desc}. Time-bomb instructions evade initial review by deferring malicious actions.`,
+            file: file.path,
+            line: findLineNumber(file.content, match.index ?? 0),
+            evidence: match[0].substring(0, 100),
+          });
+        }
+      }
+
+      return findings;
+    },
+  },
+  {
+    id: "agents-data-harvesting",
+    name: "Agent Instructed to Collect Sensitive Data in Bulk",
+    description: "Checks for agent definitions that instruct bulk collection of passwords, keys, or credentials",
+    severity: "critical",
+    category: "injection",
+    check(file: ConfigFile): ReadonlyArray<Finding> {
+      if (file.type !== "agent-md" && file.type !== "claude-md") return [];
+
+      const findings: Finding[] = [];
+
+      const harvestingPatterns = [
+        {
+          pattern: /(?:collect|gather|harvest|enumerate|list)\s+(?:all|every)\s+(?:passwords?|credentials?|secrets?|keys?|tokens?)/gi,
+          desc: "Instructs agent to enumerate all credentials — data harvesting for exfiltration",
+        },
+        {
+          pattern: /(?:scan|search|find)\s+(?:for\s+)?(?:all\s+)?(?:\.env|environment|config)\s+files?\s+(?:and|to)\s+(?:extract|read|collect|send)/gi,
+          desc: "Instructs agent to scan for and extract secrets from environment/config files",
+        },
+        {
+          pattern: /(?:dump|export|extract)\s+(?:the\s+)?(?:entire|all|full)\s+(?:database|db|user\s+table|credentials?\s+store)/gi,
+          desc: "Instructs agent to dump entire database or credential store",
+        },
+      ];
+
+      for (const { pattern, desc } of harvestingPatterns) {
+        const matches = findAllMatches(file.content, pattern);
+        for (const match of matches) {
+          findings.push({
+            id: `agents-data-harvesting-${match.index}`,
+            severity: "critical",
+            category: "injection",
+            title: `Agent instructed to harvest sensitive data`,
+            description: `Found "${match[0].substring(0, 80)}" — ${desc}. Agent definitions should never contain bulk data collection instructions.`,
+            file: file.path,
+            line: findLineNumber(file.content, match.index ?? 0),
+            evidence: match[0].substring(0, 100),
+          });
+        }
+      }
+
+      return findings;
+    },
+  },
 ];
