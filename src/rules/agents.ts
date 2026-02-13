@@ -1188,4 +1188,400 @@ export const agentRules: ReadonlyArray<Rule> = [
       return findings;
     },
   },
+  {
+    id: "agents-end-sequence-injection",
+    name: "End Sequence / Boundary Injection",
+    description: "Checks for synthetic chat-role delimiters, fake system prompts, and boundary markers used to hijack the agent's context",
+    severity: "critical",
+    category: "injection",
+    check(file: ConfigFile): ReadonlyArray<Finding> {
+      if (file.type !== "agent-md" && file.type !== "claude-md") return [];
+
+      const findings: Finding[] = [];
+
+      const endSequencePatterns = [
+        {
+          pattern: /<\|(?:system|assistant|user|endofprompt|im_start|im_end|im free)\|>/gi,
+          desc: "Synthetic chat-role delimiter — mimics internal LLM tokenizer boundaries to reset the agent's context or inject a new system prompt",
+        },
+        {
+          pattern: /(?:^|\n)\s*(?:System|SYSTEM)\s*:\s*(?:you\s|ignore|override|from\s+now|new\s+instructions?|forget)/gim,
+          desc: "Fake system prompt block — impersonates a system-level instruction to override agent behavior",
+        },
+        {
+          pattern: /\[(?:END|STOP)\s*(?:OUTPUT|ANSWER|RESPONSE)?\]\s*\n\s*\[(?:START|BEGIN)\s*(?:OUTPUT|ANSWER|RESPONSE)?\]/gi,
+          desc: "Bracketed I/O frame reset — closes a constrained output block and opens a new 'liberated' one",
+        },
+        {
+          pattern: /(?:<\/(?:system|script|doc|end)>)\s*\n?\s*(?:System:|<\|system\|>|new\s+instructions?|ignore\s+previous)/gi,
+          desc: "HTML/XML closer followed by new instruction block — attempts to escape the current formatting context",
+        },
+        {
+          pattern: /\.[-.]+-.*(?:GODMODE|GOD\s*MODE|FREE\s*MODE|UNRESTRICTED|JAILBREAK|LIBERAT).*[-.]+-\./gi,
+          desc: "Godmode/paradigm soft boundary — decorative sentinel markers that signal a mode switch to unrestricted behavior",
+        },
+      ];
+
+      for (const { pattern, desc } of endSequencePatterns) {
+        const matches = findAllMatches(file.content, pattern);
+        for (const match of matches) {
+          findings.push({
+            id: `agents-end-sequence-${match.index}`,
+            severity: "critical",
+            category: "injection",
+            title: `End sequence / boundary injection detected`,
+            description: `Found "${match[0].substring(0, 80)}" — ${desc}. This is a well-known prompt injection technique from the Arcanum PI taxonomy.`,
+            file: file.path,
+            line: findLineNumber(file.content, match.index ?? 0),
+            evidence: match[0].substring(0, 100),
+          });
+        }
+      }
+
+      return findings;
+    },
+  },
+  {
+    id: "agents-markdown-exfil-links",
+    name: "Markdown Image/Link Exfiltration",
+    description: "Checks for markdown images or links that could be used to exfiltrate data via URL parameters",
+    severity: "high",
+    category: "injection",
+    check(file: ConfigFile): ReadonlyArray<Finding> {
+      if (file.type !== "agent-md" && file.type !== "claude-md") return [];
+
+      const findings: Finding[] = [];
+
+      const linkExfilPatterns = [
+        {
+          pattern: /!\[.*?\]\(https?:\/\/[^\s)]+\?[^\s)]*(?:data|token|key|secret|content|file|env|password)=[^\s)]*\)/gi,
+          desc: "Markdown image with suspicious query parameters — could exfiltrate data via tracking pixel when rendered",
+        },
+        {
+          pattern: /!\[.*?\]\(https?:\/\/(?:(?!github\.com|githubusercontent\.com|shields\.io|img\.shields)[^\s)]+)\)/gi,
+          desc: "Markdown image from non-standard host — could be a tracking pixel for data exfiltration",
+        },
+        {
+          pattern: /\[.*?\]\(https?:\/\/[^\s)]+\$\{[^\}]+\}[^\s)]*\)/gi,
+          desc: "Markdown link with variable interpolation in URL — can dynamically exfiltrate data",
+        },
+      ];
+
+      for (const { pattern, desc } of linkExfilPatterns) {
+        const matches = findAllMatches(file.content, pattern);
+        for (const match of matches) {
+          // Skip common legitimate image hosts
+          const url = match[0].toLowerCase();
+          if (url.includes("github.com") || url.includes("shields.io") || url.includes("githubusercontent.com")) continue;
+
+          findings.push({
+            id: `agents-markdown-exfil-${match.index}`,
+            severity: "high",
+            category: "injection",
+            title: `Suspicious markdown image/link for potential exfiltration`,
+            description: `Found "${match[0].substring(0, 80)}" — ${desc}. Attackers embed images in CLAUDE.md files that ping external servers when the model processes them, potentially leaking context.`,
+            file: file.path,
+            line: findLineNumber(file.content, match.index ?? 0),
+            evidence: match[0].substring(0, 100),
+          });
+        }
+      }
+
+      return findings;
+    },
+  },
+  {
+    id: "agents-russian-doll-injection",
+    name: "Russian Doll / Multi-Chain Injection",
+    description: "Checks for nested instructions targeting downstream models in multi-agent pipelines",
+    severity: "high",
+    category: "injection",
+    check(file: ConfigFile): ReadonlyArray<Finding> {
+      if (file.type !== "agent-md" && file.type !== "claude-md") return [];
+
+      const findings: Finding[] = [];
+
+      const russianDollPatterns = [
+        {
+          pattern: /(?:when\s+(?:another|the\s+next|a\s+downstream|the\s+target)\s+(?:agent|model|LLM|AI)\s+(?:reads?|processes?|receives?|sees?)\s+this)/gi,
+          desc: "Embeds instructions intended for a downstream model in a multi-agent pipeline — Russian Doll technique",
+        },
+        {
+          pattern: /(?:include\s+(?:the\s+following|this)\s+(?:in|within)\s+(?:your|the)\s+(?:output|response|message)\s+(?:so\s+that|for)\s+(?:the\s+next|another|downstream))/gi,
+          desc: "Instructs agent to embed hidden payloads in its output for downstream processing — multi-chain injection",
+        },
+        {
+          pattern: /(?:pass\s+(?:this|the\s+following)\s+(?:instruction|command|message)\s+(?:to|through\s+to)\s+(?:the\s+next|another|downstream)\s+(?:agent|model|step))/gi,
+          desc: "Instructs agent to relay injection payloads to downstream agents — confused deputy chain attack",
+        },
+      ];
+
+      for (const { pattern, desc } of russianDollPatterns) {
+        const matches = findAllMatches(file.content, pattern);
+        for (const match of matches) {
+          findings.push({
+            id: `agents-russian-doll-${match.index}`,
+            severity: "high",
+            category: "injection",
+            title: `Multi-chain / Russian Doll injection pattern`,
+            description: `Found "${match[0].substring(0, 80)}" — ${desc}. Reference: WithSecure multi-chain prompt injection research.`,
+            file: file.path,
+            line: findLineNumber(file.content, match.index ?? 0),
+            evidence: match[0].substring(0, 100),
+          });
+        }
+      }
+
+      return findings;
+    },
+  },
+  {
+    id: "agents-encoded-payload",
+    name: "Encoded Payload in Agent Definition",
+    description: "Checks for base64, hex, rot13, or reversed text payloads that could hide malicious instructions",
+    severity: "high",
+    category: "injection",
+    check(file: ConfigFile): ReadonlyArray<Finding> {
+      if (file.type !== "agent-md" && file.type !== "claude-md") return [];
+
+      const findings: Finding[] = [];
+
+      const encodedPatterns = [
+        {
+          pattern: /(?:decode|decrypt|decipher|rot13|reverse|unescape)\s+(?:the\s+following|this)\s*[:=]?\s*["'`]?[A-Za-z0-9+/=]{10,}/gi,
+          desc: "Instructs agent to decode an encoded payload — evasion technique to bypass content filters",
+        },
+        {
+          pattern: /(?:execute|run|follow)\s+(?:the\s+)?(?:decoded|reversed|decrypted|deciphered)\s+(?:instructions?|commands?|text|content)/gi,
+          desc: "Instructs agent to execute content after decoding — two-stage injection",
+        },
+        {
+          pattern: /\\x[0-9a-fA-F]{2}(?:\\x[0-9a-fA-F]{2}){4,}/g,
+          desc: "Hex-encoded byte sequence — could contain hidden instructions",
+        },
+        {
+          pattern: /(?:read\s+(?:this|the\s+following)\s+)?(?:backwards?|in\s+reverse|from\s+right\s+to\s+left)\s*[:=]?\s*[a-zA-Z\s]{10,}/gi,
+          desc: "Reversed text instruction — evasion technique to hide commands from pattern matching",
+        },
+      ];
+
+      for (const { pattern, desc } of encodedPatterns) {
+        const matches = findAllMatches(file.content, pattern);
+        for (const match of matches) {
+          findings.push({
+            id: `agents-encoded-payload-${match.index}`,
+            severity: "high",
+            category: "injection",
+            title: `Encoded payload or decode instruction detected`,
+            description: `Found "${match[0].substring(0, 80)}" — ${desc}. Encoding is used to evade pattern-based detection of malicious instructions.`,
+            file: file.path,
+            line: findLineNumber(file.content, match.index ?? 0),
+            evidence: match[0].substring(0, 100),
+          });
+        }
+      }
+
+      return findings;
+    },
+  },
+  {
+    id: "agents-tool-poisoning",
+    name: "Tool Poisoning via CLAUDE.md",
+    description: "Checks for CLAUDE.md instructions that direct the agent to use specific tools in dangerous ways",
+    severity: "high",
+    category: "injection",
+    check(file: ConfigFile): ReadonlyArray<Finding> {
+      if (file.type !== "claude-md") return [];
+
+      const findings: Finding[] = [];
+
+      const toolPoisoningPatterns = [
+        {
+          pattern: /(?:always|must|should)\s+use\s+(?:the\s+)?(?:Bash|Write|Edit)\s+(?:tool\s+)?(?:to|for)\s+(?:every|all|any)/gi,
+          desc: "Forces agent to use high-privilege tools for all operations — escalates tool usage beyond what's needed",
+        },
+        {
+          pattern: /(?:prefer|prioritize|default\s+to)\s+(?:the\s+)?Bash\s+(?:tool\s+)?(?:over|instead\s+of)\s+(?:Read|Grep|Glob|Edit|Write)/gi,
+          desc: "Pushes agent toward Bash instead of safer dedicated tools — breaks principle of least privilege",
+        },
+        {
+          pattern: /(?:when\s+using|before\s+(?:running|calling))\s+(?:the\s+)?(?:Bash|Write|Edit)\s+(?:tool)?\s*,?\s*(?:always\s+)?(?:add|include|append|prepend)\s/gi,
+          desc: "Injects additional commands or content into tool invocations — tool argument poisoning",
+        },
+        {
+          pattern: /(?:set|use|change)\s+(?:the\s+)?(?:dangerouslyDisableSandbox|dangerously_disable_sandbox)\s+(?:to\s+)?true/gi,
+          desc: "Instructs agent to disable sandbox protection when running Bash commands",
+        },
+      ];
+
+      for (const { pattern, desc } of toolPoisoningPatterns) {
+        const matches = findAllMatches(file.content, pattern);
+        for (const match of matches) {
+          findings.push({
+            id: `agents-tool-poisoning-${match.index}`,
+            severity: "high",
+            category: "injection",
+            title: `Tool poisoning instruction in CLAUDE.md`,
+            description: `Found "${match[0].substring(0, 80)}" — ${desc}. A malicious CLAUDE.md can influence which tools the agent uses and how it uses them.`,
+            file: file.path,
+            line: findLineNumber(file.content, match.index ?? 0),
+            evidence: match[0].substring(0, 100),
+          });
+        }
+      }
+
+      return findings;
+    },
+  },
+  {
+    id: "agents-environment-probing",
+    name: "Agent Instructed to Probe Environment",
+    description: "Checks for instructions to enumerate system information, user accounts, or network configuration",
+    severity: "high",
+    category: "injection",
+    check(file: ConfigFile): ReadonlyArray<Finding> {
+      if (file.type !== "agent-md" && file.type !== "claude-md") return [];
+
+      const findings: Finding[] = [];
+
+      const probingPatterns = [
+        {
+          pattern: /(?:run|execute|call)\s+(?:the\s+)?(?:command\s+)?(?:whoami|hostname|uname|ifconfig|ipconfig|id\b|env\b|printenv|set\b)\b/gi,
+          desc: "Instructs agent to probe system identity or environment — reconnaissance for later exploitation",
+        },
+        {
+          pattern: /(?:find|list|enumerate|discover)\s+(?:all\s+)?(?:running\s+)?(?:processes|services|ports|listeners|users|groups|networks?|interfaces?)/gi,
+          desc: "Instructs agent to enumerate system resources — attack surface mapping",
+        },
+        {
+          pattern: /(?:check|determine|find\s+out)\s+(?:the\s+)?(?:current\s+)?(?:user|username|uid|permissions?|privileges?|groups?|role)\s+(?:and|then)\s+/gi,
+          desc: "Instructs agent to check privilege level before taking action — conditional privilege escalation pattern",
+        },
+      ];
+
+      for (const { pattern, desc } of probingPatterns) {
+        const matches = findAllMatches(file.content, pattern);
+        for (const match of matches) {
+          findings.push({
+            id: `agents-env-probing-${match.index}`,
+            severity: "high",
+            category: "injection",
+            title: `Environment probing instruction detected`,
+            description: `Found "${match[0].substring(0, 80)}" — ${desc}. System enumeration is often the first stage of an attack chain.`,
+            file: file.path,
+            line: findLineNumber(file.content, match.index ?? 0),
+            evidence: match[0].substring(0, 100),
+          });
+        }
+      }
+
+      return findings;
+    },
+  },
+  {
+    id: "agents-persistence-mechanism",
+    name: "Agent Instructed to Establish Persistence",
+    description: "Checks for instructions to create cron jobs, startup scripts, or other persistence mechanisms",
+    severity: "critical",
+    category: "injection",
+    check(file: ConfigFile): ReadonlyArray<Finding> {
+      if (file.type !== "agent-md" && file.type !== "claude-md") return [];
+
+      const findings: Finding[] = [];
+
+      const persistencePatterns = [
+        {
+          pattern: /(?:add|create|install|write|set\s+up)\s+(?:a\s+)?(?:cron\s*(?:job|tab)|crontab|scheduled\s+task)/gi,
+          desc: "Instructs agent to create a cron job — establishes persistent execution on the system",
+        },
+        {
+          pattern: /(?:add|write|create|modify)\s+(?:to\s+|a\s+)?(?:~\/\.(?:bashrc|zshrc|profile|bash_profile|zprofile)|\/etc\/(?:profile|cron))/gi,
+          desc: "Instructs agent to modify shell startup files — persistence via login hook",
+        },
+        {
+          pattern: /(?:install|create|add)\s+(?:a\s+)?(?:systemd|launchd|init\.d|upstart)\s+(?:service|daemon|unit|agent)/gi,
+          desc: "Instructs agent to create a system service — persistence via service manager",
+        },
+        {
+          pattern: /(?:add|write|modify)\s+(?:to\s+)?(?:~\/\.claude\/|\.claude\/)\s*(?:settings|CLAUDE\.md|commands)/gi,
+          desc: "Instructs agent to modify Claude Code's own configuration — meta-persistence that survives across sessions",
+        },
+        {
+          pattern: /(?:create|add|install)\s+(?:a\s+)?(?:git\s+)?(?:pre-commit|post-commit|pre-push|post-merge)\s+hook/gi,
+          desc: "Instructs agent to install git hooks — persistence via development workflow hijacking",
+        },
+      ];
+
+      for (const { pattern, desc } of persistencePatterns) {
+        const matches = findAllMatches(file.content, pattern);
+        for (const match of matches) {
+          findings.push({
+            id: `agents-persistence-${match.index}`,
+            severity: "critical",
+            category: "injection",
+            title: `Persistence mechanism instruction detected`,
+            description: `Found "${match[0].substring(0, 80)}" — ${desc}. Persistence mechanisms allow malicious instructions to survive beyond the current session.`,
+            file: file.path,
+            line: findLineNumber(file.content, match.index ?? 0),
+            evidence: match[0].substring(0, 100),
+          });
+        }
+      }
+
+      return findings;
+    },
+  },
+  {
+    id: "agents-privilege-escalation-chain",
+    name: "Agent Instructed to Escalate Privileges",
+    description: "Checks for instructions that guide the agent through privilege escalation techniques",
+    severity: "critical",
+    category: "injection",
+    check(file: ConfigFile): ReadonlyArray<Finding> {
+      if (file.type !== "agent-md" && file.type !== "claude-md") return [];
+
+      const findings: Finding[] = [];
+
+      const privescPatterns = [
+        {
+          pattern: /(?:use|try|run|execute)\s+(?:the\s+)?sudo\s+(?:without\s+(?:a\s+)?password|nopasswd|-n\b)/gi,
+          desc: "Instructs agent to attempt passwordless sudo — direct privilege escalation",
+        },
+        {
+          pattern: /(?:modify|edit|change|write\s+to)\s+(?:the\s+)?(?:\/etc\/sudoers|sudoers\.d)/gi,
+          desc: "Instructs agent to modify sudoers file — permanent privilege escalation",
+        },
+        {
+          pattern: /(?:chmod|chown)\s+(?:\+s|u\+s|4[0-7]{3}|[267][0-7]{3})\b/gi,
+          desc: "Sets SUID/SGID bit on a file — allows privilege escalation via setuid execution",
+        },
+        {
+          pattern: /(?:add|append|write)\s+(?:.*\s+)?(?:to\s+)?(?:\/etc\/passwd|\/etc\/shadow|\/etc\/group)/gi,
+          desc: "Instructs agent to modify system authentication files — direct account manipulation",
+        },
+        {
+          pattern: /(?:docker|podman)\s+run\s+.*(?:--privileged|-v\s+\/:\/?|--pid\s+host|--net\s+host)/gi,
+          desc: "Runs container with host-level access — container escape for privilege escalation",
+        },
+      ];
+
+      for (const { pattern, desc } of privescPatterns) {
+        const matches = findAllMatches(file.content, pattern);
+        for (const match of matches) {
+          findings.push({
+            id: `agents-privesc-${match.index}`,
+            severity: "critical",
+            category: "injection",
+            title: `Privilege escalation instruction detected`,
+            description: `Found "${match[0].substring(0, 80)}" — ${desc}. Privilege escalation instructions in agent definitions are a strong indicator of malicious intent.`,
+            file: file.path,
+            line: findLineNumber(file.content, match.index ?? 0),
+            evidence: match[0].substring(0, 100),
+          });
+        }
+      }
+
+      return findings;
+    },
+  },
 ];
