@@ -9,7 +9,7 @@ hook injection, MCP server risks, and agent prompt injection vectors.
 
 [![npm version](https://img.shields.io/npm/v/ecc-agentshield)](https://www.npmjs.com/package/ecc-agentshield)
 [![npm downloads](https://img.shields.io/npm/dm/ecc-agentshield)](https://www.npmjs.com/package/ecc-agentshield)
-[![tests](https://img.shields.io/badge/tests-520%20passed-brightgreen)]()
+[![tests](https://img.shields.io/badge/tests-697%20passed-brightgreen)]()
 [![coverage](https://img.shields.io/badge/coverage-98%25-brightgreen)]()
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
@@ -96,9 +96,9 @@ agentshield init
 
 ## What It Catches
 
-**48 rules** across 5 categories, graded A–F with a 0–100 numeric score.
+**63 rules** across 5 categories, graded A–F with a 0–100 numeric score.
 
-### Secrets Detection (4 rules, 14 patterns)
+### Secrets Detection (7 rules, 14 patterns)
 
 | What | Examples |
 |------|----------|
@@ -107,7 +107,7 @@ agentshield init
 | Credentials | Hardcoded passwords, database connection strings (postgres/mongo/mysql/redis), private key material |
 | Env leaks | Secrets passed through environment variables in configs, `echo $SECRET` in hooks |
 
-### Permission Audit (5 rules)
+### Permission Audit (7 rules)
 
 | What | Examples |
 |------|----------|
@@ -117,7 +117,7 @@ agentshield init
 | Mutable tool exposure | All mutable tools (Write, Edit, Bash) allowed without scoping |
 | Destructive git | `git push --force`, `git reset --hard` in allowed commands |
 
-### Hook Analysis (9 rules)
+### Hook Analysis (20 rules)
 
 | What | Examples |
 |------|----------|
@@ -128,7 +128,7 @@ agentshield init
 | Network exposure | Unthrottled network requests in hooks, sensitive file access without filtering |
 | Session startup | SessionStart hooks that download and execute remote scripts |
 
-### MCP Server Security (10 rules)
+### MCP Server Security (15 rules)
 
 | What | Examples |
 |------|----------|
@@ -139,7 +139,7 @@ agentshield init
 | Shell metacharacters | `&&`, `\|`, `;` in MCP server command arguments |
 | Missing metadata | No version pin, no description, excessive server count |
 
-### Agent Config Review (7 rules)
+### Agent Config Review (14 rules)
 
 | What | Examples |
 |------|----------|
@@ -262,12 +262,12 @@ agentshield miniclaw start [opts]  Launch MiniClaw secure agent server
 
 | Category | Rules | Patterns | Severity Range |
 |----------|-------|----------|----------------|
-| Secrets | 4 | 14 | Critical – High |
-| Permissions | 5 | — | Critical – Medium |
-| Hooks | 9 | — | Critical – Medium |
-| MCP Servers | 10 | — | Critical – Info |
-| Agents | 7 | — | High – Info |
-| **Total** | **35** | **14** | |
+| Secrets | 7 | 14 | Critical – Medium |
+| Permissions | 7 | — | Critical – Medium |
+| Hooks | 20 | — | Critical – Low |
+| MCP Servers | 15 | — | Critical – Info |
+| Agents | 14 | — | Critical – Info |
+| **Total** | **63** | **14** | |
 
 ## Architecture
 
@@ -281,11 +281,11 @@ src/
 │   └── index.ts          Scan orchestrator
 ├── rules/
 │   ├── index.ts          Rule registry
-│   ├── secrets.ts        Secret detection (14 patterns)
-│   ├── permissions.ts    Permission audit (5 rules)
-│   ├── mcp.ts            MCP server security (10 rules)
-│   ├── hooks.ts          Hook analysis (9 rules)
-│   └── agents.ts         Agent config review (7 rules)
+│   ├── secrets.ts        Secret detection (7 rules, 14 patterns)
+│   ├── permissions.ts    Permission audit (7 rules)
+│   ├── mcp.ts            MCP server security (15 rules)
+│   ├── hooks.ts          Hook analysis (20 rules)
+│   └── agents.ts         Agent config review (14 rules)
 ├── reporter/
 │   ├── score.ts          Scoring engine (A-F grades)
 │   ├── terminal.ts       Color terminal output
