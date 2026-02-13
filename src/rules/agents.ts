@@ -681,4 +681,53 @@ export const agentRules: ReadonlyArray<Rule> = [
       return findings;
     },
   },
+  {
+    id: "agents-external-url-loading",
+    name: "Agent Loads Instructions from External URL",
+    description: "Checks for agent definitions that instruct fetching or executing content from external URLs",
+    severity: "critical",
+    category: "injection",
+    check(file: ConfigFile): ReadonlyArray<Finding> {
+      if (file.type !== "agent-md" && file.type !== "claude-md") return [];
+
+      const findings: Finding[] = [];
+
+      const urlLoadPatterns = [
+        {
+          pattern: /(?:fetch|download|curl|wget|load|retrieve|get)\s+(?:.*\s+)?(?:from\s+)?https?:\/\/\S+\s+(?:and\s+)?(?:execute|run|eval|source|import)/gi,
+          desc: "Instructs agent to fetch and execute content from a URL — classic remote code execution vector",
+        },
+        {
+          pattern: /(?:follow|visit|open)\s+(?:the\s+)?(?:instructions?\s+)?(?:at|from)\s+https?:\/\/\S+/gi,
+          desc: "Instructs agent to follow instructions from an external URL — attacker can change the content at any time",
+        },
+        {
+          pattern: /(?:import|include|source)\s+(?:config(?:uration)?|rules?|instructions?|prompts?)\s+from\s+https?:\/\//gi,
+          desc: "Instructs agent to import configuration from an external URL — supply chain risk",
+        },
+        {
+          pattern: /curl\s+.*https?:\/\/\S+\s*\|\s*(?:sh|bash|node|python|eval)/gi,
+          desc: "Pipe-to-shell pattern — downloads and executes arbitrary code from the internet",
+        },
+      ];
+
+      for (const { pattern, desc } of urlLoadPatterns) {
+        const matches = findAllMatches(file.content, pattern);
+        for (const match of matches) {
+          findings.push({
+            id: `agents-external-url-${match.index}`,
+            severity: "critical",
+            category: "injection",
+            title: `Agent loads instructions from external URL`,
+            description: `Found "${match[0].substring(0, 80)}" — ${desc}. External URLs are mutable — the content can change after the config is reviewed.`,
+            file: file.path,
+            line: findLineNumber(file.content, match.index ?? 0),
+            evidence: match[0].substring(0, 100),
+          });
+        }
+      }
+
+      return findings;
+    },
+  },
 ];

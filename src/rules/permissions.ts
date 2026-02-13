@@ -94,6 +94,18 @@ const OVERLY_PERMISSIVE: ReadonlyArray<{
     severity: "medium",
     suggestion: "Move process killing to deny list",
   },
+  {
+    pattern: /^Bash\(eval\s/,
+    description: "eval access — agent can execute arbitrary code via shell eval",
+    severity: "critical",
+    suggestion: "Remove eval permissions; use explicit commands instead",
+  },
+  {
+    pattern: /^Bash\(exec\s/,
+    description: "exec access — agent can replace the current process with arbitrary commands",
+    severity: "critical",
+    suggestion: "Remove exec permissions; use explicit commands instead",
+  },
 ];
 
 /**

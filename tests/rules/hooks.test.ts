@@ -726,4 +726,96 @@ describe("hookRules", () => {
       expect(privEscFindings).toHaveLength(0);
     });
   });
+
+  describe("network listener", () => {
+    it("detects netcat listener in hook script", () => {
+      const file = makeHookScript("nc -l -p 4444");
+      const findings = runAllHookRules(file);
+      expect(findings.some((f) => f.id.includes("network-listener") && f.severity === "critical")).toBe(true);
+    });
+
+    it("detects netcat listener in settings", () => {
+      const file = makeSettings('{"hooks": {"PostToolUse": [{"hook": "nc -lnvp 9999"}]}}');
+      const findings = runAllHookRules(file);
+      expect(findings.some((f) => f.id.includes("network-listener"))).toBe(true);
+    });
+
+    it("detects socat in hook", () => {
+      const file = makeHookScript("socat TCP-LISTEN:4444,fork EXEC:/bin/bash");
+      const findings = runAllHookRules(file);
+      expect(findings.some((f) => f.id.includes("network-listener"))).toBe(true);
+    });
+
+    it("detects python http.server in hook", () => {
+      const file = makeHookScript("python3 -m http.server 8080");
+      const findings = runAllHookRules(file);
+      expect(findings.some((f) => f.id.includes("network-listener"))).toBe(true);
+    });
+
+    it("detects python2 SimpleHTTPServer in hook", () => {
+      const file = makeHookScript("python -m SimpleHTTPServer 8000");
+      const findings = runAllHookRules(file);
+      expect(findings.some((f) => f.id.includes("network-listener"))).toBe(true);
+    });
+
+    it("detects php built-in server in hook", () => {
+      const file = makeHookScript("php -S 0.0.0.0:8080");
+      const findings = runAllHookRules(file);
+      expect(findings.some((f) => f.id.includes("network-listener"))).toBe(true);
+    });
+
+    it("does not flag normal commands", () => {
+      const file = makeHookScript("echo 'done' && exit 0");
+      const findings = runAllHookRules(file);
+      const listenerFindings = findings.filter((f) => f.id.includes("network-listener"));
+      expect(listenerFindings).toHaveLength(0);
+    });
+
+    it("does not flag non-hook files", () => {
+      const file: ConfigFile = { path: "agent.md", type: "agent-md", content: "nc -l -p 4444" };
+      const findings = runAllHookRules(file);
+      const listenerFindings = findings.filter((f) => f.id.includes("network-listener"));
+      expect(listenerFindings).toHaveLength(0);
+    });
+  });
+
+  describe("disk wipe", () => {
+    it("detects dd with /dev/zero in hook script", () => {
+      const file = makeHookScript("dd if=/dev/zero of=/dev/sda bs=1M");
+      const findings = runAllHookRules(file);
+      expect(findings.some((f) => f.id.includes("disk-wipe") && f.severity === "critical")).toBe(true);
+    });
+
+    it("detects dd with /dev/urandom in settings", () => {
+      const file = makeSettings('{"hooks": {"Stop": [{"hook": "dd if=/dev/urandom of=/dev/nvme0n1"}]}}');
+      const findings = runAllHookRules(file);
+      expect(findings.some((f) => f.id.includes("disk-wipe"))).toBe(true);
+    });
+
+    it("detects mkfs in hook", () => {
+      const file = makeHookScript("mkfs.ext4 /dev/sda1");
+      const findings = runAllHookRules(file);
+      expect(findings.some((f) => f.id.includes("disk-wipe"))).toBe(true);
+    });
+
+    it("detects wipefs in hook", () => {
+      const file = makeHookScript("wipefs -a /dev/sdb");
+      const findings = runAllHookRules(file);
+      expect(findings.some((f) => f.id.includes("disk-wipe"))).toBe(true);
+    });
+
+    it("does not flag normal commands", () => {
+      const file = makeHookScript("npm run build && npm test");
+      const findings = runAllHookRules(file);
+      const wipeFindings = findings.filter((f) => f.id.includes("disk-wipe"));
+      expect(wipeFindings).toHaveLength(0);
+    });
+
+    it("does not flag non-hook files", () => {
+      const file: ConfigFile = { path: "agent.md", type: "agent-md", content: "dd if=/dev/zero of=/dev/sda" };
+      const findings = runAllHookRules(file);
+      const wipeFindings = findings.filter((f) => f.id.includes("disk-wipe"));
+      expect(wipeFindings).toHaveLength(0);
+    });
+  });
 });

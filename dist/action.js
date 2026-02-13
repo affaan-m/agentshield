@@ -2,7 +2,7 @@ import {
   calculateScore,
   renderMarkdownReport,
   scan
-} from "./chunk-RVZQIF4I.js";
+} from "./chunk-WUGVJZVL.js";
 
 // src/action.ts
 import { resolve } from "path";

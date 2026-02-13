@@ -671,4 +671,97 @@ describe("mcpRules", () => {
       expect(dualFindings).toHaveLength(0);
     });
   });
+
+  describe("environment inheritance", () => {
+    it("flags servers without env block when multiple servers exist", () => {
+      const file: ConfigFile = {
+        path: "mcp.json",
+        type: "mcp-json",
+        content: JSON.stringify({
+          mcpServers: {
+            serverA: { command: "node", args: ["a.js"] },
+            serverB: { command: "node", args: ["b.js"] },
+          },
+        }),
+      };
+      const findings = runAllMcpRules(file);
+      expect(findings.some((f) => f.id.includes("env-inherit"))).toBe(true);
+    });
+
+    it("does not flag servers with explicit env block", () => {
+      const file: ConfigFile = {
+        path: "mcp.json",
+        type: "mcp-json",
+        content: JSON.stringify({
+          mcpServers: {
+            serverA: { command: "node", args: ["a.js"], env: { NODE_ENV: "production" } },
+            serverB: { command: "node", args: ["b.js"], env: { PORT: "3000" } },
+          },
+        }),
+      };
+      const findings = runAllMcpRules(file);
+      const inheritFindings = findings.filter((f) => f.id.includes("env-inherit"));
+      expect(inheritFindings).toHaveLength(0);
+    });
+
+    it("does not flag single server without env block", () => {
+      const file = makeMcpConfig({
+        only: { command: "node", args: ["server.js"] },
+      });
+      const findings = runAllMcpRules(file);
+      const inheritFindings = findings.filter((f) => f.id.includes("env-inherit"));
+      expect(inheritFindings).toHaveLength(0);
+    });
+
+    it("flags only servers missing env when some have it", () => {
+      const file: ConfigFile = {
+        path: "mcp.json",
+        type: "mcp-json",
+        content: JSON.stringify({
+          mcpServers: {
+            withEnv: { command: "node", args: ["a.js"], env: { KEY: "val" } },
+            withoutEnv: { command: "node", args: ["b.js"] },
+          },
+        }),
+      };
+      const findings = runAllMcpRules(file);
+      const inheritFindings = findings.filter((f) => f.id.includes("env-inherit"));
+      expect(inheritFindings).toHaveLength(1);
+      expect(inheritFindings[0].id).toContain("withoutEnv");
+    });
+
+    it("does not flag URL-only servers without env", () => {
+      const file: ConfigFile = {
+        path: "mcp.json",
+        type: "mcp-json",
+        content: JSON.stringify({
+          mcpServers: {
+            remote: { url: "https://api.example.com/mcp" },
+            local: { command: "node", args: ["server.js"] },
+          },
+        }),
+      };
+      const findings = runAllMcpRules(file);
+      const inheritFindings = findings.filter((f) => f.id.includes("env-inherit"));
+      // Remote server has no command so shouldn't be flagged
+      const remoteFlags = inheritFindings.filter((f) => f.id.includes("remote"));
+      expect(remoteFlags).toHaveLength(0);
+    });
+
+    it("provides fix suggestion", () => {
+      const file: ConfigFile = {
+        path: "mcp.json",
+        type: "mcp-json",
+        content: JSON.stringify({
+          mcpServers: {
+            a: { command: "node", args: ["a.js"] },
+            b: { command: "node", args: ["b.js"] },
+          },
+        }),
+      };
+      const findings = runAllMcpRules(file);
+      const finding = findings.find((f) => f.id.includes("env-inherit"));
+      expect(finding?.fix).toBeDefined();
+    });
+  });
 });

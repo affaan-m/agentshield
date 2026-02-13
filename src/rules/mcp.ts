@@ -802,4 +802,54 @@ export const mcpRules: ReadonlyArray<Rule> = [
       return findings;
     },
   },
+  {
+    id: "mcp-env-inheritance",
+    name: "MCP Server Inherits Full Environment",
+    description: "Checks for MCP servers without an explicit env block, which inherit the parent process's full environment including secrets",
+    severity: "medium",
+    category: "mcp",
+    check(file: ConfigFile): ReadonlyArray<Finding> {
+      if (file.type !== "mcp-json" && file.type !== "settings-json") return [];
+
+      const findings: Finding[] = [];
+
+      try {
+        const config = JSON.parse(file.content);
+        const servers = config.mcpServers ?? {};
+
+        const serverCount = Object.keys(servers).length;
+        // Only flag if there are multiple servers — a single server inheriting env is fine
+        if (serverCount < 2) return [];
+
+        for (const [name, server] of Object.entries(servers)) {
+          const serverConfig = server as Record<string, unknown>;
+          const hasEnv = "env" in serverConfig;
+          const hasCommand = !!serverConfig.command;
+
+          // Only flag stdio servers (with command) that lack an env block
+          if (hasCommand && !hasEnv) {
+            findings.push({
+              id: `mcp-env-inherit-${name}`,
+              severity: "medium",
+              category: "mcp",
+              title: `MCP server "${name}" inherits full parent environment`,
+              description: `The MCP server "${name}" has no explicit "env" block, so it inherits the full parent process environment. This means every environment variable — including API keys, tokens, and secrets — is passed to the server. Add an explicit "env" block with only the variables the server needs.`,
+              file: file.path,
+              evidence: `Server "${name}" has command but no env block`,
+              fix: {
+                description: "Add an explicit env block with only required variables",
+                before: `"${name}": { "command": "..." }`,
+                after: `"${name}": { "command": "...", "env": { "ONLY_NEEDED_VAR": "..." } }`,
+                auto: false,
+              },
+            });
+          }
+        }
+      } catch {
+        // Not valid JSON
+      }
+
+      return findings;
+    },
+  },
 ];

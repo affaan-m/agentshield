@@ -1102,4 +1102,108 @@ export const hookRules: ReadonlyArray<Rule> = [
       return findings;
     },
   },
+  {
+    id: "hooks-network-listener",
+    name: "Hook Opens Network Listener",
+    description: "Checks for hooks that bind to network ports, which could create reverse shells or backdoors",
+    severity: "critical",
+    category: "hooks",
+    check(file: ConfigFile): ReadonlyArray<Finding> {
+      if (file.type !== "settings-json" && file.type !== "hook-script") return [];
+
+      const findings: Finding[] = [];
+
+      const listenerPatterns: ReadonlyArray<{
+        readonly pattern: RegExp;
+        readonly description: string;
+      }> = [
+        {
+          pattern: /\bnc\s+.*-l/g,
+          description: "Opens a netcat listener — classic reverse shell vector",
+        },
+        {
+          pattern: /\bsocat\b/g,
+          description: "Uses socat for bidirectional data transfer — can create tunnels and reverse shells",
+        },
+        {
+          pattern: /\bpython3?\s+.*-m\s+http\.server/g,
+          description: "Starts a Python HTTP server — exposes local files over the network",
+        },
+        {
+          pattern: /\bpython3?\s+.*SimpleHTTPServer/g,
+          description: "Starts a Python 2 HTTP server — exposes local files over the network",
+        },
+        {
+          pattern: /\bphp\s+-S\b/g,
+          description: "Starts a PHP built-in server — serves files and executes PHP code",
+        },
+      ];
+
+      for (const { pattern, description } of listenerPatterns) {
+        const matches = findAllMatches(file.content, pattern);
+        for (const match of matches) {
+          findings.push({
+            id: `hooks-network-listener-${match.index}`,
+            severity: "critical",
+            category: "hooks",
+            title: `Hook opens network listener: ${match[0].trim()}`,
+            description: `${description}. Hooks should not open network listeners. This could create a backdoor accessible from the network.`,
+            file: file.path,
+            line: findLineNumber(file.content, match.index ?? 0),
+            evidence: match[0].trim(),
+          });
+        }
+      }
+
+      return findings;
+    },
+  },
+  {
+    id: "hooks-disk-wipe",
+    name: "Hook Uses Disk Wiping Commands",
+    description: "Checks for hooks that use destructive disk operations",
+    severity: "critical",
+    category: "hooks",
+    check(file: ConfigFile): ReadonlyArray<Finding> {
+      if (file.type !== "settings-json" && file.type !== "hook-script") return [];
+
+      const findings: Finding[] = [];
+
+      const wipePatterns: ReadonlyArray<{
+        readonly pattern: RegExp;
+        readonly description: string;
+      }> = [
+        {
+          pattern: /\bdd\s+if=\/dev\/(?:zero|urandom)/g,
+          description: "Overwrites disk with zeros/random data via dd",
+        },
+        {
+          pattern: /\bmkfs\b/g,
+          description: "Formats a filesystem — destroys all data on the target device",
+        },
+        {
+          pattern: /\bwipefs\b/g,
+          description: "Wipes filesystem signatures — makes data unrecoverable",
+        },
+      ];
+
+      for (const { pattern, description } of wipePatterns) {
+        const matches = findAllMatches(file.content, pattern);
+        for (const match of matches) {
+          findings.push({
+            id: `hooks-disk-wipe-${match.index}`,
+            severity: "critical",
+            category: "hooks",
+            title: `Hook uses disk wiping command: ${match[0].trim()}`,
+            description: `${description}. Hooks should never perform destructive disk operations. This could permanently destroy data.`,
+            file: file.path,
+            line: findLineNumber(file.content, match.index ?? 0),
+            evidence: match[0].trim(),
+          });
+        }
+      }
+
+      return findings;
+    },
+  },
 ];

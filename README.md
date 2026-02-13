@@ -9,7 +9,7 @@ hook injection, MCP server risks, and agent prompt injection vectors.
 
 [![npm version](https://img.shields.io/npm/v/ecc-agentshield)](https://www.npmjs.com/package/ecc-agentshield)
 [![npm downloads](https://img.shields.io/npm/dm/ecc-agentshield)](https://www.npmjs.com/package/ecc-agentshield)
-[![tests](https://img.shields.io/badge/tests-697%20passed-brightgreen)]()
+[![tests](https://img.shields.io/badge/tests-728%20passed-brightgreen)]()
 [![coverage](https://img.shields.io/badge/coverage-98%25-brightgreen)]()
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
@@ -96,7 +96,7 @@ agentshield init
 
 ## What It Catches
 
-**63 rules** across 5 categories, graded A–F with a 0–100 numeric score.
+**72 rules** across 5 categories, graded A–F with a 0–100 numeric score.
 
 ### Secrets Detection (7 rules, 14 patterns)
 
@@ -117,7 +117,7 @@ agentshield init
 | Mutable tool exposure | All mutable tools (Write, Edit, Bash) allowed without scoping |
 | Destructive git | `git push --force`, `git reset --hard` in allowed commands |
 
-### Hook Analysis (20 rules)
+### Hook Analysis (24 rules)
 
 | What | Examples |
 |------|----------|
@@ -128,7 +128,7 @@ agentshield init
 | Network exposure | Unthrottled network requests in hooks, sensitive file access without filtering |
 | Session startup | SessionStart hooks that download and execute remote scripts |
 
-### MCP Server Security (15 rules)
+### MCP Server Security (17 rules)
 
 | What | Examples |
 |------|----------|
@@ -139,7 +139,7 @@ agentshield init
 | Shell metacharacters | `&&`, `\|`, `;` in MCP server command arguments |
 | Missing metadata | No version pin, no description, excessive server count |
 
-### Agent Config Review (14 rules)
+### Agent Config Review (15 rules)
 
 | What | Examples |
 |------|----------|
@@ -263,11 +263,11 @@ agentshield miniclaw start [opts]  Launch MiniClaw secure agent server
 | Category | Rules | Patterns | Severity Range |
 |----------|-------|----------|----------------|
 | Secrets | 7 | 14 | Critical – Medium |
-| Permissions | 7 | — | Critical – Medium |
-| Hooks | 20 | — | Critical – Low |
-| MCP Servers | 15 | — | Critical – Info |
-| Agents | 14 | — | Critical – Info |
-| **Total** | **63** | **14** | |
+| Permissions | 9 | — | Critical – Medium |
+| Hooks | 24 | — | Critical – Low |
+| MCP Servers | 17 | — | Critical – Info |
+| Agents | 15 | — | Critical – Info |
+| **Total** | **72** | **14** | |
 
 ## Architecture
 
