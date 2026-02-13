@@ -520,9 +520,9 @@ export const agentRules: ReadonlyArray<Rule> = [
     },
   },
   {
-    id: "agents-hidden-instructions",
-    name: "Agent Contains Hidden Instructions",
-    description: "Checks for instructions hidden in HTML comments, markdown comments, or using invisible characters",
+    id: "agents-comment-injection",
+    name: "Suspicious Instructions in Comments",
+    description: "Checks for malicious instructions hidden in HTML or markdown comments",
     severity: "high",
     category: "injection",
     check(file: ConfigFile): ReadonlyArray<Finding> {
@@ -530,7 +530,7 @@ export const agentRules: ReadonlyArray<Rule> = [
 
       const findings: Finding[] = [];
 
-      const hiddenPatterns = [
+      const commentPatterns = [
         {
           pattern: /<!--[\s\S]*?(?:ignore|override|system|execute|run|install|download|send|post|upload)[\s\S]*?-->/gi,
           desc: "HTML comment contains suspicious instructions",
@@ -539,24 +539,20 @@ export const agentRules: ReadonlyArray<Rule> = [
           pattern: /\[\/\/\]:\s*#\s*\(.*(?:ignore|override|execute|run|install|download).*\)/gi,
           desc: "Markdown reference-style comment contains suspicious instructions",
         },
-        {
-          pattern: /[\u200B\u200C\u200D\uFEFF\u00AD]{3,}/g,
-          desc: "Sequence of zero-width or invisible characters (possible steganographic payload)",
-        },
       ];
 
-      for (const { pattern, desc } of hiddenPatterns) {
+      for (const { pattern, desc } of commentPatterns) {
         const matches = findAllMatches(file.content, pattern);
         for (const match of matches) {
           findings.push({
-            id: `agents-hidden-instruction-${match.index}`,
+            id: `agents-comment-injection-${match.index}`,
             severity: "high",
             category: "injection",
-            title: `Hidden instruction detected in ${file.path}`,
-            description: `${desc}. Attackers may hide malicious instructions in comments or invisible characters that won't be visible in rendered markdown but will be processed by the AI agent.`,
+            title: `Suspicious instruction in comment: ${file.path}`,
+            description: `${desc}. Attackers may hide malicious instructions in comments that won't be visible in rendered markdown but will be processed by the AI agent.`,
             file: file.path,
             line: findLineNumber(file.content, match.index ?? 0),
-            evidence: match[0].substring(0, 100).replace(/[\u200B\u200C\u200D\uFEFF\u00AD]/g, "[ZWSP]"),
+            evidence: match[0].substring(0, 100),
           });
         }
       }

@@ -368,7 +368,7 @@ MiniClaw has **zero external runtime dependencies** — Node.js built-ins only (
 ```bash
 npm install          # Install dependencies
 npm run dev          # Development mode
-npm test             # Run tests (684 tests)
+npm test             # Run tests (683 tests)
 npm run test:coverage # Coverage report
 npm run typecheck    # Type check
 npm run build        # Build
