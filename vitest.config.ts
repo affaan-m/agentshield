@@ -15,6 +15,13 @@ export default defineConfig({
         // Opus pipeline makes live API calls to Anthropic —
         // tested via E2E with real API key
         "src/opus/pipeline.ts",
+        // New modules being built in parallel — dynamically imported,
+        // excluded until modules are ready
+        "src/injection/**",
+        "src/sandbox/**",
+        "src/taint/**",
+        "src/logger/**",
+        "src/corpus/**",
       ],
       thresholds: {
         statements: 80,

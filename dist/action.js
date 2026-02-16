@@ -1,8 +1,12 @@
 import {
   calculateScore,
-  renderMarkdownReport,
+  renderMarkdownReport
+} from "./chunk-KRNKCQRM.js";
+import {
   scan
-} from "./chunk-LADBESHU.js";
+} from "./chunk-4VTIAPQ5.js";
+import "./chunk-6DZMYVHV.js";
+import "./chunk-KTUFEJYA.js";
 
 // src/action.ts
 import { resolve } from "path";

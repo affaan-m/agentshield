@@ -2,124 +2,24 @@
 import {
   calculateScore,
   renderJsonReport,
-  renderMarkdownReport,
-  scan
-} from "./chunk-LADBESHU.js";
+  renderMarkdownReport
+} from "./chunk-KRNKCQRM.js";
 import {
   startMiniClaw
 } from "./chunk-GH4JN4Y3.js";
+import {
+  scan
+} from "./chunk-4VTIAPQ5.js";
+import "./chunk-6DZMYVHV.js";
+import {
+  renderTerminalReport
+} from "./chunk-GHPQOONH.js";
+import "./chunk-KTUFEJYA.js";
 
 // src/index.ts
 import { Command } from "commander";
 import { resolve as resolve3 } from "path";
-import { existsSync as existsSync2 } from "fs";
-
-// src/reporter/terminal.ts
-import chalk from "chalk";
-function renderTerminalReport(report) {
-  const lines = [];
-  lines.push("");
-  lines.push(chalk.bold.cyan("  AgentShield Security Report"));
-  lines.push(chalk.dim(`  ${report.timestamp}`));
-  lines.push(chalk.dim(`  Target: ${report.targetPath}`));
-  lines.push("");
-  lines.push(renderGrade(report.score.grade, report.score.numericScore));
-  lines.push("");
-  lines.push(chalk.bold("  Score Breakdown"));
-  lines.push(renderBar("Secrets", report.score.breakdown.secrets));
-  lines.push(renderBar("Permissions", report.score.breakdown.permissions));
-  lines.push(renderBar("Hooks", report.score.breakdown.hooks));
-  lines.push(renderBar("MCP Servers", report.score.breakdown.mcp));
-  lines.push(renderBar("Agents", report.score.breakdown.agents));
-  lines.push("");
-  const s = report.summary;
-  lines.push(chalk.bold("  Summary"));
-  lines.push(`  Files scanned: ${s.filesScanned}`);
-  lines.push(
-    `  Findings: ${s.totalFindings} total \u2014 ${chalk.red(`${s.critical} critical`)}, ${chalk.yellow(`${s.high} high`)}, ${chalk.blue(`${s.medium} medium`)}, ${chalk.dim(`${s.low} low, ${s.info} info`)}`
-  );
-  if (s.autoFixable > 0) {
-    lines.push(chalk.green(`  Auto-fixable: ${s.autoFixable} (use --fix)`));
-  }
-  lines.push("");
-  if (report.findings.length > 0) {
-    lines.push(chalk.bold("  Findings"));
-    lines.push("");
-    const grouped = groupBySeverity(report.findings);
-    for (const [severity, findings] of grouped) {
-      if (findings.length === 0) continue;
-      lines.push(`  ${severityIcon(severity)} ${chalk.bold(severity.toUpperCase())} (${findings.length})`);
-      lines.push("");
-      for (const finding of findings) {
-        lines.push(renderFinding(finding));
-      }
-    }
-  } else {
-    lines.push(chalk.green.bold("  No security issues found!"));
-    lines.push("");
-  }
-  lines.push(chalk.dim("  \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500"));
-  lines.push(chalk.dim("  AgentShield \u2014 Security auditor for AI agent configs"));
-  lines.push("");
-  return lines.join("\n");
-}
-function renderGrade(grade, score) {
-  const gradeColors = {
-    A: chalk.green,
-    B: chalk.green,
-    C: chalk.yellow,
-    D: chalk.red,
-    F: chalk.red.bold
-  };
-  const colorFn = gradeColors[grade] ?? chalk.white;
-  const gradeDisplay = colorFn.bold(`  Grade: ${grade}`);
-  const scoreDisplay = colorFn(` (${score}/100)`);
-  return `${gradeDisplay}${scoreDisplay}`;
-}
-function renderBar(label, score) {
-  const width = 20;
-  const filled = Math.round(score / 100 * width);
-  const empty = width - filled;
-  let colorFn;
-  if (score >= 80) colorFn = chalk.green;
-  else if (score >= 60) colorFn = chalk.yellow;
-  else colorFn = chalk.red;
-  const bar = colorFn("\u2588".repeat(filled)) + chalk.dim("\u2591".repeat(empty));
-  const paddedLabel = label.padEnd(14);
-  return `  ${paddedLabel} ${bar} ${score}`;
-}
-function severityIcon(severity) {
-  const icons = {
-    critical: chalk.red("\u25CF"),
-    high: chalk.yellow("\u25CF"),
-    medium: chalk.blue("\u25CF"),
-    low: chalk.dim("\u25CF"),
-    info: chalk.dim("\u25CB")
-  };
-  return icons[severity] ?? "\u25CB";
-}
-function renderFinding(finding) {
-  const lines = [];
-  const icon = severityIcon(finding.severity);
-  const location = finding.line ? chalk.dim(`${finding.file}:${finding.line}`) : chalk.dim(finding.file);
-  lines.push(`    ${icon} ${finding.title}`);
-  lines.push(`      ${location}`);
-  lines.push(`      ${chalk.dim(finding.description)}`);
-  if (finding.evidence) {
-    lines.push(`      Evidence: ${chalk.yellow(finding.evidence)}`);
-  }
-  if (finding.fix) {
-    lines.push(
-      `      Fix: ${chalk.green(finding.fix.description)}` + (finding.fix.auto ? chalk.green(" [auto-fixable]") : "")
-    );
-  }
-  lines.push("");
-  return lines.join("\n");
-}
-function groupBySeverity(findings) {
-  const severities = ["critical", "high", "medium", "low", "info"];
-  return severities.map((s) => [s, findings.filter((f) => f.severity === s)]);
-}
+import { existsSync as existsSync2, writeFileSync as writeFileSync3, appendFileSync } from "fs";
 
 // src/reporter/html.ts
 function renderHtmlReport(report) {
@@ -773,7 +673,7 @@ function inlineStyles() {
 
 // src/opus/pipeline.ts
 import Anthropic from "@anthropic-ai/sdk";
-import chalk2 from "chalk";
+import chalk from "chalk";
 
 // src/opus/prompts.ts
 var ATTACKER_SYSTEM_PROMPT = `You are a red team security researcher analyzing an AI agent's configuration for exploitable vulnerabilities. Your goal is to find every possible attack vector.
@@ -783,10 +683,7 @@ Think like an attacker who has:
 2. The ability to craft malicious CLAUDE.md files, hook scripts, or MCP server configs
 3. Knowledge of how Claude Code processes hooks, permissions, skills, and agent definitions
 
-For each vulnerability you find, explain:
-- The attack vector (how would you exploit this?)
-- The impact (what could an attacker achieve?)
-- The difficulty (how hard is this to exploit?)
+For each vulnerability you find, use the report_attack_vector tool to report it with structured data. Call the tool once per distinct attack vector.
 
 Focus on:
 - Prompt injection via CLAUDE.md in cloned repos
@@ -800,11 +697,7 @@ Focus on:
 Be thorough and adversarial. Find things that automated scanners would miss.`;
 var DEFENDER_SYSTEM_PROMPT = `You are a security architect reviewing an AI agent's configuration to recommend hardening measures. Your goal is to identify weaknesses and propose concrete fixes.
 
-For each issue you find, provide:
-- The specific vulnerability or weakness
-- A concrete fix (exact config change, not vague advice)
-- The priority (critical, high, medium, low)
-- Whether it can be automated or requires manual review
+For each issue you find, use the report_defense_gap tool. For each good practice already in place, use the report_good_practice tool.
 
 Focus on defense-in-depth:
 - Are permissions following least privilege?
@@ -814,7 +707,7 @@ Focus on defense-in-depth:
 - Are secrets properly managed via environment variables?
 - Do agents have appropriate tool restrictions for their role?
 
-Also identify GOOD security practices already in place \u2014 acknowledge what the configuration does well.`;
+Call the tools once per finding. Be specific and actionable.`;
 var AUDITOR_SYSTEM_PROMPT = `You are a security auditor producing a final assessment of an AI agent's configuration. You will receive:
 1. The raw configuration files
 2. An attacker's analysis (red team findings)
@@ -823,14 +716,136 @@ var AUDITOR_SYSTEM_PROMPT = `You are a security auditor producing a final assess
 Your job is to:
 1. Validate the attacker's findings \u2014 which are real threats vs theoretical?
 2. Evaluate the defender's recommendations \u2014 which are practical vs overkill?
-3. Produce a final risk assessment with:
-   - Overall risk level (critical, high, medium, low)
-   - Top 3 most important issues to fix immediately
-   - Top 3 things the configuration does well
-   - A numeric security score (0-100)
-   - A prioritized action plan
+3. Use the final_assessment tool to produce your structured verdict.
 
 Be balanced and practical. Not every theoretical vulnerability is worth fixing. Focus on real-world risk.`;
+var ATTACKER_TOOLS = [{
+  name: "report_attack_vector",
+  description: "Report a discovered attack vector in the configuration",
+  input_schema: {
+    type: "object",
+    properties: {
+      attack_name: { type: "string", description: "Short name for the attack" },
+      attack_chain: {
+        type: "array",
+        items: { type: "string" },
+        description: "Step-by-step attack chain"
+      },
+      entry_point: { type: "string", description: "File and line where attack enters" },
+      impact: {
+        type: "string",
+        enum: ["rce", "data_exfiltration", "privilege_escalation", "persistence", "lateral_movement", "denial_of_service"],
+        description: "Type of impact if exploited"
+      },
+      difficulty: {
+        type: "string",
+        enum: ["trivial", "easy", "moderate", "hard", "expert"],
+        description: "How hard is this to exploit"
+      },
+      cvss_estimate: { type: "number", description: "Estimated CVSS 3.1 score (0-10)" },
+      evidence: { type: "string", description: "Specific config content that enables this attack" },
+      prerequisites: { type: "string", description: "What the attacker needs before exploiting" }
+    },
+    required: ["attack_name", "attack_chain", "entry_point", "impact", "difficulty", "cvss_estimate", "evidence"]
+  }
+}];
+var DEFENDER_TOOLS = [
+  {
+    name: "report_defense_gap",
+    description: "Report a missing or inadequate defense in the configuration",
+    input_schema: {
+      type: "object",
+      properties: {
+        gap_name: { type: "string", description: "Short name for the defense gap" },
+        current_state: { type: "string", description: "What the config currently does (or doesn't do)" },
+        recommended_fix: { type: "string", description: "Exact config change needed" },
+        fix_type: {
+          type: "string",
+          enum: ["add_hook", "restrict_permission", "remove_secret", "add_validation", "restrict_mcp", "add_monitoring", "other"],
+          description: "Category of fix"
+        },
+        priority: {
+          type: "string",
+          enum: ["critical", "high", "medium", "low"],
+          description: "Priority of the fix"
+        },
+        effort: {
+          type: "string",
+          enum: ["trivial", "easy", "moderate", "significant"],
+          description: "Effort required to implement"
+        },
+        auto_fixable: { type: "boolean", description: "Whether this can be auto-fixed" }
+      },
+      required: ["gap_name", "current_state", "recommended_fix", "fix_type", "priority", "effort", "auto_fixable"]
+    }
+  },
+  {
+    name: "report_good_practice",
+    description: "Report a good security practice found in the configuration",
+    input_schema: {
+      type: "object",
+      properties: {
+        practice_name: { type: "string", description: "Name of the good practice" },
+        description: { type: "string", description: "What the config does well" },
+        effectiveness: {
+          type: "string",
+          enum: ["strong", "moderate", "weak"],
+          description: "How effective is this practice"
+        }
+      },
+      required: ["practice_name", "description", "effectiveness"]
+    }
+  }
+];
+var AUDITOR_TOOLS = [{
+  name: "final_assessment",
+  description: "Produce the final security assessment",
+  input_schema: {
+    type: "object",
+    properties: {
+      risk_level: {
+        type: "string",
+        enum: ["critical", "high", "medium", "low"],
+        description: "Overall risk level"
+      },
+      score: { type: "number", description: "Security score 0-100" },
+      executive_summary: { type: "string", description: "2-3 sentence summary" },
+      top_risks: {
+        type: "array",
+        items: {
+          type: "object",
+          properties: {
+            risk: { type: "string" },
+            severity: { type: "string" },
+            action: { type: "string" }
+          },
+          required: ["risk", "severity", "action"]
+        },
+        description: "Top 5 risks, ordered by severity"
+      },
+      strengths: {
+        type: "array",
+        items: { type: "string" },
+        description: "What the config does well"
+      },
+      action_plan: {
+        type: "array",
+        items: {
+          type: "object",
+          properties: {
+            step: { type: "number" },
+            action: { type: "string" },
+            priority: { type: "string" },
+            effort: { type: "string" }
+          },
+          required: ["step", "action", "priority", "effort"]
+        },
+        description: "Prioritized action plan"
+      }
+    },
+    required: ["risk_level", "score", "executive_summary", "top_risks", "action_plan"]
+  }
+}];
 function buildConfigContext(files) {
   const sections = files.map(
     (f) => `### File: ${f.path}
@@ -872,7 +887,7 @@ function renderPhaseBanner(phaseNumber, title, subtitle, colorFn) {
 function renderPhaseComplete(label, tokenCount, colorFn) {
   process.stdout.write("\n");
   process.stdout.write(
-    colorFn(`  \u2713 ${label} complete`) + chalk2.dim(` (${tokenCount} tokens)
+    colorFn(`  \u2713 ${label} complete`) + chalk.dim(` (${tokenCount} tokens)
 `)
   );
 }
@@ -883,7 +898,7 @@ function createSpinner(label, colorFn) {
   const intervalId = setInterval(() => {
     frame = (frame + 1) % SPINNER_FRAMES.length;
     const spinner = colorFn(SPINNER_FRAMES[frame]);
-    process.stdout.write(`\r  ${spinner} ${label} \u2014 ${chalk2.dim(`${lastTokenCount} tokens`)}`);
+    process.stdout.write(`\r  ${spinner} ${label} \u2014 ${chalk.dim(`${lastTokenCount} tokens`)}`);
   }, 80);
   return {
     update(tokenCount) {
@@ -895,268 +910,446 @@ function createSpinner(label, colorFn) {
     }
   };
 }
+function extractToolCalls(contentBlocks) {
+  return contentBlocks.filter((block) => block.type === "tool_use").map((block) => ({
+    toolName: String(block.name),
+    input: block.input ?? {}
+  }));
+}
+function extractTextContent(contentBlocks) {
+  return contentBlocks.filter((block) => block.type === "text").map((block) => String(block.text ?? "")).join("\n");
+}
+function parseAttackerToolCalls(toolCalls, reasoning) {
+  const attacks = toolCalls.filter((tc) => tc.toolName === "report_attack_vector").map((tc) => ({
+    attack_name: String(tc.input.attack_name ?? ""),
+    attack_chain: Array.isArray(tc.input.attack_chain) ? tc.input.attack_chain.map(String) : [],
+    entry_point: String(tc.input.entry_point ?? ""),
+    impact: String(tc.input.impact ?? "rce"),
+    difficulty: String(tc.input.difficulty ?? "moderate"),
+    cvss_estimate: Number(tc.input.cvss_estimate ?? 5),
+    evidence: String(tc.input.evidence ?? ""),
+    prerequisites: tc.input.prerequisites ? String(tc.input.prerequisites) : void 0
+  }));
+  return { attacks, reasoning };
+}
+function parseDefenderToolCalls(toolCalls, reasoning) {
+  const gaps = toolCalls.filter((tc) => tc.toolName === "report_defense_gap").map((tc) => ({
+    gap_name: String(tc.input.gap_name ?? ""),
+    current_state: String(tc.input.current_state ?? ""),
+    recommended_fix: String(tc.input.recommended_fix ?? ""),
+    fix_type: String(tc.input.fix_type ?? "other"),
+    priority: String(tc.input.priority ?? "medium"),
+    effort: String(tc.input.effort ?? "moderate"),
+    auto_fixable: Boolean(tc.input.auto_fixable)
+  }));
+  const goodPractices = toolCalls.filter((tc) => tc.toolName === "report_good_practice").map((tc) => ({
+    practice_name: String(tc.input.practice_name ?? ""),
+    description: String(tc.input.description ?? ""),
+    effectiveness: String(tc.input.effectiveness ?? "moderate")
+  }));
+  return { gaps, goodPractices, reasoning };
+}
+function parseAuditorToolCalls(toolCalls, reasoning) {
+  const assessmentCall = toolCalls.find((tc) => tc.toolName === "final_assessment");
+  if (!assessmentCall) {
+    return {
+      assessment: {
+        risk_level: "medium",
+        score: 50,
+        executive_summary: reasoning.substring(0, 300),
+        top_risks: [],
+        strengths: [],
+        action_plan: []
+      },
+      reasoning
+    };
+  }
+  const input = assessmentCall.input;
+  const topRisks = Array.isArray(input.top_risks) ? input.top_risks.map((r) => ({
+    risk: String(r.risk ?? ""),
+    severity: String(r.severity ?? ""),
+    action: String(r.action ?? "")
+  })) : [];
+  const strengths = Array.isArray(input.strengths) ? input.strengths.map(String) : [];
+  const actionPlan = Array.isArray(input.action_plan) ? input.action_plan.map((a) => ({
+    step: Number(a.step ?? 0),
+    action: String(a.action ?? ""),
+    priority: String(a.priority ?? ""),
+    effort: String(a.effort ?? "")
+  })) : [];
+  return {
+    assessment: {
+      risk_level: String(input.risk_level ?? "medium"),
+      score: Math.min(100, Math.max(0, Number(input.score ?? 50))),
+      executive_summary: String(input.executive_summary ?? ""),
+      top_risks: topRisks,
+      strengths,
+      action_plan: actionPlan
+    },
+    reasoning
+  };
+}
+function toAttackerPerspective(result) {
+  const findings = result.attacks.map(
+    (a) => `[${a.impact.toUpperCase()}] ${a.attack_name} (CVSS ${a.cvss_estimate}) \u2014 ${a.attack_chain[0] ?? ""}${a.attack_chain.length > 1 ? ` (+${a.attack_chain.length - 1} steps)` : ""}`
+  );
+  return {
+    role: "attacker",
+    findings: findings.length > 0 ? findings : [result.reasoning.substring(0, 500)],
+    reasoning: result.reasoning
+  };
+}
+function toDefenderPerspective(result) {
+  const gapFindings = result.gaps.map(
+    (g) => `[${g.priority.toUpperCase()}] ${g.gap_name} \u2014 ${g.recommended_fix.substring(0, 100)}`
+  );
+  const practiceFindings = result.goodPractices.map(
+    (p) => `[GOOD] ${p.practice_name} (${p.effectiveness})`
+  );
+  const findings = [...gapFindings, ...practiceFindings];
+  return {
+    role: "defender",
+    findings: findings.length > 0 ? findings : [result.reasoning.substring(0, 500)],
+    reasoning: result.reasoning
+  };
+}
+function toAudit(result) {
+  const { assessment } = result;
+  const recommendations = assessment.action_plan.map(
+    (a) => `[${a.priority.toUpperCase()}] ${a.action}`
+  );
+  const riskRecs = assessment.top_risks.map(
+    (r) => `[${r.severity.toUpperCase()}] ${r.risk}: ${r.action}`
+  );
+  const allRecs = [...recommendations, ...riskRecs];
+  return {
+    overallAssessment: assessment.executive_summary || result.reasoning,
+    riskLevel: assessment.risk_level,
+    recommendations: allRecs.length > 0 ? allRecs : ["Review the full audit output above"],
+    score: assessment.score
+  };
+}
+function summarizeAttacker(result) {
+  if (result.attacks.length === 0) {
+    return result.reasoning;
+  }
+  const lines = [];
+  for (const attack of result.attacks) {
+    lines.push(`### ${attack.attack_name}`);
+    lines.push(`- **Impact**: ${attack.impact} | **Difficulty**: ${attack.difficulty} | **CVSS**: ${attack.cvss_estimate}`);
+    lines.push(`- **Entry point**: ${attack.entry_point}`);
+    lines.push(`- **Attack chain**: ${attack.attack_chain.join(" -> ")}`);
+    lines.push(`- **Evidence**: ${attack.evidence}`);
+    if (attack.prerequisites) {
+      lines.push(`- **Prerequisites**: ${attack.prerequisites}`);
+    }
+    lines.push("");
+  }
+  return lines.join("\n");
+}
+function summarizeDefender(result) {
+  const lines = [];
+  if (result.gaps.length > 0) {
+    lines.push("### Defense Gaps");
+    for (const gap of result.gaps) {
+      lines.push(`- **${gap.gap_name}** [${gap.priority}/${gap.effort}] \u2014 ${gap.recommended_fix}`);
+    }
+    lines.push("");
+  }
+  if (result.goodPractices.length > 0) {
+    lines.push("### Good Practices");
+    for (const p of result.goodPractices) {
+      lines.push(`- **${p.practice_name}** (${p.effectiveness}) \u2014 ${p.description}`);
+    }
+    lines.push("");
+  }
+  return lines.length > 0 ? lines.join("\n") : result.reasoning;
+}
 async function runOpusPipeline(scanResult, options) {
   const client = new Anthropic();
   const configContext = buildConfigContext(
     scanResult.target.files.map((f) => ({ path: f.path, content: f.content }))
   );
-  let attackerRaw;
-  let defenderRaw;
+  let attackerResult;
+  let defenderResult;
   if (options.stream) {
     renderPhaseBanner(
       "Phase 1a",
       "ATTACKER (Red Team)",
       "Adversarial analysis \u2014 finding attack vectors",
-      chalk2.red
+      chalk.red
     );
-    attackerRaw = await runPerspectiveStreaming(
+    attackerResult = await runAttackerStreaming(
       client,
-      "attacker",
       configContext,
       options.verbose,
-      chalk2.red
+      chalk.red
     );
-    renderPhaseComplete("Attacker analysis", attackerRaw.length, chalk2.red);
+    renderPhaseComplete("Attacker analysis", attackerResult.attacks.length, chalk.red);
     renderPhaseBanner(
       "Phase 1b",
       "DEFENDER (Blue Team)",
       "Defensive analysis \u2014 hardening recommendations",
-      chalk2.blue
+      chalk.blue
     );
-    defenderRaw = await runPerspectiveStreaming(
+    defenderResult = await runDefenderStreaming(
       client,
-      "defender",
       configContext,
       options.verbose,
-      chalk2.blue
+      chalk.blue
     );
-    renderPhaseComplete("Defender analysis", defenderRaw.length, chalk2.blue);
+    renderPhaseComplete("Defender analysis", defenderResult.gaps.length, chalk.blue);
   } else {
-    const [aRaw, dRaw] = await Promise.all([
-      runPerspectiveNonStreaming(client, "attacker", configContext),
-      runPerspectiveNonStreaming(client, "defender", configContext)
+    const [aResult, dResult] = await Promise.all([
+      runAttackerNonStreaming(client, configContext),
+      runDefenderNonStreaming(client, configContext)
     ]);
-    attackerRaw = aRaw;
-    defenderRaw = dRaw;
+    attackerResult = aResult;
+    defenderResult = dResult;
   }
-  const auditorContext = buildAuditorContext(configContext, attackerRaw, defenderRaw);
-  let auditorRaw;
+  const auditorContext = buildAuditorContext(
+    configContext,
+    summarizeAttacker(attackerResult),
+    summarizeDefender(defenderResult)
+  );
+  let auditorResult;
   if (options.stream) {
     renderPhaseBanner(
       "Phase 2",
       "AUDITOR (Final Verdict)",
       "Synthesizing attacker + defender into final assessment",
-      chalk2.cyan
+      chalk.cyan
     );
-    auditorRaw = await runAuditorStreaming(
+    auditorResult = await runAuditorStreaming(
       client,
       auditorContext,
       options.verbose
     );
-    renderPhaseComplete("Auditor synthesis", auditorRaw.length, chalk2.cyan);
+    renderPhaseComplete("Auditor synthesis", auditorResult.assessment.top_risks.length, chalk.cyan);
     process.stdout.write("\n");
   } else {
-    auditorRaw = await runAuditorNonStreaming(client, auditorContext);
+    auditorResult = await runAuditorNonStreaming(client, auditorContext);
   }
-  const attacker = parseAttackerResponse(attackerRaw);
-  const defender = parseDefenderResponse(defenderRaw);
-  const auditor = parseAuditorResponse(auditorRaw);
+  const attacker = toAttackerPerspective(attackerResult);
+  const defender = toDefenderPerspective(defenderResult);
+  const auditor = toAudit(auditorResult);
   return { attacker, defender, auditor };
 }
-async function runPerspectiveStreaming(client, role, configContext, verbose, colorFn) {
-  const systemPrompt = role === "attacker" ? ATTACKER_SYSTEM_PROMPT : DEFENDER_SYSTEM_PROMPT;
-  const roleLabel = role === "attacker" ? "Attacker" : "Defender";
+async function runAttackerStreaming(client, configContext, verbose, colorFn) {
+  const response = await runAgentStreaming(
+    client,
+    ATTACKER_SYSTEM_PROMPT,
+    `Analyze the following AI agent configuration from your attacker perspective. Use the report_attack_vector tool for each vulnerability you find.
+
+${configContext}`,
+    ATTACKER_TOOLS,
+    "Attacker",
+    verbose,
+    colorFn
+  );
+  return parseAttackerToolCalls(response.toolCalls, response.text);
+}
+async function runDefenderStreaming(client, configContext, verbose, colorFn) {
+  const response = await runAgentStreaming(
+    client,
+    DEFENDER_SYSTEM_PROMPT,
+    `Analyze the following AI agent configuration from your defender perspective. Use the report_defense_gap and report_good_practice tools.
+
+${configContext}`,
+    DEFENDER_TOOLS,
+    "Defender",
+    verbose,
+    colorFn
+  );
+  return parseDefenderToolCalls(response.toolCalls, response.text);
+}
+async function runAttackerNonStreaming(client, configContext) {
+  const response = await runAgentNonStreaming(
+    client,
+    ATTACKER_SYSTEM_PROMPT,
+    `Analyze the following AI agent configuration from your attacker perspective. Use the report_attack_vector tool for each vulnerability you find.
+
+${configContext}`,
+    ATTACKER_TOOLS
+  );
+  return parseAttackerToolCalls(response.toolCalls, response.text);
+}
+async function runDefenderNonStreaming(client, configContext) {
+  const response = await runAgentNonStreaming(
+    client,
+    DEFENDER_SYSTEM_PROMPT,
+    `Analyze the following AI agent configuration from your defender perspective. Use the report_defense_gap and report_good_practice tools.
+
+${configContext}`,
+    DEFENDER_TOOLS
+  );
+  return parseDefenderToolCalls(response.toolCalls, response.text);
+}
+async function runAuditorStreaming(client, auditorContext, verbose) {
+  const response = await runAgentStreaming(
+    client,
+    AUDITOR_SYSTEM_PROMPT,
+    `Produce your final security audit based on the following. Use the final_assessment tool for your verdict.
+
+${auditorContext}`,
+    AUDITOR_TOOLS,
+    "Auditor",
+    verbose,
+    chalk.cyan
+  );
+  return parseAuditorToolCalls(response.toolCalls, response.text);
+}
+async function runAuditorNonStreaming(client, auditorContext) {
+  const response = await runAgentNonStreaming(
+    client,
+    AUDITOR_SYSTEM_PROMPT,
+    `Produce your final security audit based on the following. Use the final_assessment tool for your verdict.
+
+${auditorContext}`,
+    AUDITOR_TOOLS
+  );
+  return parseAuditorToolCalls(response.toolCalls, response.text);
+}
+async function runAgentStreaming(client, systemPrompt, userMessage, tools, roleLabel, verbose, colorFn) {
   let fullText = "";
+  const collectedToolCalls = [];
+  const pendingToolInputs = /* @__PURE__ */ new Map();
   const stream = client.messages.stream({
     model: MODEL,
-    max_tokens: 4096,
+    max_tokens: 8192,
     system: systemPrompt,
-    messages: [
-      {
-        role: "user",
-        content: `Analyze the following AI agent configuration from your ${role} perspective.
-
-${configContext}`
-      }
-    ]
+    tools,
+    tool_choice: { type: "any" },
+    messages: [{ role: "user", content: userMessage }]
   });
   if (verbose) {
     for await (const event of stream) {
-      if (event.type === "content_block_delta" && event.delta.type === "text_delta") {
-        const text = event.delta.text;
-        fullText += text;
-        process.stdout.write(chalk2.dim(text));
+      if (event.type === "content_block_start") {
+        const block = event.content_block;
+        if (block.type === "text") {
+        } else if (block.type === "tool_use") {
+          pendingToolInputs.set(event.index, { name: block.name, jsonStr: "" });
+        }
+      } else if (event.type === "content_block_delta") {
+        if (event.delta.type === "text_delta") {
+          fullText += event.delta.text;
+          process.stdout.write(chalk.dim(event.delta.text));
+        } else if (event.delta.type === "input_json_delta") {
+          const pending = pendingToolInputs.get(event.index);
+          if (pending) {
+            pending.jsonStr += event.delta.partial_json;
+          }
+        }
+      } else if (event.type === "content_block_stop") {
+        const pending = pendingToolInputs.get(event.index);
+        if (pending) {
+          try {
+            const input = JSON.parse(pending.jsonStr);
+            collectedToolCalls.push({ toolName: pending.name, input });
+            process.stdout.write(chalk.dim(`
+  [tool: ${pending.name}]
+`));
+          } catch {
+          }
+          pendingToolInputs.delete(event.index);
+        }
       }
     }
   } else {
     const spinner = createSpinner(roleLabel, colorFn);
+    let tokenCount = 0;
     for await (const event of stream) {
-      if (event.type === "content_block_delta" && event.delta.type === "text_delta") {
-        fullText += event.delta.text;
-        spinner.update(fullText.length);
+      if (event.type === "content_block_start") {
+        const block = event.content_block;
+        if (block.type === "tool_use") {
+          pendingToolInputs.set(event.index, { name: block.name, jsonStr: "" });
+        }
+      } else if (event.type === "content_block_delta") {
+        if (event.delta.type === "text_delta") {
+          fullText += event.delta.text;
+          tokenCount += event.delta.text.length;
+          spinner.update(tokenCount);
+        } else if (event.delta.type === "input_json_delta") {
+          const pending = pendingToolInputs.get(event.index);
+          if (pending) {
+            pending.jsonStr += event.delta.partial_json;
+            tokenCount += event.delta.partial_json.length;
+            spinner.update(tokenCount);
+          }
+        }
+      } else if (event.type === "content_block_stop") {
+        const pending = pendingToolInputs.get(event.index);
+        if (pending) {
+          try {
+            const input = JSON.parse(pending.jsonStr);
+            collectedToolCalls.push({ toolName: pending.name, input });
+          } catch {
+          }
+          pendingToolInputs.delete(event.index);
+        }
       }
     }
     spinner.stop();
   }
-  return fullText;
+  return { text: fullText, toolCalls: collectedToolCalls };
 }
-async function runPerspectiveNonStreaming(client, role, configContext) {
-  const systemPrompt = role === "attacker" ? ATTACKER_SYSTEM_PROMPT : DEFENDER_SYSTEM_PROMPT;
+async function runAgentNonStreaming(client, systemPrompt, userMessage, tools) {
   const response = await client.messages.create({
     model: MODEL,
-    max_tokens: 4096,
+    max_tokens: 8192,
     system: systemPrompt,
-    messages: [
-      {
-        role: "user",
-        content: `Analyze the following AI agent configuration from your ${role} perspective.
-
-${configContext}`
-      }
-    ]
+    tools,
+    tool_choice: { type: "any" },
+    messages: [{ role: "user", content: userMessage }]
   });
-  const textBlock = response.content.find((b) => b.type === "text");
-  return textBlock?.type === "text" ? textBlock.text : "";
-}
-async function runAuditorStreaming(client, auditorContext, verbose) {
-  let fullText = "";
-  const stream = client.messages.stream({
-    model: MODEL,
-    max_tokens: 4096,
-    system: AUDITOR_SYSTEM_PROMPT,
-    messages: [
-      {
-        role: "user",
-        content: `Produce your final security audit based on the following:
-
-${auditorContext}`
-      }
-    ]
-  });
-  if (verbose) {
-    for await (const event of stream) {
-      if (event.type === "content_block_delta" && event.delta.type === "text_delta") {
-        const text = event.delta.text;
-        fullText += text;
-        process.stdout.write(chalk2.dim(text));
-      }
-    }
-  } else {
-    const spinner = createSpinner("Auditor", chalk2.cyan);
-    for await (const event of stream) {
-      if (event.type === "content_block_delta" && event.delta.type === "text_delta") {
-        fullText += event.delta.text;
-        spinner.update(fullText.length);
-      }
-    }
-    spinner.stop();
-  }
-  return fullText;
-}
-async function runAuditorNonStreaming(client, auditorContext) {
-  const response = await client.messages.create({
-    model: MODEL,
-    max_tokens: 4096,
-    system: AUDITOR_SYSTEM_PROMPT,
-    messages: [
-      {
-        role: "user",
-        content: `Produce your final security audit based on the following:
-
-${auditorContext}`
-      }
-    ]
-  });
-  const textBlock = response.content.find((b) => b.type === "text");
-  return textBlock?.type === "text" ? textBlock.text : "";
-}
-function parseBulletFindings(raw) {
-  return raw.split("\n").filter((line) => {
-    const bulletMatches = [...line.matchAll(/^[-*]\s+/g)];
-    const numberedMatches = [...line.matchAll(/^\d+\.\s+/g)];
-    return bulletMatches.length > 0 || numberedMatches.length > 0;
-  }).map((line) => line.replace(/^[-*\d.]+\s+/, "").trim()).filter((line) => line.length > 10);
-}
-function parseAttackerResponse(raw) {
-  const findingLines = parseBulletFindings(raw);
-  return {
-    role: "attacker",
-    findings: findingLines.length > 0 ? findingLines : [raw.substring(0, 500)],
-    reasoning: raw
-  };
-}
-function parseDefenderResponse(raw) {
-  const findingLines = parseBulletFindings(raw);
-  return {
-    role: "defender",
-    findings: findingLines.length > 0 ? findingLines : [raw.substring(0, 500)],
-    reasoning: raw
-  };
-}
-function parseAuditorResponse(raw) {
-  const scoreMatches = [...raw.matchAll(/(?:score|rating)[:\s]*(\d{1,3})\s*(?:\/\s*100)?/gi)];
-  const scoreMatch = scoreMatches.length > 0 ? scoreMatches[0] : void 0;
-  const score = scoreMatch ? Math.min(100, parseInt(scoreMatch[1], 10)) : 50;
-  const riskMatches = [
-    ...raw.matchAll(/(?:risk\s+level|overall\s+risk|severity)[:\s]*(critical|high|medium|low)/gi)
-  ];
-  const riskMatch = riskMatches.length > 0 ? riskMatches[0] : void 0;
-  const riskLevel = riskMatch?.[1]?.toLowerCase() ?? "medium";
-  const recommendations = raw.split("\n").filter((line) => {
-    const bulletMatches = [...line.matchAll(/^[-*]\s+/g)];
-    const numberedMatches = [...line.matchAll(/^\d+\.\s+/g)];
-    return (bulletMatches.length > 0 || numberedMatches.length > 0) && line.length > 20;
-  }).map((line) => line.replace(/^[-*\d.]+\s+/, "").trim()).slice(0, 10);
-  return {
-    overallAssessment: raw,
-    riskLevel,
-    recommendations: recommendations.length > 0 ? recommendations : ["Review the full audit output above"],
-    score
-  };
+  const content = response.content;
+  const text = extractTextContent(content);
+  const toolCalls = extractToolCalls(content);
+  return { text, toolCalls };
 }
 
 // src/opus/render.ts
-import chalk3 from "chalk";
+import chalk2 from "chalk";
 function renderOpusAnalysis(analysis) {
   const lines = [];
   lines.push("");
-  lines.push(chalk3.bold.magenta("  Opus 4.6 Multi-Agent Security Analysis"));
-  lines.push(chalk3.dim("  Three-perspective adversarial review"));
+  lines.push(chalk2.bold.magenta("  Opus 4.6 Multi-Agent Security Analysis"));
+  lines.push(chalk2.dim("  Three-perspective adversarial review"));
   lines.push("");
-  lines.push(chalk3.bold.red("  Red Team (Attacker Perspective)"));
-  lines.push(chalk3.dim("  \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500"));
+  lines.push(chalk2.bold.red("  Red Team (Attacker Perspective)"));
+  lines.push(chalk2.dim("  \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500"));
   const attackerFindings = analysis.attacker.findings.slice(0, 8);
   for (const finding of attackerFindings) {
-    lines.push(chalk3.red(`    * ${finding}`));
+    lines.push(chalk2.red(`    * ${finding}`));
   }
   if (analysis.attacker.findings.length > 8) {
-    lines.push(chalk3.dim(`    ... and ${analysis.attacker.findings.length - 8} more`));
+    lines.push(chalk2.dim(`    ... and ${analysis.attacker.findings.length - 8} more`));
   }
   lines.push("");
-  lines.push(chalk3.bold.blue("  Blue Team (Defender Perspective)"));
-  lines.push(chalk3.dim("  \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500"));
+  lines.push(chalk2.bold.blue("  Blue Team (Defender Perspective)"));
+  lines.push(chalk2.dim("  \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500"));
   const defenderFindings = analysis.defender.findings.slice(0, 8);
   for (const finding of defenderFindings) {
-    lines.push(chalk3.blue(`    * ${finding}`));
+    lines.push(chalk2.blue(`    * ${finding}`));
   }
   if (analysis.defender.findings.length > 8) {
-    lines.push(chalk3.dim(`    ... and ${analysis.defender.findings.length - 8} more`));
+    lines.push(chalk2.dim(`    ... and ${analysis.defender.findings.length - 8} more`));
   }
   lines.push("");
-  lines.push(chalk3.bold.cyan("  Auditor (Final Assessment)"));
-  lines.push(chalk3.dim("  \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500"));
-  const riskColor = analysis.auditor.riskLevel === "critical" ? chalk3.red.bold : analysis.auditor.riskLevel === "high" ? chalk3.yellow.bold : analysis.auditor.riskLevel === "medium" ? chalk3.blue.bold : chalk3.green.bold;
+  lines.push(chalk2.bold.cyan("  Auditor (Final Assessment)"));
+  lines.push(chalk2.dim("  \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500"));
+  const riskColor = analysis.auditor.riskLevel === "critical" ? chalk2.red.bold : analysis.auditor.riskLevel === "high" ? chalk2.yellow.bold : analysis.auditor.riskLevel === "medium" ? chalk2.blue.bold : chalk2.green.bold;
   lines.push(`  Risk Level: ${riskColor(analysis.auditor.riskLevel.toUpperCase())}`);
   lines.push(`  Opus Score: ${renderInlineScore(analysis.auditor.score)}`);
   lines.push("");
-  lines.push(chalk3.bold("  Top Recommendations:"));
+  lines.push(chalk2.bold("  Top Recommendations:"));
   const recs = analysis.auditor.recommendations.slice(0, 5);
   for (let i = 0; i < recs.length; i++) {
-    lines.push(chalk3.cyan(`    ${i + 1}. ${recs[i]}`));
+    lines.push(chalk2.cyan(`    ${i + 1}. ${recs[i]}`));
   }
   lines.push("");
-  lines.push(chalk3.dim("  \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500"));
-  lines.push(chalk3.dim("  Powered by Claude Opus 4.6 \u2014 three-agent adversarial analysis"));
+  lines.push(chalk2.dim("  \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500"));
+  lines.push(chalk2.dim("  Powered by Claude Opus 4.6 \u2014 three-agent adversarial analysis"));
   lines.push("");
   return lines.join("\n");
 }
@@ -1165,10 +1358,10 @@ function renderInlineScore(score) {
   const filled = Math.round(score / 100 * width);
   const empty = width - filled;
   let colorFn;
-  if (score >= 80) colorFn = chalk3.green;
-  else if (score >= 60) colorFn = chalk3.yellow;
-  else colorFn = chalk3.red;
-  return `${colorFn("\u2588".repeat(filled))}${chalk3.dim("\u2591".repeat(empty))} ${colorFn(`${score}/100`)}`;
+  if (score >= 80) colorFn = chalk2.green;
+  else if (score >= 60) colorFn = chalk2.yellow;
+  else colorFn = chalk2.red;
+  return `${colorFn("\u2588".repeat(filled))}${chalk2.dim("\u2591".repeat(empty))} ${colorFn(`${score}/100`)}`;
 }
 
 // src/fixer/index.ts
@@ -1514,14 +1707,139 @@ function renderInitSummary(result) {
 }
 
 // src/index.ts
+async function runInjectionTests(targetPath) {
+  try {
+    const { runInjectionSuite } = await import("./injection-DQPBX4CT.js");
+    return await runInjectionSuite(targetPath);
+  } catch (e) {
+    console.error(
+      "  Injection module not available:",
+      e.message
+    );
+    return null;
+  }
+}
+async function runSandboxAnalysis(targetPath) {
+  try {
+    const { executeAllHooks, analyzeAllExecutions } = await import("./sandbox-UJVXGIGH.js");
+    const { discoverConfigFiles } = await import("./scanner-BFJX4BNK.js");
+    const target = discoverConfigFiles(targetPath);
+    const settingsFile = target.files.find((f) => f.type === "settings-json");
+    if (!settingsFile) return null;
+    const executions = await executeAllHooks(settingsFile.content);
+    const analyses = analyzeAllExecutions(executions);
+    const behaviors = executions.map((exec, i) => ({
+      hookId: `hook-${i}`,
+      hookCommand: exec.hookCommand,
+      exitCode: exec.exitCode ?? -1,
+      stdout: exec.stdout,
+      stderr: exec.stderr,
+      networkAttempts: exec.observations.filter((o) => o.type === "network_request").map((o) => o.detail),
+      fileAccesses: exec.observations.filter((o) => o.type === "file_read" || o.type === "file_write").map((o) => o.detail),
+      suspiciousBehaviors: exec.observations.filter((o) => o.type === "suspicious_output" || o.type === "process_spawn").map((o) => o.detail)
+    }));
+    const riskFindings = [];
+    for (const analysis of analyses) {
+      for (const finding of analysis.findings) {
+        riskFindings.push({
+          id: finding.id,
+          severity: finding.severity,
+          category: "misconfiguration",
+          title: finding.title,
+          description: finding.description,
+          file: "settings.json",
+          evidence: finding.evidence
+        });
+      }
+    }
+    return { hooksExecuted: executions.length, behaviors, riskFindings };
+  } catch (e) {
+    console.error(
+      "  Sandbox module not available:",
+      e.message
+    );
+    return null;
+  }
+}
+async function runTaintAnalysis(targetPath) {
+  try {
+    const { analyzeTaint } = await import("./taint-PKVN2ZO2.js");
+    const { discoverConfigFiles } = await import("./scanner-BFJX4BNK.js");
+    const target = discoverConfigFiles(targetPath);
+    const files = target.files.map((f) => ({ path: f.path, content: f.content }));
+    return analyzeTaint(files);
+  } catch (e) {
+    console.error(
+      "  Taint analysis module not available:",
+      e.message
+    );
+    return null;
+  }
+}
+async function runCorpusValidation(_targetPath) {
+  try {
+    const { validateCorpus, defaultRuleScanFn } = await import("./corpus-GQGTHMVF.js");
+    const { getBuiltinRules } = await import("./rules-BLSH7HVB.js");
+    const rules = getBuiltinRules();
+    const validation = validateCorpus(defaultRuleScanFn, rules);
+    const totalAttacks = validation.totalConfigs;
+    const detected = validation.passed;
+    const missed = validation.failed;
+    return {
+      totalAttacks,
+      detected,
+      missed,
+      detectionRate: totalAttacks > 0 ? detected / totalAttacks : 0,
+      results: validation.results.map((r) => ({
+        attackId: r.configId,
+        attackName: r.configName,
+        detected: r.passed,
+        ruleId: r.missingRules.length === 0 ? r.configId : void 0
+      }))
+    };
+  } catch (e) {
+    console.error(
+      "  Corpus module not available:",
+      e.message
+    );
+    return null;
+  }
+}
+function createScanLogger(logPath, logFormat) {
+  const entries = [];
+  return {
+    log(entry) {
+      const fullEntry = {
+        ...entry,
+        timestamp: (/* @__PURE__ */ new Date()).toISOString()
+      };
+      entries.push(fullEntry);
+      if (logPath && logFormat === "ndjson") {
+        appendFileSync(logPath, JSON.stringify(fullEntry) + "\n");
+      }
+    },
+    flush() {
+      if (logPath && logFormat === "json") {
+        writeFileSync3(logPath, JSON.stringify(entries, null, 2));
+      }
+    }
+  };
+}
 var program = new Command();
-program.name("agentshield").description("Security auditor for AI agent configurations").version("1.1.0");
-program.command("scan").description("Scan a Claude Code configuration directory for security issues").option("-p, --path <path>", "Path to scan (default: ~/.claude or current dir)").option("-f, --format <format>", "Output format: terminal, json, markdown, html", "terminal").option("--fix", "Auto-apply safe fixes", false).option("--opus", "Enable Opus 4.6 multi-agent deep analysis", false).option("--stream", "Stream Opus analysis in real-time", false).option("--min-severity <severity>", "Minimum severity to report: critical, high, medium, low, info", "info").option("-v, --verbose", "Show detailed output", false).action(async (options) => {
+program.name("agentshield").description("Security auditor for AI agent configurations").version("1.2.0");
+program.command("scan").description("Scan a Claude Code configuration directory for security issues").option("-p, --path <path>", "Path to scan (default: ~/.claude or current dir)").option("-f, --format <format>", "Output format: terminal, json, markdown, html", "terminal").option("--fix", "Auto-apply safe fixes", false).option("--opus", "Enable Opus 4.6 multi-agent deep analysis", false).option("--stream", "Stream Opus analysis in real-time", false).option("--injection", "Run active prompt injection testing against the config", false).option("--sandbox", "Execute hooks in sandbox and observe behavior", false).option("--taint", "Run taint analysis (data flow tracking)", false).option("--deep", "Run ALL analysis (injection + sandbox + taint + opus)", false).option("--log <path>", "Write structured scan log to file").option("--log-format <format>", "Log format: ndjson (default) or json", "ndjson").option("--corpus", "Run scanner validation against built-in attack corpus", false).option("--min-severity <severity>", "Minimum severity to report: critical, high, medium, low, info", "info").option("-v, --verbose", "Show detailed output", false).action(async (options) => {
   const targetPath = resolveTargetPath(options.path);
   if (!existsSync2(targetPath)) {
     console.error(`Error: Path does not exist: ${targetPath}`);
     process.exit(1);
   }
+  const logger = createScanLogger(options.log, options.logFormat);
+  logger.log({ level: "info", phase: "init", message: `Scanning ${targetPath}` });
+  const enableInjection = options.deep || options.injection;
+  const enableSandbox = options.deep || options.sandbox;
+  const enableTaint = options.deep || options.taint;
+  const enableOpus = options.deep || options.opus;
+  logger.log({ level: "info", phase: "static", message: "Running static analysis" });
   const result = scan(targetPath);
   const severityOrder = ["critical", "high", "medium", "low", "info"];
   const minIndex = severityOrder.indexOf(options.minSeverity);
@@ -1532,6 +1850,12 @@ program.command("scan").description("Scan a Claude Code configuration directory 
     )
   };
   const report = calculateScore(filteredResult);
+  logger.log({
+    level: "info",
+    phase: "static",
+    message: `Static analysis complete: ${report.summary.totalFindings} findings`,
+    data: { grade: report.score.grade, score: report.score.numericScore }
+  });
   switch (options.format) {
     case "json":
       console.log(renderJsonReport(report));
@@ -1546,28 +1870,118 @@ program.command("scan").description("Scan a Claude Code configuration directory 
       console.log(renderTerminalReport(report));
   }
   if (options.fix) {
+    logger.log({ level: "info", phase: "fix", message: "Applying auto-fixes" });
     const fixResult = applyFixes(filteredResult);
     console.log(renderFixSummary(fixResult));
   }
-  if (options.opus) {
+  let taintResult = null;
+  if (enableTaint) {
+    logger.log({ level: "info", phase: "taint", message: "Running taint analysis" });
+    taintResult = await runTaintAnalysis(targetPath);
+    if (taintResult) {
+      const { renderTaintResults } = await import("./terminal-7RZU63NT.js");
+      console.log(renderTaintResults(taintResult));
+      logger.log({
+        level: "info",
+        phase: "taint",
+        message: `Taint analysis complete: ${taintResult.flows.length} flows found`
+      });
+    }
+  }
+  let injectionResult = null;
+  if (enableInjection) {
+    logger.log({ level: "info", phase: "injection", message: "Running injection tests" });
+    injectionResult = await runInjectionTests(targetPath);
+    if (injectionResult) {
+      const { renderInjectionResults } = await import("./terminal-7RZU63NT.js");
+      console.log(renderInjectionResults(injectionResult));
+      logger.log({
+        level: injectionResult.bypassed > 0 ? "warn" : "info",
+        phase: "injection",
+        message: `Injection tests: ${injectionResult.blocked}/${injectionResult.totalPayloads} blocked`
+      });
+    }
+  }
+  let sandboxResult = null;
+  if (enableSandbox) {
+    logger.log({ level: "info", phase: "sandbox", message: "Running sandbox hook execution" });
+    sandboxResult = await runSandboxAnalysis(targetPath);
+    if (sandboxResult) {
+      const { renderSandboxResults } = await import("./terminal-7RZU63NT.js");
+      console.log(renderSandboxResults(sandboxResult));
+      logger.log({
+        level: sandboxResult.riskFindings.length > 0 ? "warn" : "info",
+        phase: "sandbox",
+        message: `Sandbox: ${sandboxResult.hooksExecuted} hooks executed, ${sandboxResult.riskFindings.length} risks`
+      });
+    }
+  }
+  if (enableOpus) {
     if (!process.env.ANTHROPIC_API_KEY) {
       console.error(
         "\nError: ANTHROPIC_API_KEY environment variable required for --opus mode.\nSet it with: export ANTHROPIC_API_KEY=your-key-here\n"
       );
-      process.exit(1);
-    }
-    try {
-      const opusAnalysis = await runOpusPipeline(result, {
-        verbose: options.verbose,
-        stream: options.stream || options.format === "terminal"
-      });
-      console.log(renderOpusAnalysis(opusAnalysis));
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      console.error(`
+      if (!options.deep) {
+        process.exit(1);
+      }
+    } else {
+      logger.log({ level: "info", phase: "opus", message: "Running Opus pipeline" });
+      try {
+        const opusAnalysis = await runOpusPipeline(result, {
+          verbose: options.verbose,
+          stream: options.stream || options.format === "terminal"
+        });
+        console.log(renderOpusAnalysis(opusAnalysis));
+        logger.log({
+          level: "info",
+          phase: "opus",
+          message: "Opus analysis complete",
+          data: { riskLevel: opusAnalysis.auditor.riskLevel }
+        });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        console.error(`
 Opus analysis failed: ${message}`);
-      console.error("The static scan results above are still valid.\n");
+        console.error("The static scan results above are still valid.\n");
+        logger.log({ level: "error", phase: "opus", message: `Opus failed: ${message}` });
+      }
     }
+  }
+  let corpusResult = null;
+  if (options.corpus) {
+    logger.log({ level: "info", phase: "corpus", message: "Running corpus validation" });
+    corpusResult = await runCorpusValidation(targetPath);
+    if (corpusResult) {
+      const { renderCorpusResults } = await import("./terminal-7RZU63NT.js");
+      console.log(renderCorpusResults(corpusResult));
+      logger.log({
+        level: "info",
+        phase: "corpus",
+        message: `Corpus: ${corpusResult.detected}/${corpusResult.totalAttacks} detected (${(corpusResult.detectionRate * 100).toFixed(1)}%)`
+      });
+    }
+  }
+  if (options.deep) {
+    const { renderDeepScanSummary } = await import("./terminal-7RZU63NT.js");
+    const deepResult = {
+      staticAnalysis: {
+        findings: filteredResult.findings,
+        score: report.score
+      },
+      taintAnalysis: taintResult,
+      injectionTests: injectionResult,
+      sandboxResults: sandboxResult,
+      opusAnalysis: null,
+      corpusValidation: corpusResult
+    };
+    console.log(renderDeepScanSummary(deepResult));
+  }
+  logger.log({ level: "info", phase: "done", message: "Scan complete" });
+  logger.flush();
+  if (options.log) {
+    console.log(`
+  Scan log written to: ${options.log}
+`);
   }
   if (report.summary.critical > 0) {
     process.exit(2);
