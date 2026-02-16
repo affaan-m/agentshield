@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AgentShield &mdash; Security Report</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script>tailwind.config={theme:{extend:{fontFamily:{display:['Space Grotesk','sans-serif'],mono:['JetBrains Mono','monospace'],body:['Inter','sans-serif']},colors:{surface:'#08080d',card:'#0e0e16',border:'#1a1a2a',accent:'#7c3aed'}}}}</script>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box}
+body{font-family:'Inter',sans-serif;background:#08080d;color:#c4c4d4;overflow-x:hidden}
+h1,h2,h3{font-family:'Space Grotesk',sans-serif}
+code,.mono{font-family:'JetBrains Mono',monospace}
+@keyframes fadeUp{from{opacity:0;transform:translateY(24px)}to{opacity:1;transform:translateY(0)}}
+@keyframes slideRight{from{width:0}to{width:var(--w)}}
+@keyframes pulseGlow{0%,100%{box-shadow:0 0 15px rgba(239,68,68,0.3)}50%{box-shadow:0 0 30px rgba(239,68,68,0.5)}}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:0}}
+@keyframes gaugeAnim{from{stroke-dashoffset:339.292}to{stroke-dashoffset:var(--offset)}}
+.fade-up{animation:fadeUp .7s ease-out forwards;opacity:0}
+.d1{animation-delay:.05s}.d2{animation-delay:.1s}.d3{animation-delay:.15s}.d4{animation-delay:.2s}.d5{animation-delay:.25s}.d6{animation-delay:.3s}
+.bar-fill{animation:slideRight 1.2s cubic-bezier(.4,0,.2,1) forwards;width:0}
+.pulse-grade{animation:pulseGlow 2s ease-in-out infinite}
+.gauge-stroke{animation:gaugeAnim 2s cubic-bezier(.4,0,.2,1) forwards}
+.cursor-blink{animation:blink 1s step-end infinite}
+::-webkit-scrollbar{width:6px;height:6px}
+::-webkit-scrollbar-track{background:#08080d}
+::-webkit-scrollbar-thumb{background:#252540;border-radius:3px}
+</style>
+</head>
+<body class="min-h-screen">
+<div class="fixed inset-0 pointer-events-none opacity-[0.015]" style="background-image:url('data:image/svg+xml,%3Csvg viewBox=%220 0 256 256%22 xmlns=%22http://www.w3.org/2000/svg%22%3E%3Cfilter id=%22n%22%3E%3CfeTurbulence type=%22fractalNoise%22 baseFrequency=%220.9%22 numOctaves=%224%22 stitchTiles=%22stitch%22/%3E%3C/filter%3E%3Crect width=%22100%25%22 height=%22100%25%22 filter=%22url(%23n)%22/%3E%3C/svg%3E')"></div>
+<div class="relative max-w-[1440px] mx-auto px-6 py-6" id="app">
+  <div class="flex items-center justify-center h-[80vh]">
+    <div class="text-center">
+      <div class="mono text-sm text-gray-500 mb-2">Loading scan results...</div>
+      <div class="mono text-xs text-gray-600">Reading results.json</div>
+    </div>
+  </div>
+</div>
+
+<script>
+var SEV_COLORS={critical:{fg:'#ff4757',bg:'rgba(255,71,87,',tag:'CRIT'},high:{fg:'#ff7f50',bg:'rgba(255,127,80,',tag:'HIGH'},medium:{fg:'#ffa502',bg:'rgba(255,165,2,',tag:'MED'},low:{fg:'#3498db',bg:'rgba(52,152,219,',tag:'LOW'},info:{fg:'#636e72',bg:'rgba(99,110,114,',tag:'INFO'}};
+var CAT_COLORS={secrets:'#ff4757',injection:'#e84393',permissions:'#ff7f50',hooks:'#fdcb6e',mcp:'#a29bfe',misconfiguration:'#ffa502',exposure:'#74b9ff',agents:'#55efc4'};
+var GRADE_COLORS={A:'#22c55e',B:'#55efc4',C:'#ffa502',D:'#ff7f50',F:'#ff4757'};
+
+function h(tag,cls,style,inner){
+  var el=document.createElement(tag);
+  if(cls)el.className=cls;
+  if(style)el.setAttribute('style',style);
+  if(typeof inner==='string')el.textContent=inner;
+  return el;
+}
+
+function render(d){
+  var s=d.score||{};
+  var grade=s.grade||'F';
+  var score=s.numericScore||0;
+  var bd=s.breakdown||{};
+  var sm=d.summary||{};
+  var findings=d.findings||[];
+  var target=(d.targetPath||'unknown').replace(/.*\/([^\/]+\/[^\/]+)$/,'$1').replace(/^\/tmp\//,'');
+  var gc=GRADE_COLORS[grade]||'#ff4757';
+  // gauge offset: 339.292 * (1 - score/100)
+  var offset=339.292*(1-score/100);
+
+  // count categories
+  var cats={};
+  findings.forEach(function(f){var c=f.category||'unknown';cats[c]=(cats[c]||0)+1;});
+  // count severities
+  var sevs={critical:sm.critical||0,high:sm.high||0,medium:sm.medium||0,low:sm.low||0,info:sm.info||0};
+  var maxSev=Math.max(sevs.critical,sevs.high,sevs.medium,sevs.low,sevs.info,1);
+  // unique files
+  var files=new Set();
+  findings.forEach(function(f){if(f.file)files.add(f.file);});
+
+  var app=document.getElementById('app');
+  app.textContent='';
+
+  // Header
+  var header=h('header','flex items-center justify-between mb-4 fade-up');
+  header.innerHTML='<div class="flex items-center gap-4"><img src="https://v3b.fal.media/files/b/0a8ebe7d/1jBbiBu4xUcjbQAwrh0kT.jpg" alt="AgentShield" class="w-11 h-11 rounded-xl ring-1 ring-white/10"><div><h1 class="text-[22px] font-bold text-white tracking-tight">AgentShield</h1><p class="text-xs text-gray-500 tracking-wide">SECURITY REPORT</p></div></div><div class="flex items-center gap-6"><div class="text-right"><div class="mono text-xs text-gray-500">SCAN MODE</div><div class="mono text-sm text-purple-400">--deep</div></div><div class="text-right"><div class="mono text-xs text-gray-500">VERSION</div><div class="mono text-sm text-gray-300">v1.3.0</div></div></div>';
+  app.appendChild(header);
+
+  // Audit Target Banner
+  var banner=h('div','mb-4 px-5 py-3.5 rounded-2xl border fade-up d1','background:linear-gradient(135deg,rgba(124,58,237,.06),rgba(255,71,87,.04));border-color:rgba(124,58,237,.2)');
+  banner.innerHTML='<div class="flex items-center justify-between"><div class="flex items-center gap-4"><div><div class="mono text-[10px] text-gray-500 mb-0.5">AUDIT TARGET</div><div class="mono text-sm text-white font-semibold" id="target-name"></div></div><div class="w-px h-8" style="background:#1a1a2a"></div><div><div class="mono text-[10px] text-gray-500 mb-0.5">FILES SCANNED</div><div class="mono text-xs text-gray-400" id="files-list"></div></div></div><div class="flex items-center gap-5" id="banner-stats"></div></div>';
+  app.appendChild(banner);
+  document.getElementById('target-name').textContent=target;
+  document.getElementById('files-list').textContent=Array.from(files).slice(0,4).join(' \u00b7 ')+(files.size>4?' \u00b7 ...':'');
+  var bstats=document.getElementById('banner-stats');
+  [{v:sm.filesScanned||files.size,l:'FILES',c:'white'},{v:sm.totalFindings||findings.length,l:'FINDINGS',c:gc},{v:sm.autoFixable||0,l:'AUTO-FIX',c:'#55efc4'}].forEach(function(item){
+    var div=h('div','text-center');
+    var num=h('div','mono text-lg font-bold','color:'+item.c,String(item.v));
+    var lbl=h('div','text-[9px] text-gray-500','',item.l);
+    div.appendChild(num);div.appendChild(lbl);bstats.appendChild(div);
+  });
+
+  // Main Grid
+  var grid=h('div','grid grid-cols-12 gap-4');
+
+  // LEFT COLUMN
+  var left=h('div','col-span-3 space-y-4');
+
+  // Score Gauge
+  var gaugeCard=h('div','bg-card rounded-2xl border border-border p-6 text-center fade-up d1');
+  gaugeCard.innerHTML='<div class="relative w-32 h-32 mx-auto mb-4"><svg class="w-32 h-32 -rotate-90" viewBox="0 0 120 120"><circle cx="60" cy="60" r="54" fill="none" stroke="#1a1a2a" stroke-width="8"/><circle cx="60" cy="60" r="54" fill="none" stroke="'+gc+'" stroke-width="8" stroke-dasharray="339.292" style="--offset:'+offset+'" class="gauge-stroke" stroke-linecap="round" opacity="0.9"/></svg><div class="absolute inset-0 flex flex-col items-center justify-center"><span class="text-5xl font-bold text-white mono tracking-tighter">'+score+'</span></div></div><div class="inline-block px-5 py-2 rounded-xl '+(grade==='F'||grade==='D'?'pulse-grade':'')+'" style="background:'+gc.replace('#','rgba(').replace(/(..)(..)(..)/,function(_,r,g,b){return 'rgba('+parseInt(r,16)+','+parseInt(g,16)+','+parseInt(b,16)+',.12)'}).replace('rgba(rgba(','rgba(')+';border:1px solid '+gc+'33"><span class="text-xl font-bold" style="color:'+gc+'">GRADE '+grade+'</span></div><div class="mt-3 text-xs text-gray-600">'+findings.length+' findings \u00b7 '+score+'/100</div>';
+  left.appendChild(gaugeCard);
+
+  // Categories
+  var catCard=h('div','bg-card rounded-2xl border border-border p-4 fade-up d2');
+  catCard.innerHTML='<h2 class="text-[11px] font-semibold text-gray-500 uppercase tracking-widest mb-3">Categories</h2>';
+  var catList=h('div','space-y-2');
+  var sortedCats=Object.entries(cats).sort(function(a,b){return b[1]-a[1];});
+  // also show zero categories from breakdown
+  Object.keys(bd).forEach(function(k){if(!cats[k]&&!cats[k+'s']){sortedCats.push([k,0]);}});
+  sortedCats.forEach(function(pair){
+    var name=pair[0],count=pair[1];
+    var color=CAT_COLORS[name]||'#636e72';
+    var row=h('div','flex items-center justify-between px-3 py-2.5 rounded-xl border','color:'+(count>0?color:'#636e72')+';border-color:'+(count>0?color+'4d':'rgba(99,110,114,.2)')+';background:'+(count>0?color+'0f':'rgba(99,110,114,.04)'));
+    var label=h('span','text-xs font-medium','',name.charAt(0).toUpperCase()+name.slice(1));
+    var num=h('span','mono text-sm font-bold','color:'+(count>0?color:'#22c55e'),String(count));
+    row.appendChild(label);row.appendChild(num);catList.appendChild(row);
+  });
+  catCard.appendChild(catList);
+  left.appendChild(catCard);
+  grid.appendChild(left);
+
+  // CENTER COLUMN
+  var center=h('div','col-span-5 space-y-4');
+
+  // Severity Bars
+  var sevCard=h('div','bg-card rounded-2xl border border-border p-5 fade-up d2');
+  sevCard.innerHTML='<h2 class="text-[11px] font-semibold text-gray-500 uppercase tracking-widest mb-4">Severity Distribution</h2>';
+  var sevList=h('div','space-y-3');
+  var delay=0;
+  ['critical','high','medium','low','info'].forEach(function(sev){
+    var count=sevs[sev];
+    var sc=SEV_COLORS[sev];
+    var row=h('div');
+    var hdr=h('div','flex justify-between mb-1');
+    hdr.innerHTML='<span class="text-xs font-medium" style="color:'+(count>0?sc.fg:'#636e72')+'">'+sev.charAt(0).toUpperCase()+sev.slice(1)+'</span><span class="mono text-xs" style="color:'+(count>0?sc.fg:'#636e72')+'">'+count+'</span>';
+    row.appendChild(hdr);
+    var track=h('div','h-3 bg-[#151520] rounded-full overflow-hidden');
+    if(count>0){
+      var pct=Math.round(count/maxSev*100);
+      var fill=h('div','h-full rounded-full bar-fill','--w:'+pct+'%;background:linear-gradient(90deg,'+sc.fg+','+sc.fg+'cc);animation-delay:'+delay+'s');
+      track.appendChild(fill);
+      delay+=0.15;
+    }
+    row.appendChild(track);
+    sevList.appendChild(row);
+  });
+  sevCard.appendChild(sevList);
+  center.appendChild(sevCard);
+
+  // Score Breakdown
+  var bdCard=h('div','bg-card rounded-2xl border border-border p-5 fade-up d3');
+  bdCard.innerHTML='<h2 class="text-[11px] font-semibold text-gray-500 uppercase tracking-widest mb-4">Score Breakdown</h2>';
+  var bdList=h('div','space-y-2.5');
+  var bdDelay=0;
+  Object.entries(bd).forEach(function(pair){
+    var name=pair[0],val=pair[1];
+    var color=val>=80?'#22c55e':val>=50?'#ffa502':'#ff4757';
+    var row=h('div','flex items-center gap-3');
+    row.innerHTML='<span class="text-xs text-gray-400 w-24">'+name.charAt(0).toUpperCase()+name.slice(1)+'</span><div class="flex-1 h-2 bg-[#151520] rounded-full overflow-hidden"><div class="h-full rounded-full bar-fill" style="--w:'+val+'%;background:'+color+';animation-delay:'+bdDelay+'s"></div></div><span class="mono text-xs w-12 text-right" style="color:'+color+'">'+val+'</span>';
+    bdList.appendChild(row);
+    bdDelay+=0.1;
+  });
+  bdCard.appendChild(bdList);
+  center.appendChild(bdCard);
+
+  // Findings
+  var fCard=h('div','bg-card rounded-2xl border border-border p-5 fade-up d5');
+  fCard.innerHTML='<h2 class="text-[11px] font-semibold text-gray-500 uppercase tracking-widest mb-3">Findings</h2>';
+  var fList=h('div','space-y-1.5');
+  var shown=Math.min(findings.length,10);
+  findings.slice(0,shown).forEach(function(f){
+    var sc=SEV_COLORS[f.severity]||SEV_COLORS.info;
+    var row=h('div','flex items-center gap-3 px-3 py-2 rounded-lg border','color:'+sc.fg+';background:'+sc.bg+'.08);border-color:'+sc.bg+'.2)');
+    var tag=h('span','px-1.5 py-0.5 rounded text-[10px] font-bold','background:'+sc.bg+'.2);color:'+sc.fg,sc.tag);
+    var title=h('span','text-xs text-gray-300 flex-1','',f.title||f.description?.slice(0,60)||'Unknown');
+    var file=h('span','mono text-[10px] text-gray-500','',f.file?(f.file.split('/').pop()+(f.line?':'+f.line:'')):'');
+    row.appendChild(tag);row.appendChild(title);row.appendChild(file);fList.appendChild(row);
+  });
+  fCard.appendChild(fList);
+  if(findings.length>shown){
+    var more=h('div','mt-3 text-[10px] text-gray-600 text-right mono','',shown+' of '+findings.length+' findings shown');
+    fCard.appendChild(more);
+  }
+  center.appendChild(fCard);
+  grid.appendChild(center);
+
+  // RIGHT COLUMN
+  var right=h('div','col-span-4 space-y-4');
+
+  // Key findings summary
+  var keyCard=h('div','bg-card rounded-2xl border border-border p-5 fade-up d3','border-color:'+gc+'33');
+  keyCard.innerHTML='<h2 class="text-[11px] font-semibold uppercase tracking-widest mb-3" style="color:'+gc+'">Summary</h2>';
+  var keyText=h('div','text-xs text-gray-300 leading-relaxed space-y-2');
+  // group by severity
+  if(sevs.critical>0){var p=h('div');p.textContent='\u26a0 '+sevs.critical+' critical findings require immediate attention.';p.style.color='#ff4757';keyText.appendChild(p);}
+  if(sevs.high>0){var p2=h('div');p2.textContent=sevs.high+' high severity issues found across '+Object.keys(cats).length+' categories.';p2.style.color='#ff7f50';keyText.appendChild(p2);}
+  if(sevs.medium>0){var p3=h('div');p3.textContent=sevs.medium+' medium severity issues to review.';p3.style.color='#ffa502';keyText.appendChild(p3);}
+  // weakest category
+  var weakest=Object.entries(bd).sort(function(a,b){return a[1]-b[1];})[0];
+  if(weakest&&weakest[1]<50){var p4=h('div');p4.textContent='Weakest category: '+weakest[0]+' ('+weakest[1]+'/100)';p4.style.color=gc;keyText.appendChild(p4);}
+  // clean categories
+  var clean=Object.entries(bd).filter(function(e){return e[1]===100;});
+  if(clean.length>0){var p5=h('div');p5.textContent='\u2713 '+clean.length+' of '+Object.keys(bd).length+' categories scored 100/100.';p5.style.color='#22c55e';keyText.appendChild(p5);}
+  keyCard.appendChild(keyText);
+  right.appendChild(keyCard);
+
+  // Files scanned list
+  var filesCard=h('div','bg-card rounded-2xl border border-border p-5 fade-up d4');
+  filesCard.innerHTML='<h2 class="text-[11px] font-semibold text-gray-500 uppercase tracking-widest mb-3">Files Analyzed</h2>';
+  var filesList=h('div','space-y-1');
+  Array.from(files).slice(0,12).forEach(function(f){
+    var fCount=findings.filter(function(fi){return fi.file===f;}).length;
+    var row=h('div','flex items-center justify-between px-2 py-1.5 rounded-lg','background:rgba(255,255,255,.02)');
+    var fname=h('span','mono text-[11px] text-gray-400','',f.length>35?'...'+f.slice(-32):f);
+    var badge=h('span','mono text-[10px] px-1.5 py-0.5 rounded','background:'+(fCount>0?'rgba(255,127,80,.15);color:#ff7f50':'rgba(34,197,94,.15);color:#22c55e'),fCount>0?fCount+' issues':'clean');
+    row.appendChild(fname);row.appendChild(badge);filesList.appendChild(row);
+  });
+  if(files.size>12){filesList.appendChild(h('div','text-[10px] text-gray-600 mono mt-1','','+'+(files.size-12)+' more files'));}
+  filesCard.appendChild(filesList);
+  right.appendChild(filesCard);
+
+  // Terminal
+  var termCard=h('div','bg-card rounded-2xl border border-border overflow-hidden fade-up d6');
+  termCard.innerHTML='<div class="px-4 py-2.5 border-b border-border flex items-center gap-2"><div class="flex gap-1.5"><div class="w-2.5 h-2.5 rounded-full" style="background:#ff5f57"></div><div class="w-2.5 h-2.5 rounded-full" style="background:#febc2e"></div><div class="w-2.5 h-2.5 rounded-full" style="background:#28c840"></div></div><span class="mono text-[10px] text-gray-500 ml-2">agentshield scan --path '+target+'</span><span class="ml-auto px-2 py-0.5 rounded text-[9px] font-bold" style="background:rgba(34,197,94,.15);color:#22c55e" id="term-badge">COMPLETE</span></div>';
+  var termBody=h('div','p-4 mono text-[11px] leading-relaxed max-h-[220px] overflow-y-auto','background:#06060a');
+  var termLines=[
+    {t:'\u2588 AgentShield v1.3.0',c:'#555'},
+    {t:'\u2588 Target: '+target,c:'#555'},
+    {t:'\u2588 Scanned '+(sm.filesScanned||files.size)+' files',c:'#555'},
+    {t:' ',c:'#555'},
+    {t:'\u2713 Static Rules: '+(sm.totalFindings||findings.length)+' findings',c:findings.length>0?gc:'#22c55e'},
+  ];
+  Object.entries(sevs).forEach(function(pair){if(pair[1]>0)termLines.push({t:'  \u2192 '+pair[0]+': '+pair[1],c:SEV_COLORS[pair[0]].fg});});
+  termLines.push({t:' ',c:'#555'});
+  Object.entries(bd).forEach(function(pair){termLines.push({t:'\u2588 '+pair[0]+': '+pair[1]+'/100',c:pair[1]>=80?'#22c55e':pair[1]>=50?'#ffa502':'#ff4757'});});
+  termLines.push({t:' ',c:'#555'});
+  termLines.push({t:'\u2588 RESULT: Grade '+grade+' \u00b7 Score '+score+'/100',c:gc});
+  termLines.push({t:'\u2588 Scan complete',c:'#555'});
+  termLines.forEach(function(line){
+    var div=h('div','','color:'+line.c,line.t);
+    termBody.appendChild(div);
+  });
+  var lastDiv=termBody.lastChild;
+  var cur=h('span','cursor-blink','','\u2588');
+  lastDiv.appendChild(cur);
+  termCard.appendChild(termBody);
+  right.appendChild(termCard);
+
+  grid.appendChild(right);
+  app.appendChild(grid);
+
+  // Footer
+  var footer=h('footer','mt-6 pt-4 border-t border-border flex items-center justify-between text-[10px] text-gray-600 fade-up d6');
+  footer.innerHTML='<div class="flex items-center gap-3"><img src="https://v3b.fal.media/files/b/0a8ebe7d/1jBbiBu4xUcjbQAwrh0kT.jpg" alt="" class="w-5 h-5 rounded-md opacity-50"><span>AgentShield v1.3.0 \u00b7 120+ rules \u00b7 1,280 tests \u00b7 MIT Licensed</span></div><div class="mono">github.com/affaan-m/agentshield</div>';
+  app.appendChild(footer);
+}
+
+// Load results.json from same directory
+fetch('results.json').then(function(r){return r.json();}).then(render).catch(function(err){
+  document.getElementById('app').innerHTML='<div class="flex items-center justify-center h-[80vh]"><div class="text-center"><div class="text-xl font-bold text-white mb-4">No scan results found</div><div class="mono text-sm text-gray-500 mb-6">Run a scan first:</div><div class="mono text-sm px-6 py-3 rounded-xl" style="background:#0e0e16;border:1px solid #1a1a2a;color:#a78bfa">agentshield scan --path &lt;repo&gt; --format json &gt; dashboard/results.json</div><div class="mono text-xs text-gray-600 mt-4">Then refresh this page.</div></div></div>';
+});
+</script>
+</body>
+</html>

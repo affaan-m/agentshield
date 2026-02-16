@@ -66,10 +66,7 @@ function computeScore(findings: ReadonlyArray<Finding>): SecurityScore {
       (categoryDeductions[scoreCategory] ?? 0) + deduction;
   }
 
-  const numericScore = Math.max(0, 100 - totalDeduction);
-  const grade = scoreToGrade(numericScore);
-
-  // Normalize category scores to 0-100
+  // Compute per-category scores (each 0-100)
   const maxCategoryScore = 100;
   const breakdown: ScoreBreakdown = {
     secrets: Math.max(0, maxCategoryScore - categoryDeductions.secrets),
@@ -78,6 +75,13 @@ function computeScore(findings: ReadonlyArray<Finding>): SecurityScore {
     mcp: Math.max(0, maxCategoryScore - categoryDeductions.mcp),
     agents: Math.max(0, maxCategoryScore - categoryDeductions.agents),
   };
+
+  // Overall score = average of category scores
+  const categoryScores = Object.values(breakdown);
+  const numericScore = Math.round(
+    categoryScores.reduce((sum, s) => sum + s, 0) / categoryScores.length
+  );
+  const grade = scoreToGrade(numericScore);
 
   return { grade, numericScore, breakdown };
 }
