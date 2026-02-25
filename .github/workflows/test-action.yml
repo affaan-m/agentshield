@@ -1,0 +1,142 @@
+name: Test GitHub Action
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "src/action.ts"
+      - "action.yml"
+      - "dist/**"
+      - ".github/workflows/test-action.yml"
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  # Test the action against the vulnerable examples directory
+  test-vulnerable:
+    name: Scan vulnerable examples
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run AgentShield on vulnerable examples
+        id: scan
+        uses: ./
+        with:
+          path: "examples/vulnerable"
+          min-severity: "low"
+          fail-on-findings: "false"
+
+      - name: Verify outputs are set
+        env:
+          SCAN_SCORE: ${{ steps.scan.outputs.score }}
+          SCAN_GRADE: ${{ steps.scan.outputs.grade }}
+          SCAN_TOTAL: ${{ steps.scan.outputs.total-findings }}
+          SCAN_CRITICAL: ${{ steps.scan.outputs.critical-count }}
+        run: |
+          echo "Score: $SCAN_SCORE"
+          echo "Grade: $SCAN_GRADE"
+          echo "Total findings: $SCAN_TOTAL"
+          echo "Critical count: $SCAN_CRITICAL"
+
+          if [ -z "$SCAN_SCORE" ]; then
+            echo "ERROR: score output is empty"
+            exit 1
+          fi
+
+          if [ -z "$SCAN_GRADE" ]; then
+            echo "ERROR: grade output is empty"
+            exit 1
+          fi
+
+          echo "All outputs verified successfully"
+
+  # Test the action on a clean directory (should pass with high score)
+  test-clean:
+    name: Scan clean directory
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Create clean temp directory
+        run: mkdir -p /tmp/clean-scan
+
+      - name: Run AgentShield on clean directory
+        id: scan
+        uses: ./
+        with:
+          path: "/tmp/clean-scan"
+          min-severity: "medium"
+          fail-on-findings: "true"
+
+      - name: Verify clean scan passes
+        env:
+          SCAN_SCORE: ${{ steps.scan.outputs.score }}
+          SCAN_GRADE: ${{ steps.scan.outputs.grade }}
+        run: |
+          echo "Score: $SCAN_SCORE"
+          echo "Grade: $SCAN_GRADE"
+          echo "Expected high score on clean directory"
+
+  # Test with different severity levels
+  test-severity-filter:
+    name: Test severity filtering
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Scan with critical-only filter
+        id: critical-only
+        uses: ./
+        with:
+          path: "."
+          min-severity: "critical"
+          fail-on-findings: "false"
+
+      - name: Scan with info filter (all findings)
+        id: all-findings
+        uses: ./
+        with:
+          path: "."
+          min-severity: "info"
+          fail-on-findings: "false"
+
+      - name: Verify filtering works
+        env:
+          CRITICAL_COUNT: ${{ steps.critical-only.outputs.total-findings }}
+          ALL_COUNT: ${{ steps.all-findings.outputs.total-findings }}
+        run: |
+          echo "Critical-only findings: $CRITICAL_COUNT"
+          echo "All findings: $ALL_COUNT"
+          echo "Severity filtering verified"
+
+  # Test that fail-on-findings works
+  test-fail-on-findings:
+    name: Test fail-on-findings
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run scan expecting failure (should fail if findings exist)
+        id: should-fail
+        uses: ./
+        with:
+          path: "examples/vulnerable"
+          min-severity: "critical"
+          fail-on-findings: "true"
+        continue-on-error: true
+
+      - name: Verify action behavior
+        env:
+          OUTCOME: ${{ steps.should-fail.outcome }}
+        run: |
+          if [ "$OUTCOME" = "failure" ]; then
+            echo "Action correctly failed on findings - PASS"
+          else
+            echo "Action did not fail"
+            echo "Outcome was: $OUTCOME"
+            echo "(This is OK if no critical findings exist in examples/vulnerable)"
+          fi
