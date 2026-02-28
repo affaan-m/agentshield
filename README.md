@@ -13,7 +13,7 @@ hook injection, MCP server risks, and agent prompt injection vectors.
 [![coverage](https://img.shields.io/badge/coverage-98%25-brightgreen)]()
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-[Quick Start](#quick-start) · [What It Catches](#what-it-catches) · [Opus Pipeline](#opus-46-deep-analysis---opus) · [GitHub Action](#github-action) · [MiniClaw](#miniclaw)
+[Quick Start](#quick-start) · [What It Catches](#what-it-catches) · [Opus Pipeline](#opus-46-deep-analysis---opus) · [GitHub Action](#github-action) · [MiniClaw](#miniclaw) · [Distribution](#distribution)
 
 </div>
 
@@ -389,6 +389,17 @@ npm run typecheck    # Type check
 npm run build        # Build
 npm run scan:demo    # Demo scan against vulnerable examples
 ```
+
+## Distribution
+
+AgentShield is available through multiple channels:
+
+| Channel | Use Case | Install |
+|---------|----------|---------|
+| **Standalone CLI** | Direct scanning from your terminal | `npm install -g ecc-agentshield` or `npx ecc-agentshield scan` |
+| **GitHub Action** | Automated security checks on PRs in CI/CD | `uses: affaan-m/agentshield@v1` |
+| **ECC Plugin** | Claude Code users via the ECC skill ecosystem | Install through [Everything Claude Code](https://github.com/affaan-m/everything-claude-code) |
+| **ECC Tools GitHub App** | Integrated scanning across your GitHub org | Install at [github.com/apps/ecc-tools](https://github.com/apps/ecc-tools) |
 
 ## License
 
