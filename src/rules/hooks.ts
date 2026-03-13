@@ -6,8 +6,8 @@ import type { ConfigFile, Finding, Rule } from "../types.js";
 // so individual rules can skip matches that fall inside them.
 
 interface SafeRange {
-  start: number;
-  end: number;
+  readonly start: number;
+  readonly end: number;
 }
 
 /**
@@ -17,9 +17,9 @@ interface SafeRange {
  */
 function findStringRangesAtPath(
   content: string,
-  path: string[],
-): SafeRange[] {
-  const ranges: SafeRange[] = [];
+  path: ReadonlyArray<string>,
+): ReadonlyArray<SafeRange> {
+  const ranges: Array<SafeRange> = [];
 
   // Walk through JSON tokens manually to find strings under the target path.
   // This is simpler and more reliable than trying to match JSON.stringify output.
@@ -36,13 +36,39 @@ function findStringRangesAtPath(
     }
     if (!Array.isArray(target)) return ranges;
 
-    // For each string in the array, find its quoted occurrence in the file
-    // We need to find them in order to handle duplicates correctly
+    // Find the JSON array region for the target path in the raw text,
+    // then only match string literals within that region (not globally).
+    let searchFrom = 0;
+    for (const key of path) {
+      const keyStr = JSON.stringify(key);
+      const keyIdx = content.indexOf(keyStr, searchFrom);
+      if (keyIdx === -1) return ranges;
+      searchFrom = keyIdx + keyStr.length;
+    }
+    // Find the array brackets after the last key
+    const colonIdx = content.indexOf(":", searchFrom);
+    if (colonIdx === -1) return ranges;
+    const bracketIdx = content.indexOf("[", colonIdx);
+    if (bracketIdx === -1) return ranges;
+    // Find matching closing bracket
+    let depth = 0;
+    let arrayEnd = bracketIdx;
+    for (let i = bracketIdx; i < content.length; i++) {
+      if (content[i] === "[") depth++;
+      else if (content[i] === "]") {
+        depth--;
+        if (depth === 0) { arrayEnd = i + 1; break; }
+      }
+    }
+    const regionStart = bracketIdx;
+    const regionEnd = arrayEnd;
+
+    // Now search only within the identified array region
     for (const entry of target) {
       if (typeof entry !== "string") continue;
-      const needle = JSON.stringify(entry); // e.g. "\"Bash(sudo)\""
-      let idx = 0;
-      while ((idx = content.indexOf(needle, idx)) !== -1) {
+      const needle = JSON.stringify(entry);
+      let idx = regionStart;
+      while ((idx = content.indexOf(needle, idx)) !== -1 && idx < regionEnd) {
         ranges.push({ start: idx, end: idx + needle.length });
         idx += needle.length;
       }
@@ -58,17 +84,17 @@ function findStringRangesAtPath(
  * These are security controls that block actions, not threats.
  * We mark a broad region around each such hook entry.
  */
-function findBlockHookRanges(content: string): SafeRange[] {
-  const ranges: SafeRange[] = [];
+function findBlockHookRanges(content: string): ReadonlyArray<SafeRange> {
+  const ranges: Array<SafeRange> = [];
   try {
     const config = JSON.parse(content);
-    const preToolUseHooks: unknown[] = config?.hooks?.PreToolUse ?? [];
+    const preToolUseHooks: ReadonlyArray<unknown> = config?.hooks?.PreToolUse ?? [];
 
     for (const hookEntry of preToolUseHooks) {
       const h = hookEntry as Record<string, unknown>;
 
       // Collect all command strings from the hook
-      const commands: string[] = [];
+      const commands: Array<string> = [];
       if (typeof h.command === "string") commands.push(h.command);
       if (typeof h.hook === "string") commands.push(h.hook);
       if (Array.isArray(h.hooks)) {
@@ -80,16 +106,26 @@ function findBlockHookRanges(content: string): SafeRange[] {
       }
 
       // Only mark as safe if the hook blocks/rejects (exit 1 or exit 2)
-      const isBlock = commands.some((c) => /exit\s+[12]\b/.test(c));
+      const isBlock = commands.some(
+        (command) => Array.from(command.matchAll(/exit\s+[12]\b/g)).length > 0,
+      );
       if (!isBlock) continue;
 
-      // Find all string values from this hook entry in the content and
-      // mark them as safe.  We collect all string leaves from the object.
+      // Find the hook entry's exact region in the raw JSON text, then collect
+      // string values only within that region to avoid cross-context matches.
+      const hookJson = JSON.stringify(hookEntry);
+      const hookIdx = content.indexOf(hookJson);
+      let hookStart = 0;
+      let hookEnd = content.length;
+      if (hookIdx !== -1) {
+        hookStart = hookIdx;
+        hookEnd = hookIdx + hookJson.length;
+      }
       const strings = collectStrings(hookEntry);
       for (const s of strings) {
         const needle = JSON.stringify(s);
-        let idx = 0;
-        while ((idx = content.indexOf(needle, idx)) !== -1) {
+        let idx = hookStart;
+        while ((idx = content.indexOf(needle, idx)) !== -1 && idx < hookEnd) {
           ranges.push({ start: idx, end: idx + needle.length });
           idx += needle.length;
         }
@@ -102,8 +138,8 @@ function findBlockHookRanges(content: string): SafeRange[] {
 }
 
 /** Recursively collect all string values from an object/array. */
-function collectStrings(obj: unknown): string[] {
-  const result: string[] = [];
+function collectStrings(obj: unknown): ReadonlyArray<string> {
+  const result: Array<string> = [];
   if (typeof obj === "string") {
     result.push(obj);
   } else if (Array.isArray(obj)) {
@@ -120,7 +156,7 @@ function collectStrings(obj: unknown): string[] {
  * Build safe ranges: deny list entries, allow list entries (permissions,
  * not hooks), and PreToolUse block hooks.
  */
-function buildSafeRanges(content: string): SafeRange[] {
+function buildSafeRanges(content: string): ReadonlyArray<SafeRange> {
   return [
     ...findStringRangesAtPath(content, ["permissions", "deny"]),
     ...findStringRangesAtPath(content, ["permissions", "allow"]),
@@ -128,7 +164,7 @@ function buildSafeRanges(content: string): SafeRange[] {
   ];
 }
 
-function isInSafeRange(ranges: SafeRange[], matchIndex: number): boolean {
+function isInSafeRange(ranges: ReadonlyArray<SafeRange>, matchIndex: number): boolean {
   return ranges.some((r) => matchIndex >= r.start && matchIndex < r.end);
 }
 
@@ -205,20 +241,25 @@ function findLineNumber(content: string, matchIndex: number): number {
 }
 
 // Cache safe ranges per content string to avoid re-parsing JSON for every pattern
-const safeRangeCache = new WeakMap<object, SafeRange[]>();
-const contentKeyMap = new Map<string, object>();
+const MAX_SAFE_RANGE_CACHE_ENTRIES = 256;
+const safeRangeCache = new Map<string, ReadonlyArray<SafeRange>>();
 
-function getSafeRanges(content: string): SafeRange[] {
-  let key = contentKeyMap.get(content);
-  if (!key) {
-    key = {};
-    contentKeyMap.set(content, key);
-    safeRangeCache.set(key, buildSafeRanges(content));
+function getSafeRanges(content: string): ReadonlyArray<SafeRange> {
+  const cached = safeRangeCache.get(content);
+  if (cached) return cached;
+
+  const ranges = buildSafeRanges(content);
+  safeRangeCache.set(content, ranges);
+
+  if (safeRangeCache.size > MAX_SAFE_RANGE_CACHE_ENTRIES) {
+    const oldestKey = safeRangeCache.keys().next().value;
+    if (oldestKey !== undefined) safeRangeCache.delete(oldestKey);
   }
-  return safeRangeCache.get(key)!;
+
+  return ranges;
 }
 
-function findAllMatches(content: string, pattern: RegExp): Array<RegExpMatchArray> {
+function findAllMatches(content: string, pattern: RegExp): ReadonlyArray<RegExpMatchArray> {
   const matches = [...content.matchAll(new RegExp(pattern.source, pattern.flags.includes("g") ? pattern.flags : pattern.flags + "g"))];
   const safeRanges = getSafeRanges(content);
   if (safeRanges.length === 0) return matches;
