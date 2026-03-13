@@ -51,11 +51,25 @@ function findStringRangesAtPath(
     const bracketIdx = content.indexOf("[", colonIdx);
     if (bracketIdx === -1) return ranges;
     // Find matching closing bracket
+    // String-aware bracket matching to handle brackets inside JSON string values
     let depth = 0;
     let arrayEnd = bracketIdx;
+    let inString = false;
+    let escaped = false;
     for (let i = bracketIdx; i < content.length; i++) {
-      if (content[i] === "[") depth++;
-      else if (content[i] === "]") {
+      const ch = content[i];
+      if (inString) {
+        if (escaped) escaped = false;
+        else if (ch === "\\") escaped = true;
+        else if (ch === '"') inString = false;
+        continue;
+      }
+      if (ch === '"') {
+        inString = true;
+        continue;
+      }
+      if (ch === "[") depth++;
+      else if (ch === "]") {
         depth--;
         if (depth === 0) { arrayEnd = i + 1; break; }
       }
@@ -111,15 +125,63 @@ function findBlockHookRanges(content: string): ReadonlyArray<SafeRange> {
       );
       if (!isBlock) continue;
 
-      // Find the hook entry's exact region in the raw JSON text, then collect
-      // string values only within that region to avoid cross-context matches.
-      const hookJson = JSON.stringify(hookEntry);
-      const hookIdx = content.indexOf(hookJson);
+      // Find the hook entry's exact region in the raw JSON text using
+      // string-aware brace counting (handles formatted/indented JSON).
+      // We locate the entry by finding a unique key value within the
+      // PreToolUse array region, then walk back to the opening '{'.
       let hookStart = 0;
       let hookEnd = content.length;
-      if (hookIdx !== -1) {
-        hookStart = hookIdx;
-        hookEnd = hookIdx + hookJson.length;
+
+      // Find "PreToolUse" array region first
+      const preToolUseKey = '"PreToolUse"';
+      const preToolUseIdx = content.indexOf(preToolUseKey);
+      if (preToolUseIdx !== -1) {
+        const preToolUseColon = content.indexOf(":", preToolUseIdx + preToolUseKey.length);
+        const preToolUseBracket = preToolUseColon !== -1 ? content.indexOf("[", preToolUseColon) : -1;
+        if (preToolUseBracket !== -1) {
+          // Find objects within the PreToolUse array by locating each '{' ... '}' pair
+          // Use a unique string from this hook entry to identify which object it is
+          const firstString = collectStrings(hookEntry).find((s) => s.length > 3);
+          const needle = firstString ? JSON.stringify(firstString) : null;
+          if (needle) {
+            const needleIdx = content.indexOf(needle, preToolUseBracket);
+            if (needleIdx !== -1) {
+              // Walk backwards to find the opening '{' of this object
+              let braceDepth = 0;
+              let objStart = needleIdx;
+              for (let i = needleIdx; i >= preToolUseBracket; i--) {
+                const ch = content[i];
+                if (ch === '}') braceDepth++;
+                else if (ch === '{') {
+                  if (braceDepth === 0) { objStart = i; break; }
+                  braceDepth--;
+                }
+              }
+              // Walk forward from objStart to find the matching '}'
+              let fwdDepth = 0;
+              let inStr = false;
+              let esc = false;
+              let objEnd = content.length;
+              for (let i = objStart; i < content.length; i++) {
+                const ch = content[i];
+                if (inStr) {
+                  if (esc) esc = false;
+                  else if (ch === "\\") esc = true;
+                  else if (ch === '"') inStr = false;
+                  continue;
+                }
+                if (ch === '"') { inStr = true; continue; }
+                if (ch === '{') fwdDepth++;
+                else if (ch === '}') {
+                  fwdDepth--;
+                  if (fwdDepth === 0) { objEnd = i + 1; break; }
+                }
+              }
+              hookStart = objStart;
+              hookEnd = objEnd;
+            }
+          }
+        }
       }
       const strings = collectStrings(hookEntry);
       for (const s of strings) {
