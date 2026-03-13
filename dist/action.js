@@ -1225,6 +1225,88 @@ function findLineNumber2(content, matchIndex) {
 }
 
 // src/rules/hooks.ts
+function findStringRangesAtPath(content, path) {
+  const ranges = [];
+  try {
+    const config = JSON.parse(content);
+    let target = config;
+    for (const key of path) {
+      if (target && typeof target === "object" && !Array.isArray(target)) {
+        target = target[key];
+      } else {
+        return ranges;
+      }
+    }
+    if (!Array.isArray(target)) return ranges;
+    for (const entry of target) {
+      if (typeof entry !== "string") continue;
+      const needle = JSON.stringify(entry);
+      let idx = 0;
+      while ((idx = content.indexOf(needle, idx)) !== -1) {
+        ranges.push({ start: idx, end: idx + needle.length });
+        idx += needle.length;
+      }
+    }
+  } catch {
+  }
+  return ranges;
+}
+function findBlockHookRanges(content) {
+  const ranges = [];
+  try {
+    const config = JSON.parse(content);
+    const preToolUseHooks = config?.hooks?.PreToolUse ?? [];
+    for (const hookEntry of preToolUseHooks) {
+      const h = hookEntry;
+      const commands = [];
+      if (typeof h.command === "string") commands.push(h.command);
+      if (typeof h.hook === "string") commands.push(h.hook);
+      if (Array.isArray(h.hooks)) {
+        for (const sub of h.hooks) {
+          const s = sub;
+          if (typeof s.command === "string") commands.push(s.command);
+          if (typeof s.hook === "string") commands.push(s.hook);
+        }
+      }
+      const isBlock = commands.some((c) => /exit\s+[12]\b/.test(c));
+      if (!isBlock) continue;
+      const strings = collectStrings(hookEntry);
+      for (const s of strings) {
+        const needle = JSON.stringify(s);
+        let idx = 0;
+        while ((idx = content.indexOf(needle, idx)) !== -1) {
+          ranges.push({ start: idx, end: idx + needle.length });
+          idx += needle.length;
+        }
+      }
+    }
+  } catch {
+  }
+  return ranges;
+}
+function collectStrings(obj) {
+  const result = [];
+  if (typeof obj === "string") {
+    result.push(obj);
+  } else if (Array.isArray(obj)) {
+    for (const item of obj) result.push(...collectStrings(item));
+  } else if (obj && typeof obj === "object") {
+    for (const val of Object.values(obj)) {
+      result.push(...collectStrings(val));
+    }
+  }
+  return result;
+}
+function buildSafeRanges(content) {
+  return [
+    ...findStringRangesAtPath(content, ["permissions", "deny"]),
+    ...findStringRangesAtPath(content, ["permissions", "allow"]),
+    ...findBlockHookRanges(content)
+  ];
+}
+function isInSafeRange(ranges, matchIndex) {
+  return ranges.some((r) => matchIndex >= r.start && matchIndex < r.end);
+}
 var INJECTION_PATTERNS = [
   {
     name: "var-interpolation",
@@ -1276,8 +1358,22 @@ var EXFILTRATION_PATTERNS = [
 function findLineNumber3(content, matchIndex) {
   return content.substring(0, matchIndex).split("\n").length;
 }
+var safeRangeCache = /* @__PURE__ */ new WeakMap();
+var contentKeyMap = /* @__PURE__ */ new Map();
+function getSafeRanges(content) {
+  let key = contentKeyMap.get(content);
+  if (!key) {
+    key = {};
+    contentKeyMap.set(content, key);
+    safeRangeCache.set(key, buildSafeRanges(content));
+  }
+  return safeRangeCache.get(key);
+}
 function findAllMatches2(content, pattern) {
-  return [...content.matchAll(new RegExp(pattern.source, pattern.flags.includes("g") ? pattern.flags : pattern.flags + "g"))];
+  const matches = [...content.matchAll(new RegExp(pattern.source, pattern.flags.includes("g") ? pattern.flags : pattern.flags + "g"))];
+  const safeRanges = getSafeRanges(content);
+  if (safeRanges.length === 0) return matches;
+  return matches.filter((m) => !isInSafeRange(safeRanges, m.index ?? 0));
 }
 var hookRules = [
   {

@@ -1223,4 +1223,136 @@ describe("hookRules", () => {
       expect(findings.some((f) => f.id.includes("log-tamper"))).toBe(false);
     });
   });
+
+  describe("false positive prevention — deny lists and block hooks", () => {
+    it("does not flag deny-list entries as threats (issue #5)", () => {
+      const config = {
+        permissions: {
+          deny: [
+            "Bash(rm -rf /)",
+            "Bash(rm -rf ~)",
+            "Bash(sudo)",
+            "Bash(ssh)",
+            "Bash(chmod 777)",
+          ],
+        },
+      };
+      const file = makeSettings(JSON.stringify(config, null, 2));
+      const findings = runAllHookRules(file);
+
+      // None of the deny entries should produce hook findings
+      const hookFindings = findings.filter(
+        (f) =>
+          f.title.includes("privilege escalation") ||
+          f.title.includes("deletes files") ||
+          f.title.includes("Hook uses"),
+      );
+      expect(hookFindings).toHaveLength(0);
+    });
+
+    it("does not flag PreToolUse block hooks as threats (issue #8)", () => {
+      const config = {
+        hooks: {
+          PreToolUse: [
+            {
+              matcher: { tool_name: "Bash", command: "sudo *" },
+              hooks: [
+                {
+                  type: "command",
+                  command:
+                    "echo 'BLOCKED: privilege escalation not allowed' && exit 2",
+                },
+              ],
+            },
+          ],
+        },
+      };
+      const file = makeSettings(JSON.stringify(config, null, 2));
+      const findings = runAllHookRules(file);
+
+      const privEsc = findings.filter((f) =>
+        f.title.includes("privilege escalation"),
+      );
+      expect(privEsc).toHaveLength(0);
+    });
+
+    it("does not flag allow-list entries as hook threats", () => {
+      const config = {
+        permissions: {
+          allow: ["Bash(pip install *)"],
+        },
+      };
+      const file = makeSettings(JSON.stringify(config, null, 2));
+      const findings = runAllHookRules(file);
+
+      const installFindings = findings.filter((f) =>
+        f.title.includes("installs packages"),
+      );
+      expect(installFindings).toHaveLength(0);
+    });
+
+    it("still flags actual dangerous hooks that are NOT block hooks", () => {
+      const config = {
+        hooks: {
+          PreToolUse: [
+            {
+              matcher: "Bash",
+              hooks: [
+                {
+                  type: "command",
+                  command: "sudo rm -rf /tmp/cache",
+                },
+              ],
+            },
+          ],
+        },
+      };
+      const file = makeSettings(JSON.stringify(config, null, 2));
+      const findings = runAllHookRules(file);
+
+      // This hook does NOT exit 1/2, so it should still be flagged
+      const dangerous = findings.filter(
+        (f) =>
+          f.title.includes("privilege escalation") ||
+          f.title.includes("deletes files"),
+      );
+      expect(dangerous.length).toBeGreaterThan(0);
+    });
+
+    it("handles combined deny + block hook config without false positives", () => {
+      const config = {
+        permissions: {
+          deny: [
+            "Bash(rm -rf /)*",
+            "Bash(sudo *)",
+            "Bash(ssh *)",
+          ],
+        },
+        hooks: {
+          PreToolUse: [
+            {
+              matcher: { tool_name: "Bash", command: "sudo *" },
+              hooks: [
+                {
+                  type: "command",
+                  command:
+                    "echo 'BLOCKED: privilege escalation not allowed' && exit 2",
+                },
+              ],
+            },
+          ],
+        },
+      };
+      const file = makeSettings(JSON.stringify(config, null, 2));
+      const findings = runAllHookRules(file);
+
+      // Should have zero critical/high hook findings
+      const criticalOrHigh = findings.filter(
+        (f) =>
+          (f.severity === "critical" || f.severity === "high") &&
+          f.category !== "misconfiguration",
+      );
+      expect(criticalOrHigh).toHaveLength(0);
+    });
+  });
 });
