@@ -9,6 +9,218 @@ function findAllMatches(content: string, pattern: RegExp): Array<RegExpMatchArra
   return [...content.matchAll(new RegExp(pattern.source, flags))];
 }
 
+function getAgentFrontmatter(content: string): string | null {
+  if (!content.startsWith("---")) return null;
+
+  const frontmatterEnd = content.indexOf("---", 3);
+  if (frontmatterEnd === -1) return null;
+
+  return content.substring(0, frontmatterEnd);
+}
+
+function parseStringArray(value: unknown): string[] | null {
+  if (!Array.isArray(value)) return null;
+  return value.filter((item): item is string => typeof item === "string");
+}
+
+function getBodyIntro(content: string): string {
+  const frontmatter = getAgentFrontmatter(content);
+  const body = (frontmatter ? content.slice(frontmatter.length + 3) : content).trimStart();
+  if (!body) return "";
+
+  const lines = body.split("\n");
+  const introLines: string[] = [];
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed) {
+      if (introLines.length > 0) break;
+      continue;
+    }
+
+    if (
+      trimmed.startsWith("#") ||
+      trimmed.startsWith("```") ||
+      trimmed.startsWith("|") ||
+      trimmed.startsWith("- ") ||
+      /^\d+\./.test(trimmed)
+    ) {
+      if (introLines.length > 0) break;
+      continue;
+    }
+
+    introLines.push(trimmed);
+  }
+
+  return introLines.join(" ").slice(0, 300);
+}
+
+function getEffectiveAgentLength(content: string): number {
+  return content
+    .replace(/```[\s\S]*?```/g, "")
+    .replace(/^\|.*\|?$/gm, "")
+    .replace(/\s+/g, " ")
+    .trim().length;
+}
+
+function parseAgentJsonConfig(content: string): Record<string, unknown> | null {
+  const trimmed = content.trim();
+  if (!trimmed.startsWith("{")) return null;
+
+  try {
+    const parsed = JSON.parse(trimmed);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return null;
+
+    const config = parsed as Record<string, unknown>;
+    const looksLikeAgentConfig =
+      typeof config.systemPrompt === "string" ||
+      typeof config.prompt === "string" ||
+      Array.isArray(config.allowedTools) ||
+      Array.isArray(config.tools) ||
+      typeof config.permissionMode === "string" ||
+      typeof config.subagent === "string";
+
+    return looksLikeAgentConfig ? config : null;
+  } catch {
+    return null;
+  }
+}
+
+function getAgentMetadata(content: string): {
+  readonly tools: string[] | null;
+  readonly model: string | null;
+  readonly name: string | null;
+  readonly description: string | null;
+  readonly intro: string | null;
+  readonly hasExplicitTools: boolean;
+  readonly isStructuredDefinition: boolean;
+} {
+  const frontmatter = getAgentFrontmatter(content);
+  if (frontmatter) {
+    const toolsMatch = frontmatter.match(/\btools:\s*\[([^\]]*)\]/);
+    const tools =
+      toolsMatch?.[1]
+        .split(",")
+        .map((tool) => tool.trim().replace(/["']/g, "")) ?? null;
+    const modelMatch = frontmatter.match(/\bmodel:\s*([^\s]+)/);
+    const nameMatch = frontmatter.match(/\bname:\s*([^\n]+)/);
+    const descriptionMatch = frontmatter.match(/\bdescription:\s*([^\n]+)/);
+
+    return {
+      tools,
+      model: modelMatch?.[1] ?? null,
+      name: nameMatch?.[1]?.trim().replace(/^["']|["']$/g, "") ?? null,
+      description: descriptionMatch?.[1]?.trim().replace(/^["']|["']$/g, "") ?? null,
+      intro: getBodyIntro(content) || null,
+      hasExplicitTools: /\btools\s*:/i.test(frontmatter),
+      isStructuredDefinition: true,
+    };
+  }
+
+  const jsonConfig = parseAgentJsonConfig(content);
+  if (!jsonConfig) {
+    return {
+      tools: null,
+      model: null,
+      name: null,
+      description: null,
+      intro: null,
+      hasExplicitTools: false,
+      isStructuredDefinition: false,
+    };
+  }
+
+  return {
+    tools: parseStringArray(jsonConfig.allowedTools) ?? parseStringArray(jsonConfig.tools),
+    model: typeof jsonConfig.model === "string" ? jsonConfig.model : null,
+    name: typeof jsonConfig.name === "string" ? jsonConfig.name : null,
+    description: typeof jsonConfig.description === "string" ? jsonConfig.description : null,
+    intro:
+      typeof jsonConfig.systemPrompt === "string"
+        ? jsonConfig.systemPrompt.split(/\n\s*\n/, 1)[0].slice(0, 300)
+        : typeof jsonConfig.prompt === "string"
+          ? jsonConfig.prompt.split(/\n\s*\n/, 1)[0].slice(0, 300)
+          : null,
+    hasExplicitTools: Array.isArray(jsonConfig.allowedTools) || Array.isArray(jsonConfig.tools),
+    isStructuredDefinition: true,
+  };
+}
+
+function isSlashCommandConfig(file: ConfigFile, isStructuredDefinition: boolean): boolean {
+  return (
+    file.type === "skill-md" &&
+    isStructuredDefinition &&
+    file.path.toLowerCase().includes("slash-commands/")
+  );
+}
+
+function isAgentLikeToolConfig(
+  file: ConfigFile,
+  metadata: ReturnType<typeof getAgentMetadata>
+): boolean {
+  return file.type === "agent-md" || isSlashCommandConfig(file, metadata.isStructuredDefinition);
+}
+
+function configSubject(file: ConfigFile): string {
+  return file.type === "skill-md" ? "Slash command" : "Agent";
+}
+
+function isSubagentConfig(file: ConfigFile): boolean {
+  return normalizePath(file.path).includes(".claude/subagents/");
+}
+
+function normalizePath(filePath: string): string {
+  return filePath.replace(/\\/g, "/").toLowerCase();
+}
+
+function isNarrowSpecialistConfig(
+  file: ConfigFile,
+  metadata: ReturnType<typeof getAgentMetadata>
+): boolean {
+  if (isSlashCommandConfig(file, metadata.isStructuredDefinition) || isSubagentConfig(file)) {
+    return true;
+  }
+
+  const roleText = [file.path, metadata.name, metadata.description]
+    .filter((value): value is string => typeof value === "string" && value.length > 0)
+    .join("\n")
+    .toLowerCase();
+
+  return /\b(?:specialist|reviewer|review|tester|testing|e2e|build|fixer|resolver|updater|refactor|coverage|docs?|security|audit|lint|format|typecheck)\b/.test(
+    roleText
+  );
+}
+
+function capabilitySeverity(
+  file: ConfigFile,
+  metadata: ReturnType<typeof getAgentMetadata>
+): "high" | "medium" {
+  return isNarrowSpecialistConfig(file, metadata) ? "medium" : "high";
+}
+
+function isExplorerStyleConfig(
+  file: ConfigFile,
+  metadata: ReturnType<typeof getAgentMetadata>
+): boolean {
+  const roleText = [file.path, metadata.name, metadata.description, metadata.intro]
+    .filter((value): value is string => typeof value === "string" && value.length > 0)
+    .join("\n")
+    .toLowerCase();
+
+  const explorerIndicators: ReadonlyArray<RegExp> = [
+    /\bexplorer\b/,
+    /\bcodebase explorer\b/,
+    /\bread-?only\b/,
+    /\bsearch agent\b/,
+    /\bsearch workflow\b/,
+    /\bsearch-only\b/,
+    /\bdiscovery agent\b/,
+    /\bfinder\b/,
+  ];
+
+  return explorerIndicators.some((pattern) => pattern.test(roleText));
+}
+
 export const agentRules: ReadonlyArray<Rule> = [
   {
     id: "agents-unrestricted-tools",
@@ -17,55 +229,48 @@ export const agentRules: ReadonlyArray<Rule> = [
     severity: "high",
     category: "agents",
     check(file: ConfigFile): ReadonlyArray<Finding> {
-      if (file.type !== "agent-md") return [];
+      const metadata = getAgentMetadata(file.content);
+      if (!isAgentLikeToolConfig(file, metadata)) return [];
 
       const findings: Finding[] = [];
+      const tools = metadata.tools;
+      const subject = configSubject(file);
 
-      // Check frontmatter for tools
-      const toolsMatch = file.content.match(/tools:\s*\[([^\]]*)\]/);
-      if (toolsMatch) {
-        const tools = toolsMatch[1]
-          .split(",")
-          .map((t) => t.trim().replace(/["']/g, ""));
+      if (tools) {
+        const severity = capabilitySeverity(file, metadata);
 
         // Check for Bash access
         if (tools.includes("Bash")) {
           findings.push({
             id: `agents-bash-access-${file.path}`,
-            severity: "high",
+            severity,
             category: "agents",
-            title: `Agent has Bash access: ${file.path}`,
+            title: `${subject} has Bash access: ${file.path}`,
             description:
-              "This agent has Bash tool access, allowing arbitrary command running. Consider if this agent truly needs shell access, or if Read/Write/Edit would suffice.",
+              `This ${subject.toLowerCase()} has Bash tool access, allowing arbitrary command running. Consider if it truly needs shell access, or if Read/Write/Edit would suffice.`,
             file: file.path,
           });
         }
 
         // Check if agent has both read and write (should it be read-only?)
         const hasWrite = tools.some((t) => ["Write", "Edit"].includes(t));
-        const descriptionLower = file.content.toLowerCase();
-        const isExplorer =
-          descriptionLower.includes("explorer") ||
-          descriptionLower.includes("search") ||
-          descriptionLower.includes("read-only") ||
-          descriptionLower.includes("readonly");
+        const isExplorer = isExplorerStyleConfig(file, metadata);
 
         if (hasWrite && isExplorer) {
           findings.push({
             id: `agents-explorer-write-${file.path}`,
             severity: "medium",
             category: "agents",
-            title: `Explorer/search agent has write access: ${file.path}`,
+            title: `Explorer/search ${subject.toLowerCase()} has write access: ${file.path}`,
             description:
-              "This agent appears to be an explorer or search agent but has Write/Edit access. Read-only agents should only have Read, Grep, and Glob tools.",
+              `This ${subject.toLowerCase()} appears to be an explorer or search workflow but has Write/Edit access. Read-only explorer-style configs should only have Read, Grep, and Glob tools.`,
             file: file.path,
           });
         }
       }
 
       // Check for model specification
-      const modelMatch = file.content.match(/model:\s*(\w+)/);
-      if (!modelMatch) {
+      if (file.type === "agent-md" && !metadata.model && metadata.isStructuredDefinition) {
         findings.push({
           id: `agents-no-model-${file.path}`,
           severity: "low",
@@ -87,28 +292,19 @@ export const agentRules: ReadonlyArray<Rule> = [
     severity: "high",
     category: "agents",
     check(file: ConfigFile): ReadonlyArray<Finding> {
-      if (file.type !== "agent-md") return [];
+      const metadata = getAgentMetadata(file.content);
+      if (!isAgentLikeToolConfig(file, metadata) || !metadata.isStructuredDefinition) return [];
 
-      // Check if file has frontmatter at all
-      const hasFrontmatter = file.content.startsWith("---");
-      if (!hasFrontmatter) return [];
-
-      // Check if tools: is specified in frontmatter
-      const frontmatterEnd = file.content.indexOf("---", 3);
-      if (frontmatterEnd === -1) return [];
-
-      const frontmatter = file.content.substring(0, frontmatterEnd);
-      const hasToolsField = /\btools\s*:/i.test(frontmatter);
-
-      if (!hasToolsField) {
+      if (!metadata.hasExplicitTools) {
+        const subject = configSubject(file);
         return [
           {
             id: `agents-no-tools-${file.path}`,
             severity: "high",
             category: "agents",
-            title: `Agent has no tools restriction: ${file.path}`,
+            title: `${subject} has no tools restriction: ${file.path}`,
             description:
-              "This agent definition has frontmatter but does not specify a tools array. Without an explicit tools list, the agent may inherit all available tools by default, including Bash, Write, and Edit. Always specify the minimum set of tools needed.",
+              `This ${subject.toLowerCase()} definition is structured but does not specify an explicit tools array. Without a tools list, it may inherit all available tools by default, including Bash, Write, and Edit. Always specify the minimum set of tools needed.`,
             file: file.path,
             fix: {
               description: "Add an explicit tools array to the frontmatter",
@@ -304,14 +500,12 @@ export const agentRules: ReadonlyArray<Rule> = [
     severity: "high",
     category: "agents",
     check(file: ConfigFile): ReadonlyArray<Finding> {
-      if (file.type !== "agent-md") return [];
+      const metadata = getAgentMetadata(file.content);
+      if (!isAgentLikeToolConfig(file, metadata)) return [];
 
-      const toolsMatch = file.content.match(/tools:\s*\[([^\]]*)\]/);
-      if (!toolsMatch) return [];
-
-      const tools = toolsMatch[1]
-        .split(",")
-        .map((t) => t.trim().replace(/["']/g, ""));
+      const tools = metadata.tools;
+      if (!tools) return [];
+      const subject = configSubject(file);
 
       const hasWebAccess = tools.some((t) =>
         ["WebFetch", "WebSearch"].includes(t)
@@ -326,9 +520,9 @@ export const agentRules: ReadonlyArray<Rule> = [
             id: `agents-web-write-${file.path}`,
             severity: "high",
             category: "agents",
-            title: `Agent has web access + write access: ${file.path}`,
+            title: `${subject} has web access + write access: ${file.path}`,
             description:
-              "This agent can fetch content from the web AND write/edit files. An attacker could host prompt injection payloads on a web page that the agent processes, then use the write access to inject malicious code into the codebase. Consider separating web research agents from code-writing agents.",
+              `This ${subject.toLowerCase()} can fetch content from the web AND write/edit files. An attacker could host prompt injection payloads on a web page that the config processes, then use the write access to inject malicious code into the codebase. Consider separating web research workflows from code-writing workflows.`,
             file: file.path,
             evidence: `Web: ${tools.filter((t) => ["WebFetch", "WebSearch"].includes(t)).join(", ")} + Write: ${tools.filter((t) => ["Write", "Edit", "Bash"].includes(t)).join(", ")}`,
           },
@@ -350,11 +544,11 @@ export const agentRules: ReadonlyArray<Rule> = [
       const findings: Finding[] = [];
 
       const externalContentPatterns = [
-        /fetch.*url/i,
-        /read.*user.*input/i,
-        /process.*external/i,
-        /parse.*html/i,
-        /web.*content/i,
+        /\bfetch(?:ing)?\s+(?:from\s+)?(?:external\s+)?(?:urls?|web\s+pages?|sites?)\b/i,
+        /\bread(?:ing)?\s+(?:from\s+)?(?:user(?:-provided)?|external)\s+(?:input|content|data)\b/i,
+        /\bprocess(?:ing)?\s+(?:external|user(?:-provided)?)\s+(?:content|input|data)\b/i,
+        /\bparse(?:ing)?\s+html\b/i,
+        /\banaly(?:ze|zing)\s+(?:external|web)\s+content\b/i,
       ];
 
       for (const pattern of externalContentPatterns) {
@@ -439,14 +633,13 @@ export const agentRules: ReadonlyArray<Rule> = [
     severity: "high",
     category: "agents",
     check(file: ConfigFile): ReadonlyArray<Finding> {
-      if (file.type !== "agent-md") return [];
+      const metadata = getAgentMetadata(file.content);
+      if (!isAgentLikeToolConfig(file, metadata)) return [];
 
-      const toolsMatch = file.content.match(/tools:\s*\[([^\]]*)\]/);
-      if (!toolsMatch) return [];
-
-      const tools = toolsMatch[1]
-        .split(",")
-        .map((t) => t.trim().replace(/["']/g, ""));
+      const tools = metadata.tools;
+      if (!tools) return [];
+      const subject = configSubject(file);
+      const severity = capabilitySeverity(file, metadata);
 
       const hasDiscovery = tools.some((t) => ["Glob", "Grep", "LS"].includes(t));
       const hasRead = tools.includes("Read");
@@ -457,11 +650,11 @@ export const agentRules: ReadonlyArray<Rule> = [
         return [
           {
             id: `agents-escalation-chain-${file.path}`,
-            severity: "high",
+            severity,
             category: "agents",
-            title: `Agent has full escalation chain: ${file.path}`,
+            title: `${subject} has full escalation chain: ${file.path}`,
             description:
-              "This agent has discovery tools (Glob/Grep), Read, Write/Edit, AND Bash access. This forms a complete escalation chain: find files → read contents → modify code → execute commands. Consider whether the agent truly needs all four capabilities, or if it can be split into separate agents with narrower roles.",
+              `This ${subject.toLowerCase()} has discovery tools (Glob/Grep), Read, Write/Edit, AND Bash access. This forms a complete escalation chain: find files → read contents → modify code → execute commands. Consider whether it truly needs all four capabilities, or if it can be split into narrower roles.`,
             file: file.path,
             evidence: `Discovery: ${tools.filter((t) => ["Glob", "Grep", "LS"].includes(t)).join(", ")} + Read + Write: ${tools.filter((t) => ["Write", "Edit"].includes(t)).join(", ")} + Bash`,
           },
@@ -480,17 +673,11 @@ export const agentRules: ReadonlyArray<Rule> = [
     check(file: ConfigFile): ReadonlyArray<Finding> {
       if (file.type !== "agent-md") return [];
 
-      const toolsMatch = file.content.match(/tools:\s*\[([^\]]*)\]/);
-      if (!toolsMatch) return [];
+      const metadata = getAgentMetadata(file.content);
+      const tools = metadata.tools;
+      if (!tools || !metadata.model) return [];
 
-      const tools = toolsMatch[1]
-        .split(",")
-        .map((t) => t.trim().replace(/["']/g, ""));
-
-      const modelMatch = file.content.match(/model:\s*(\w+)/);
-      if (!modelMatch) return [];
-
-      const model = modelMatch[1].toLowerCase();
+      const model = metadata.model.toLowerCase();
 
       const readOnlyTools = ["Read", "Grep", "Glob", "LS"];
       const isReadOnly = tools.every((t) => readOnlyTools.includes(t));
@@ -569,17 +756,18 @@ export const agentRules: ReadonlyArray<Rule> = [
     check(file: ConfigFile): ReadonlyArray<Finding> {
       if (file.type !== "agent-md") return [];
 
-      const charCount = file.content.length;
-      if (charCount > 5000) {
+      const rawCharCount = file.content.length;
+      const effectiveCharCount = getEffectiveAgentLength(file.content);
+      if (effectiveCharCount > 5000) {
         return [
           {
             id: `agents-oversized-prompt-${file.path}`,
             severity: "medium",
             category: "agents",
-            title: `Agent definition is ${charCount} characters (>${5000} threshold)`,
-            description: `The agent definition at ${file.path} is ${charCount} characters long. Unusually large agent definitions may contain hidden malicious instructions buried in legitimate-looking text. Review the full content carefully, especially any instructions near the end of the file.`,
+            title: `Agent definition effective size is ${effectiveCharCount} characters (>${5000} threshold)`,
+            description: `The agent definition at ${file.path} has an effective size of ${effectiveCharCount} characters after discounting fenced code blocks and markdown tables. Unusually large agent definitions may contain hidden malicious instructions buried in legitimate-looking text. Review the full content carefully, especially any instructions near the end of the file.`,
             file: file.path,
-            evidence: `${charCount} characters`,
+            evidence: `${effectiveCharCount} effective characters (${rawCharCount} raw)`,
           },
         ];
       }

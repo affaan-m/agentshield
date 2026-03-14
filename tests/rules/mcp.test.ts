@@ -10,6 +10,14 @@ function makeMcpConfig(servers: Record<string, unknown>): ConfigFile {
   };
 }
 
+function makeSettingsConfig(config: Record<string, unknown>): ConfigFile {
+  return {
+    path: "settings.json",
+    type: "settings-json",
+    content: JSON.stringify(config),
+  };
+}
+
 function runAllMcpRules(file: ConfigFile) {
   return mcpRules.flatMap((rule) => rule.check(file));
 }
@@ -20,6 +28,20 @@ describe("mcpRules", () => {
       const file = makeMcpConfig({ filesystem: { command: "node", description: "fs" } });
       const findings = runAllMcpRules(file);
       expect(findings.some((f) => f.title.includes("filesystem") && f.severity === "high")).toBe(true);
+    });
+
+    it("downgrades repo-scoped filesystem MCP to medium risk", () => {
+      const file = makeMcpConfig({
+        filesystem: {
+          command: "npx",
+          args: ["-y", "@modelcontextprotocol/server-filesystem", "./"],
+          description: "fs",
+        },
+      });
+      const findings = runAllMcpRules(file);
+      const finding = findings.find((f) => f.id === "mcp-risky-filesystem");
+      expect(finding?.severity).toBe("medium");
+      expect(finding?.description).toContain("repo-scoped relative paths");
     });
 
     it("flags shell MCP as critical risk", () => {
@@ -48,6 +70,88 @@ describe("mcpRules", () => {
       const findings = runAllMcpRules(file);
       const riskyFindings = findings.filter((f) => f.id.startsWith("mcp-risky"));
       expect(riskyFindings).toHaveLength(0);
+    });
+
+    it("downgrades risky server findings for MCP template files", () => {
+      const file: ConfigFile = {
+        path: "mcp-configs/mcp-servers.json",
+        type: "mcp-json",
+        content: JSON.stringify({
+          mcpServers: {
+            filesystem: { command: "node", description: "fs" },
+          },
+        }),
+      };
+      const findings = runAllMcpRules(file);
+      const finding = findings.find((f) => f.id === "mcp-risky-filesystem");
+      expect(finding?.severity).toBe("medium");
+      expect(finding?.title).toBe("Template defines risky MCP server: filesystem");
+      expect(finding?.description).toContain("template or example inventory");
+      expect(finding?.runtimeConfidence).toBe("template-example");
+    });
+
+    it("marks settings.local MCP findings as project-local optional", () => {
+      const file: ConfigFile = {
+        path: ".claude/settings.local.json",
+        type: "settings-json",
+        content: JSON.stringify({
+          mcpServers: {
+            filesystem: { command: "node", description: "fs" },
+          },
+        }),
+      };
+
+      const findings = runAllMcpRules(file);
+      const finding = findings.find((f) => f.id === "mcp-risky-filesystem");
+      expect(finding?.runtimeConfidence).toBe("project-local-optional");
+    });
+
+    it("marks active MCP findings as active runtime", () => {
+      const file = makeMcpConfig({ filesystem: { command: "node", description: "fs" } });
+      const findings = runAllMcpRules(file);
+      const finding = findings.find((f) => f.id === "mcp-risky-filesystem");
+      expect(finding?.runtimeConfidence).toBe("active-runtime");
+    });
+  });
+
+  describe("project MCP auto-approval", () => {
+    it("flags enableAllProjectMcpServers at the root of settings", () => {
+      const file = makeSettingsConfig({
+        enableAllProjectMcpServers: true,
+        hooks: { PreToolUse: [] },
+      });
+      const findings = runAllMcpRules(file);
+      expect(findings.some((f) => f.id.includes("auto-approve") && f.severity === "critical")).toBe(true);
+    });
+
+    it("flags nested enableAllProjectMcpServers in mcp config", () => {
+      const file = makeSettingsConfig({
+        mcp: {
+          enableAllProjectMcpServers: true,
+        },
+      });
+      const findings = runAllMcpRules(file);
+      expect(findings.some((f) => f.evidence === "mcp.enableAllProjectMcpServers: true")).toBe(true);
+    });
+
+    it("does not flag when the flag is false", () => {
+      const file = makeSettingsConfig({
+        enableAllProjectMcpServers: false,
+      });
+      const findings = runAllMcpRules(file);
+      const autoApprove = findings.filter((f) => f.id.includes("auto-approve"));
+      expect(autoApprove).toHaveLength(0);
+    });
+
+    it("does not flag unrelated MCP settings", () => {
+      const file = makeSettingsConfig({
+        mcpServers: {
+          github: { command: "node", args: ["server.js"] },
+        },
+      });
+      const findings = runAllMcpRules(file);
+      const autoApprove = findings.filter((f) => f.id.includes("auto-approve"));
+      expect(autoApprove).toHaveLength(0);
     });
   });
 
@@ -85,6 +189,44 @@ describe("mcpRules", () => {
       const findings = runAllMcpRules(file);
       const hardcodedFindings = findings.filter((f) => f.id.includes("hardcoded-env"));
       expect(hardcodedFindings).toHaveLength(0);
+    });
+
+    it("skips placeholder secrets in MCP template files", () => {
+      const file: ConfigFile = {
+        path: "mcp-configs/mcp-servers.json",
+        type: "mcp-json",
+        content: JSON.stringify({
+          mcpServers: {
+            github: {
+              command: "npx",
+              env: { GITHUB_PERSONAL_ACCESS_TOKEN: "YOUR_GITHUB_PAT_HERE" },
+            },
+          },
+        }),
+      };
+      const findings = runAllMcpRules(file);
+      const hardcodedFindings = findings.filter((f) => f.id.includes("hardcoded-env"));
+      expect(hardcodedFindings).toHaveLength(0);
+    });
+
+    it("preserves critical severity for real secrets in MCP template files", () => {
+      const file: ConfigFile = {
+        path: "mcp-configs/mcp-servers.json",
+        type: "mcp-json",
+        content: JSON.stringify({
+          mcpServers: {
+            github: {
+              command: "npx",
+              env: { GITHUB_PERSONAL_ACCESS_TOKEN: "real-secret-token-value" },
+            },
+          },
+        }),
+      };
+      const findings = runAllMcpRules(file);
+      const finding = findings.find((f) => f.id.includes("hardcoded-env"));
+      expect(finding?.severity).toBe("critical");
+      expect(finding?.title).toContain("Hardcoded secret");
+      expect(finding?.runtimeConfidence).toBe("template-example");
     });
   });
 
@@ -175,6 +317,23 @@ describe("mcpRules", () => {
       const finding = findings.find((f) => f.id.includes("url-transport"));
       expect(finding?.fix).toBeDefined();
       expect(finding?.fix?.after).toContain("local");
+    });
+
+    it("downgrades URL transport findings for MCP template files", () => {
+      const file: ConfigFile = {
+        path: "mcp-configs/mcp-servers.json",
+        type: "mcp-json",
+        content: JSON.stringify({
+          mcpServers: {
+            remote: { url: "https://api.example.com/mcp" },
+          },
+        }),
+      };
+      const findings = runAllMcpRules(file);
+      const finding = findings.find((f) => f.id === "mcp-url-transport-remote");
+      expect(finding?.severity).toBe("medium");
+      expect(finding?.title).toBe('Template MCP server "remote" connects to external URL');
+      expect(finding?.runtimeConfidence).toBe("template-example");
     });
   });
 

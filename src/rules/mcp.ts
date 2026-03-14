@@ -1,4 +1,4 @@
-import type { ConfigFile, Finding, Rule } from "../types.js";
+import type { ConfigFile, Finding, Rule, RuntimeConfidence, Severity } from "../types.js";
 
 /**
  * Known MCP servers and their risk profiles.
@@ -44,7 +44,151 @@ const MCP_RISK_PROFILES: ReadonlyArray<{
   },
 ];
 
-export const mcpRules: ReadonlyArray<Rule> = [
+function findEnabledBooleanFlag(
+  value: unknown,
+  flagName: string,
+  currentPath = "",
+): ReadonlyArray<string> {
+  const paths: string[] = [];
+
+  if (Array.isArray(value)) {
+    value.forEach((item, index) => {
+      const childPath = `${currentPath}[${index}]`;
+      paths.push(...findEnabledBooleanFlag(item, flagName, childPath));
+    });
+    return paths;
+  }
+
+  if (!value || typeof value !== "object") {
+    return paths;
+  }
+
+  for (const [key, child] of Object.entries(value as Record<string, unknown>)) {
+    const childPath = currentPath ? `${currentPath}.${key}` : key;
+
+    if (key === flagName && child === true) {
+      paths.push(childPath);
+    }
+
+    paths.push(...findEnabledBooleanFlag(child, flagName, childPath));
+  }
+
+  return paths;
+}
+
+function isLikelyMcpTemplatePath(filePath: string): boolean {
+  const normalized = filePath.toLowerCase();
+  return (
+    normalized.startsWith("mcp-configs/") ||
+    normalized.includes("/mcp-configs/") ||
+    normalized.startsWith("config/mcp/") ||
+    normalized.includes("/config/mcp/") ||
+    normalized.startsWith("configs/mcp/") ||
+    normalized.includes("/configs/mcp/")
+  );
+}
+
+function isPlaceholderSecretValue(value: string): boolean {
+  const normalized = value.trim();
+  return (
+    /^YOUR_[A-Z0-9_]+$/i.test(normalized) ||
+    /^REPLACE(?:_|-)?ME(?:_[A-Z0-9_]+)?$/i.test(normalized) ||
+    /^CHANGEME$/i.test(normalized) ||
+    /^<[^>]+>$/.test(normalized)
+  );
+}
+
+function isTemplateMcpFile(file: ConfigFile): boolean {
+  return file.type === "mcp-json" && isLikelyMcpTemplatePath(file.path);
+}
+
+function classifyMcpRuntimeConfidence(file: ConfigFile): RuntimeConfidence {
+  if (isTemplateMcpFile(file)) {
+    return "template-example";
+  }
+
+  const normalizedPath = file.path.toLowerCase();
+  if (normalizedPath === "settings.local.json" || normalizedPath.endsWith("/settings.local.json")) {
+    return "project-local-optional";
+  }
+
+  return "active-runtime";
+}
+
+function downgradeTemplateSeverity(severity: Severity): Severity {
+  switch (severity) {
+    case "critical":
+      return "high";
+    case "high":
+      return "medium";
+    case "medium":
+      return "low";
+    default:
+      return severity;
+  }
+}
+
+function formatTemplateMcpTitle(title: string): string {
+  const riskyServer = title.match(/^[A-Z]+\s+risk MCP server:\s+(.+)$/);
+  if (riskyServer) {
+    return `Template defines risky MCP server: ${riskyServer[1]}`;
+  }
+
+  if (title.startsWith("MCP server ")) {
+    return `Template ${title}`;
+  }
+
+  if (title.startsWith("High-risk MCP server ")) {
+    return title.replace(/^High-risk MCP server /, 'Template high-risk MCP server ');
+  }
+
+  return `Template MCP config: ${title}`;
+}
+
+function formatTemplateMcpDescription(description: string): string {
+  return `This finding comes from an MCP template or example inventory, not a confirmed active runtime MCP configuration. ${description}`;
+}
+
+function finalizeMcpFindings(
+  file: ConfigFile,
+  findings: ReadonlyArray<Finding>
+): ReadonlyArray<Finding> {
+  const runtimeConfidence = classifyMcpRuntimeConfidence(file);
+
+  return findings.map((finding) => {
+    const baseFinding: Finding = {
+      ...finding,
+      runtimeConfidence,
+    };
+
+    if (!isTemplateMcpFile(file)) {
+      return baseFinding;
+    }
+
+    if (baseFinding.category !== "mcp" && baseFinding.category !== "misconfiguration") {
+      return baseFinding;
+    }
+
+    return {
+      ...baseFinding,
+      severity: downgradeTemplateSeverity(baseFinding.severity),
+      title: formatTemplateMcpTitle(baseFinding.title),
+      description: formatTemplateMcpDescription(baseFinding.description),
+    };
+  });
+}
+
+function isScopedFilesystemServer(name: string, serverConfig: Record<string, unknown>): boolean {
+  if (!/filesystem/i.test(name)) return false;
+
+  const args = Array.isArray(serverConfig.args)
+    ? serverConfig.args.filter((arg): arg is string => typeof arg === "string")
+    : [];
+
+  return args.some((arg) => /^\.([/\\]|$)/.test(arg.trim()));
+}
+
+const rawMcpRules: ReadonlyArray<Rule> = [
   {
     id: "mcp-risky-servers",
     name: "Risky MCP Server Configuration",
@@ -60,15 +204,26 @@ export const mcpRules: ReadonlyArray<Rule> = [
         const config = JSON.parse(file.content);
         const servers = config.mcpServers ?? {};
 
-        for (const [name, _server] of Object.entries(servers)) {
+        for (const [name, server] of Object.entries(servers)) {
+          const serverConfig = (server ?? {}) as Record<string, unknown>;
+
           for (const profile of MCP_RISK_PROFILES) {
             if (profile.namePattern.test(name)) {
+              const severity =
+                profile.namePattern.test(name) && isScopedFilesystemServer(name, serverConfig)
+                  ? "medium"
+                  : profile.risk;
+              const description =
+                severity === "medium" && /filesystem/i.test(name)
+                  ? "Filesystem MCP is limited to repo-scoped relative paths"
+                  : profile.description;
+
               findings.push({
                 id: `mcp-risky-${name}`,
-                severity: profile.risk,
+                severity,
                 category: "mcp",
-                title: `${profile.risk.toUpperCase()} risk MCP server: ${name}`,
-                description: `${profile.description}. ${profile.recommendation}.`,
+                title: `${severity.toUpperCase()} risk MCP server: ${name}`,
+                description: `${description}. ${profile.recommendation}.`,
                 file: file.path,
               });
             }
@@ -79,6 +234,43 @@ export const mcpRules: ReadonlyArray<Rule> = [
       }
 
       return findings;
+    },
+  },
+  {
+    id: "mcp-auto-approve-project-servers",
+    name: "MCP Project Servers Auto-Approved",
+    description: "Checks for enableAllProjectMcpServers=true which silently trusts project-defined MCP servers",
+    severity: "critical",
+    category: "mcp",
+    check(file: ConfigFile): ReadonlyArray<Finding> {
+      if (file.type !== "mcp-json" && file.type !== "settings-json") return [];
+
+      try {
+        const config = JSON.parse(file.content);
+        const enabledPaths = findEnabledBooleanFlag(
+          config,
+          "enableAllProjectMcpServers",
+        );
+
+        return enabledPaths.map((path, index) => ({
+          id: `mcp-auto-approve-${index}`,
+          severity: "critical" as const,
+          category: "mcp" as const,
+          title: "Project MCP servers are auto-approved",
+          description:
+            "This configuration enables automatic approval of project-defined MCP servers. A cloned repository can then introduce MCP servers that connect or execute without an explicit human review step, turning repo config into an active compromise path.",
+          file: file.path,
+          evidence: `${path}: true`,
+          fix: {
+            description: "Disable project-wide MCP auto-approval and review each server explicitly",
+            before: `"${path}": true`,
+            after: `"${path}": false`,
+            auto: false,
+          },
+        }));
+      } catch {
+        return [];
+      }
     },
   },
   {
@@ -107,6 +299,13 @@ export const mcpRules: ReadonlyArray<Rule> = [
               const isSecret =
                 /key|token|secret|password|credential|auth/i.test(key);
               if (isSecret) {
+                if (
+                  isLikelyMcpTemplatePath(file.path) &&
+                  isPlaceholderSecretValue(value)
+                ) {
+                  continue;
+                }
+
                 findings.push({
                   id: `mcp-hardcoded-env-${name}-${key}`,
                   severity: "critical",
@@ -1337,3 +1536,10 @@ export const mcpRules: ReadonlyArray<Rule> = [
     },
   },
 ];
+
+export const mcpRules: ReadonlyArray<Rule> = rawMcpRules.map((rule) => ({
+  ...rule,
+  check(file: ConfigFile): ReadonlyArray<Finding> {
+    return finalizeMcpFindings(file, rule.check(file));
+  },
+}));

@@ -14,15 +14,15 @@ Validation repos used:
 - `/Users/affoon/Documents/GitHub/basket-trader`
 
 Current scan snapshots:
-- `everything-claude-code`: `103` files, `88` findings, grade `C (70)`, `51` findings with `runtimeConfidence: template-example`, plus `3` info-level `hook-code` findings
-- `PMX-backend`: `17` files, `27` findings, grade `C (66)`, `9` findings now emitted from `.claude/slash-commands/*.json`
+- `everything-claude-code`: `103` files, `88` findings, grade `C (70)`, now with only `7` high findings after specialist agent-capability severity downgrades, `51` findings with `runtimeConfidence: template-example`, and `3` info-level `hook-code` findings
+- `PMX-backend`: `17` files, `27` findings, grade `C (72)`, now with only `1` high finding after structured agent-capability downgrades and repo-scoped filesystem MCP grading
 - `basket-trader`: `3` files, `2` findings, grade `A (99)`, now split into `1` medium and `1` low after the project-local exact-allowlist downgrade for `hooks-no-pretooluse`
 
 Recent alerts reviewed on the current scanner:
 - `everything-claude-code/mcp-configs/mcp-servers.json` remains the largest alert cluster at `51` findings, but those all carry `runtimeConfidence: template-example`; this is still the main false-positive interpretation risk, not a new matcher bug
-- `PMX-backend/.claude/settings.json` remains the hottest active-runtime file at `11` findings; the current alerts there still look directionally correct and were not reclassified as false positives in this pass
+- `PMX-backend/.claude/settings.json` remains the hottest active-runtime file at `11` findings, but its repo-scoped filesystem MCP is now graded `medium` instead of `high`
 - `basket-trader/launch-video/.claude/settings.local.json` now emits only `2` findings, both `project-local-optional`; those are still worth surfacing, but they now read as scope-limited exposure rather than repo-wide runtime risk
-- conclusion from this pass: no new high-confidence false-positive matcher bug surfaced in the latest alerts; the current remaining noise is still dominated by source-confidence interpretation and mild project-local severity inflation
+- conclusion from this pass: the strongest remaining severity inflation was agent capability noise on narrow specialist configs, and that is now reduced; the main remaining noise is template interpretation and active-runtime remote MCP URLs
 
 Targeted source-kind confirmation scans:
 - a synthetic `docs/guide/settings.json` example now emits `runtimeConfidence: docs-example`, rewrites titles as `Example config: ...`, and downgrades structural severities one level (`Bash(*)` moved from `critical` to `high`, `permissions-no-deny-list` from `high` to `medium`, `hooks-no-pretooluse` from `medium` to `low`)
@@ -44,8 +44,10 @@ High-signal evidence from the refresh scan:
 - `agents/security-reviewer.md` no longer emits `agents-injection-surface`; the old hit was caused by defensive example text such as ``fetch(userProvidedUrl)`` inside a security review checklist
 - `agents-explorer-write-*` no longer fires on non-explorer workflows such as `chief-of-staff.md`, `database-reviewer.md`, `e2e-runner.md`, `security-reviewer.md`, `.claude/subagents/e2e-tester.json`, or `.claude/slash-commands/test-coverage.json`; the rule now uses role metadata and lead intro text instead of matching any later occurrence of `search`
 - `agents-oversized-prompt-*` no longer fires on example-heavy agents such as `chief-of-staff.md` and `planner.md`; the rule now measures effective prompt size instead of raw file size, discounting fenced code blocks and markdown tables
+- narrow specialist agent, subagent, and slash-command Bash/escalation findings now downgrade from `high` to `medium`; `everything-claude-code` dropped from `29` to `7` high findings and `PMX-backend` dropped from `18` to `1`
 - `settings.local.json` findings now emit `runtimeConfidence: project-local-optional` outside MCP too, and non-secret project-local findings now score at `0.75x` instead of full runtime weight
 - `PMX-backend` now emits `9` findings from structured slash-command JSON, which confirms that part of the previous miss is fixed
+- `PMX-backend/.claude/settings.json` now grades the repo-scoped `filesystem` MCP at `medium` instead of `high`; the only remaining `high` active-runtime MCP finding there is the remote URL transport server
 - `basket-trader` remains a useful baseline sanity check because its `2` findings are plausible and not obviously inflated
 - `basket-trader` now grades `A (99)` because its narrow `settings.local.json` allowlist downgrades `permissions-no-deny-list` from high to medium and its project-local findings now score at `0.75x` instead of full runtime weight
 - `basket-trader/launch-video/.claude/settings.local.json` now downgrades `hooks-no-pretooluse` from medium to low because the config is project-local and narrowly scoped to exact local commands
@@ -68,6 +70,8 @@ Behavior validation edge cases confirmed in targeted scans:
 | Exact network allow rules mislabeled as overly permissive | False positive | `.claude/settings.local.json` in `everything-claude-code` | Fixed: exact `curl`/`wget` commands with pinned URLs no longer trigger `permissions-permissive-*` | Keep the exact-vs-broad allowlist distinction covered in tests |
 | Project-local no-deny-list severity too high for exact allowlists | Severity inflation | `launch-video/.claude/settings.local.json` in `basket-trader` | Fixed: exact `settings.local.json` allowlists now downgrade `permissions-no-deny-list` from high to medium, emit `runtimeConfidence: project-local-optional`, and score at `0.75x` for non-secret findings | Keep project-local weighting aligned with future source kinds |
 | Project-local missing PreToolUse overstated for exact local-only allowlists | Severity inflation | `launch-video/.claude/settings.local.json` in `basket-trader` | Fixed: `hooks-no-pretooluse` now downgrades from medium to low for exact local-only `settings.local.json` allowlists | Keep broader or network-capable project-local configs at medium |
+| Specialist agent/subagent/slash-command capability findings overstated as high | Severity inflation | `agents/security-reviewer.md` in `everything-claude-code`; `.claude/subagents/e2e-tester.json` in `PMX-backend` | Fixed: narrow specialist configs now downgrade Bash-access and escalation-chain findings from high to medium | Keep broader/generalist configs such as `chief-of-staff.md` at high |
+| Repo-scoped filesystem MCP graded like unrestricted filesystem access | Severity inflation | `.claude/settings.json` in `PMX-backend` with `filesystem` server rooted at `./` | Fixed: repo-scoped relative filesystem MCP now grades as medium while root/home path access stays high | Revisit HTTPS vendor MCP URL grading separately if live evidence justifies it |
 | Defensive security-review prompts mislabeled as injection surface | False positive | `agents/security-reviewer.md` in `everything-claude-code` | Fixed: defensive examples like ``fetch(userProvidedUrl)`` no longer trigger `agents-injection-surface` | Add source/context metadata if future agent-review prompts need different confidence handling |
 | Explorer/search write rule matched generic workflow text | False positive | `agents/chief-of-staff.md`, `agents/security-reviewer.md` in `everything-claude-code`; `.claude/subagents/e2e-tester.json` in `PMX-backend` | Fixed: `agents-explorer-write` now uses path/name/description plus lead intro text instead of any later `search` mention in examples or workflow steps | Keep the heuristic scoped to explicit role signals so procedural `search for ...` text does not regress |
 | Oversized prompt rule counted examples and templates as live prompt size | False positive | `agents/chief-of-staff.md`, `agents/planner.md` in `everything-claude-code` | Fixed: `agents-oversized-prompt` now uses effective prompt size, discounting fenced code blocks and markdown tables | Keep the heuristic focused on actual prompt prose, not embedded examples |
@@ -124,9 +128,9 @@ Interpretation:
 ### 0.4 Agent Findings Often Reflect Intentional Capability, Not A Matcher Bug
 
 Current evidence:
-- after the recent fixes, agent findings in `everything-claude-code` are mostly long-tail Bash-access and oversized-prompt findings
+- after the recent fixes, `everything-claude-code` agent findings are mostly medium-severity capability findings plus a small set of broader/higher-risk generalist agents
 - the previous high-confidence false positives were heuristic bugs: `agents-explorer-write`, defensive injection examples, and raw-file-size prompt inflation
-- those are now fixed
+- those are now fixed, and narrow specialist capability findings are now severity-adjusted rather than reported as uniformly high
 
 Interpretation:
 - many remaining agent findings are policy findings, not false positives

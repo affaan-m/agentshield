@@ -200,6 +200,8 @@ Structured JSON under `.claude/subagents/` and `.claude/slash-commands/` is anal
 - Exact `Bash(curl https://...)` and `Bash(wget https://...)` allow entries with pinned literal URLs no longer trigger the generic `permissions-permissive-*` finding; wildcard and dynamic network permissions still do.
 - Exact `settings.local.json` allowlists now downgrade `permissions-no-deny-list` from high to medium when every allow entry is fully specified; wildcard or dynamic project-local permissions still keep the higher severity.
 - Exact local-only `settings.local.json` allowlists now also downgrade `hooks-no-pretooluse` from medium to low; broader or network-capable project-local configs still keep the higher severity.
+- Narrow specialist agents, subagents, and slash commands now downgrade generic Bash-access and escalation-chain findings from high to medium; broader generalist workflows still keep the higher severity.
+- Repo-scoped filesystem MCP servers using relative paths like `./` now grade lower than unrestricted root/home filesystem access; root-level filesystem exposure still stays high.
 - Defensive agent-review content that mentions patterns like ``fetch(userProvidedUrl)`` no longer triggers `agents-injection-surface`; direct instructions to fetch/process external content still do.
 - `agents-explorer-write` now uses role metadata and the lead agent intro instead of any later workflow/example text, so procedural `search for ...` steps in normal worker prompts no longer get mislabeled as explorer-style agents. Example: `chief-of-staff.md` no longer trips that rule just because it contains `gog gmail search ...`.
 - `agents-oversized-prompt` now measures effective prompt size instead of raw file length, discounting fenced code blocks and markdown tables. Example-heavy agents like `chief-of-staff.md` and `planner.md` no longer trip the rule, while prose-heavy agents still do.
@@ -274,12 +276,13 @@ Current patterns from the latest live scans:
 - example/tutorial config needs example-aware wording and weighting, not blanket suppression
 - declarative hook manifests and executable hook implementations need different handling
 - many remaining agent findings are policy findings about intentionally privileged agents, not obvious rule bugs
-- the latest alert review did not surface a new repeated matcher bug; remaining noise is still mostly template interpretation and project-local scope handling
+- the latest alert review reduced specialist agent-capability severity inflation and repo-scoped filesystem MCP inflation; remaining noise is now mostly template interpretation and active-runtime remote MCP URLs
 
 Recurring pattern signatures to recognize:
 - one template file dominating the report usually means confidence/weighting work, not a broken matcher
 - broad `agents-*` clusters across files with explicit tool metadata usually mean policy review, not false-positive suppression
 - very small `project-local-optional` clusters usually mean scope is already modeled and only severity may need tuning
+- a repo-scoped filesystem MCP with relative-path args should not be treated like root/home filesystem access
 
 When to open a false-positive issue instead of just triaging the report:
 - the same finding pattern reproduces across at least one real repo and one minimal synthetic fixture

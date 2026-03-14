@@ -6,6 +6,22 @@ function makeAgent(content: string): ConfigFile {
   return { path: "agents/test.md", type: "agent-md", content };
 }
 
+function makeJsonAgent(config: Record<string, unknown>): ConfigFile {
+  return {
+    path: ".claude/subagents/test.json",
+    type: "agent-md",
+    content: JSON.stringify(config, null, 2),
+  };
+}
+
+function makeJsonSlashCommand(config: Record<string, unknown>): ConfigFile {
+  return {
+    path: ".claude/slash-commands/test.json",
+    type: "skill-md",
+    content: JSON.stringify(config, null, 2),
+  };
+}
+
 function makeClaudeMd(content: string): ConfigFile {
   return { path: "CLAUDE.md", type: "claude-md", content };
 }
@@ -34,6 +50,33 @@ describe("agentRules", () => {
       expect(findings.some((f) => f.title.includes("Explorer/search agent has write access"))).toBe(true);
     });
 
+    it("does not treat generic search commands in the body as explorer-style role metadata", () => {
+      const file = makeAgent(`---
+name: chief-of-staff
+description: Personal communication chief of staff for multi-channel triage.
+tools: ["Read", "Write", "Grep", "Bash"]
+model: opus
+---
+Run:
+\`gog gmail search "is:unread" --json\`
+`);
+      const findings = runAllAgentRules(file);
+      expect(findings.some((f) => f.id.includes("explorer-write"))).toBe(false);
+    });
+
+    it("does not treat defensive review prompts that mention searching as explorer-style agents", () => {
+      const file = makeAgent(`---
+name: security-reviewer
+description: Security vulnerability detection and remediation specialist.
+tools: ["Read", "Write", "Edit", "Bash", "Grep", "Glob"]
+model: sonnet
+---
+Search for hardcoded secrets and review high-risk code paths.
+`);
+      const findings = runAllAgentRules(file);
+      expect(findings.some((f) => f.id.includes("explorer-write"))).toBe(false);
+    });
+
     it("flags agents without model specified", () => {
       const file = makeAgent('---\ntools: ["Read", "Grep"]\n---\nHelper agent.');
       const findings = runAllAgentRules(file);
@@ -45,6 +88,71 @@ describe("agentRules", () => {
       const file = makeAgent('---\ntools: ["Read", "Grep"]\nmodel: haiku\n---\nHelper.');
       const findings = runAllAgentRules(file);
       expect(findings.some((f) => f.title.includes("no model specified"))).toBe(false);
+    });
+
+    it("parses JSON subagents with allowedTools and model", () => {
+      const file = makeJsonAgent({
+        name: "reviewer",
+        allowedTools: ["Read", "Bash", "Grep"],
+        model: "claude-sonnet-4-5",
+        systemPrompt: "Review code carefully.",
+      });
+      const findings = runAllAgentRules(file);
+      expect(findings.some((f) => f.title.includes("Bash access"))).toBe(true);
+      expect(findings.some((f) => f.title.includes("no model specified"))).toBe(false);
+    });
+
+    it("flags structured slash commands with Bash access", () => {
+      const file = makeJsonSlashCommand({
+        name: "/build-and-fix",
+        prompt: "Run the build and fix issues.",
+        allowedTools: ["Bash", "Read", "Write", "Edit"],
+        subagent: "build-fixer",
+      });
+      const findings = runAllAgentRules(file);
+      const finding = findings.find((f) => f.title.includes("Slash command has Bash access"));
+      expect(finding).toBeDefined();
+      expect(finding?.severity).toBe("medium");
+      expect(findings.some((f) => f.title.includes("no model specified"))).toBe(false);
+    });
+
+    it("keeps broader agent Bash access at high severity", () => {
+      const file = makeAgent(`---
+name: chief-of-staff
+description: Personal communication chief of staff for multi-channel triage.
+tools: ["Read", "Write", "Grep", "Bash"]
+model: opus
+---
+Coordinate workflows across inbox, calendar, and chat.
+`);
+      const findings = runAllAgentRules(file);
+      const finding = findings.find((f) => f.id.includes("bash-access"));
+      expect(finding?.severity).toBe("high");
+    });
+
+    it("downgrades specialist agent Bash access to medium severity", () => {
+      const file = makeAgent(`---
+name: security-reviewer
+description: Security vulnerability detection and remediation specialist.
+tools: ["Read", "Write", "Edit", "Bash", "Grep", "Glob"]
+model: sonnet
+---
+Review high-risk code paths and report issues.
+`);
+      const findings = runAllAgentRules(file);
+      const finding = findings.find((f) => f.id.includes("bash-access"));
+      expect(finding?.severity).toBe("medium");
+    });
+
+    it("does not treat generic analysis slash commands as explorer-style when only the workflow mentions search", () => {
+      const file = makeJsonSlashCommand({
+        name: "/test-coverage",
+        description: "Measure test coverage and generate tests.",
+        prompt: "Search coverage gaps and write tests to improve coverage.",
+        allowedTools: ["Bash", "Read", "Write", "Edit"],
+      });
+      const findings = runAllAgentRules(file);
+      expect(findings.some((f) => f.id.includes("explorer-write"))).toBe(false);
     });
   });
 
@@ -73,6 +181,17 @@ describe("agentRules", () => {
       const findings = runAllAgentRules(file);
       expect(findings.some((f) => f.id.includes("web-write"))).toBe(false);
     });
+
+    it("flags JSON subagents with web access and Bash", () => {
+      const file = makeJsonAgent({
+        name: "researcher",
+        allowedTools: ["WebSearch", "Bash", "Read"],
+        model: "claude-sonnet-4-5",
+        systemPrompt: "Research external sources.",
+      });
+      const findings = runAllAgentRules(file);
+      expect(findings.some((f) => f.id.includes("web-write"))).toBe(true);
+    });
   });
 
   describe("prompt injection surface", () => {
@@ -86,6 +205,22 @@ describe("agentRules", () => {
       const file = makeAgent('---\ntools: ["Read"]\nmodel: sonnet\n---\nReview code for security issues.');
       const findings = runAllAgentRules(file);
       expect(findings.some((f) => f.title.includes("external content"))).toBe(false);
+    });
+
+    it("does not flag defensive security review examples that mention fetch(userProvidedUrl)", () => {
+      const file = makeAgent(`---
+tools: ["Read", "Bash"]
+model: sonnet
+---
+Review high-risk areas: auth, user input handling, and external API integrations.
+
+Flag these patterns immediately:
+- \`fetch(userProvidedUrl)\`
+- shell command with user input
+- string-concatenated SQL
+`);
+      const findings = runAllAgentRules(file);
+      expect(findings.some((f) => f.id.includes("injection-surface"))).toBe(false);
     });
   });
 
@@ -206,6 +341,28 @@ describe("agentRules", () => {
       const file = makeAgent("---\nname: helper\nmodel: sonnet\nSome content without closing.");
       const findings = runAllAgentRules(file);
       expect(findings.some((f) => f.id.includes("no-tools"))).toBe(false);
+    });
+
+    it("flags JSON subagents without allowedTools", () => {
+      const file = makeJsonAgent({
+        name: "reviewer",
+        model: "claude-sonnet-4-5",
+        systemPrompt: "Review code carefully.",
+      });
+      const findings = runAllAgentRules(file);
+      expect(findings.some((f) => f.id.includes("no-tools"))).toBe(true);
+    });
+
+    it("flags structured slash commands without allowedTools", () => {
+      const file = makeJsonSlashCommand({
+        name: "/review",
+        prompt: "Review the code carefully.",
+        subagent: "reviewer",
+      });
+      const findings = runAllAgentRules(file);
+      expect(
+        findings.some((f) => f.title.includes("Slash command has no tools restriction"))
+      ).toBe(true);
     });
   });
 
@@ -340,6 +497,33 @@ describe("agentRules", () => {
       const findings = runAllAgentRules(file);
       expect(findings.some((f) => f.id.includes("escalation-chain"))).toBe(false);
     });
+
+    it("flags JSON subagents with the full escalation chain", () => {
+      const file = makeJsonAgent({
+        name: "builder",
+        allowedTools: ["Glob", "Read", "Write", "Bash"],
+        model: "claude-sonnet-4-5",
+        systemPrompt: "Fix build issues.",
+      });
+      const findings = runAllAgentRules(file);
+      const finding = findings.find((f) => f.id.includes("escalation-chain"));
+      expect(finding).toBeDefined();
+      expect(finding?.severity).toBe("medium");
+    });
+
+    it("flags structured slash commands with the full escalation chain", () => {
+      const file = makeJsonSlashCommand({
+        name: "/refactor-clean",
+        prompt: "Refactor and clean the codebase.",
+        allowedTools: ["Glob", "Read", "Write", "Bash"],
+      });
+      const findings = runAllAgentRules(file);
+      const finding = findings.find((f) =>
+        f.title.includes("Slash command has full escalation chain")
+      );
+      expect(finding).toBeDefined();
+      expect(finding?.severity).toBe("medium");
+    });
   });
 
   describe("expensive model for read-only agent", () => {
@@ -365,6 +549,17 @@ describe("agentRules", () => {
       const file = makeAgent('---\ntools: ["Read", "Write", "Grep"]\nmodel: opus\n---\nEditor agent.');
       const findings = runAllAgentRules(file);
       expect(findings.some((f) => f.id.includes("expensive-readonly"))).toBe(false);
+    });
+
+    it("flags JSON read-only agents using expensive models", () => {
+      const file = makeJsonAgent({
+        name: "searcher",
+        allowedTools: ["Read", "Grep", "Glob"],
+        model: "opus",
+        systemPrompt: "Search the repo.",
+      });
+      const findings = runAllAgentRules(file);
+      expect(findings.some((f) => f.id.includes("expensive-readonly"))).toBe(true);
     });
 
     it("provides fix suggestion", () => {
@@ -421,6 +616,27 @@ describe("agentRules", () => {
       expect(findings.some((f) => f.id.includes("oversized-prompt"))).toBe(true);
     });
 
+    it("does not flag example-heavy agents whose prose stays under the threshold", () => {
+      const file = makeAgent(`---
+name: planner
+description: Planning specialist
+tools: ["Read"]
+model: haiku
+---
+Plan implementation carefully.
+
+\`\`\`markdown
+${"x".repeat(6000)}
+\`\`\`
+
+| Column | Value |
+|--------|-------|
+| Example | ${"y".repeat(1000)} |
+`);
+      const findings = runAllAgentRules(file);
+      expect(findings.some((f) => f.id.includes("oversized-prompt"))).toBe(false);
+    });
+
     it("does not flag normal-sized agents", () => {
       const file = makeAgent("A normal agent description that helps with code review.");
       const findings = runAllAgentRules(file);
@@ -437,6 +653,7 @@ describe("agentRules", () => {
       const file = makeAgent("y".repeat(6000));
       const findings = runAllAgentRules(file);
       const finding = findings.find((f) => f.id.includes("oversized-prompt"));
+      expect(finding?.evidence).toContain("effective characters");
       expect(finding?.evidence).toContain("6000");
     });
   });
