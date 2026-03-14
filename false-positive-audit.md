@@ -152,6 +152,17 @@ Interpretation:
 - current audit work should stay focused on wording, confidence, and score modeling before inventing new suppressions
 - if a future scan produces a new high-count cluster outside those source kinds, that is the point to revisit rule logic first
 
+## Pattern Signatures In Recent Alerts
+
+These signatures come from the latest real-repo scans and are a faster way to recognize likely false-positive patterns before changing rules.
+
+| Pattern signature | Seen in current scans | Likely meaning | First action |
+| --- | --- | --- | --- |
+| one file dominates the report and almost all findings share `runtimeConfidence: template-example` | `everything-claude-code/mcp-configs/mcp-servers.json` with `51` findings | shipped template or catalog inventory is being read as live runtime by the operator, not by the scanner | keep the findings visible, but review wording, weighting, and runtime confirmation first |
+| many `agents-*` findings spread across agent, subagent, and slash-command files with explicit tool metadata | `everything-claude-code` and `PMX-backend` agent clusters | this is usually a policy cluster about intentionally privileged workflows, not a false-positive cluster | verify the role metadata and tool list before weakening the rule |
+| a very small cluster in `settings.local.json` with `runtimeConfidence: project-local-optional` | `basket-trader/launch-video/.claude/settings.local.json` | scope is already modeled; the remaining question is severity, not whether the finding should exist | tune severity or score only if the allowlist is exact and local-only |
+| info-only findings in manifest-resolved non-shell hook files | `scripts/hooks/session-start.js`, `session-end.js`, `evaluate-session.js` | the scanner has reached real implementation code but is intentionally using narrow rules | add behavior-specific language-aware rules only when a new explicit risky action is confirmed |
+
 ## Recommendations For Reducing False Positives
 
 These recommendations are based on the current live scan profile, not hypothetical scanner behavior.

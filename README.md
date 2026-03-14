@@ -275,6 +275,11 @@ Current patterns from the latest live scans:
 - many remaining agent findings are policy findings about intentionally privileged agents, not obvious rule bugs
 - the latest alert review did not surface a new repeated matcher bug; remaining noise is still mostly template interpretation and project-local scope handling
 
+Recurring pattern signatures to recognize:
+- one template file dominating the report usually means confidence/weighting work, not a broken matcher
+- broad `agents-*` clusters across files with explicit tool metadata usually mean policy review, not false-positive suppression
+- very small `project-local-optional` clusters usually mean scope is already modeled and only severity may need tuning
+
 Recommended operating model:
 - Start with `runtimeConfidence` before changing any rule. Separate `active-runtime` from `template-example`, `docs-example`, `plugin-manifest`, and `project-local-optional`.
 - Reclassify before suppressing. If the finding is real but lower confidence, keep it visible and adjust wording or score weight instead of hiding it.
