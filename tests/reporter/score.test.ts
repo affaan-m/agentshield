@@ -162,6 +162,111 @@ describe("calculateScore", () => {
     expect(report.score.grade).toBe("A");
   });
 
+  it("discounts template-example MCP findings in score weighting", () => {
+    const result = makeScanResult([
+      makeFinding({
+        id: "mcp-template",
+        severity: "high",
+        category: "mcp",
+        runtimeConfidence: "template-example",
+      }),
+    ]);
+
+    const report = calculateScore(result);
+    expect(report.score.breakdown.mcp).toBe(96);
+    expect(report.score.numericScore).toBe(99);
+  });
+
+  it("caps template-example deductions per file and score category", () => {
+    const result = makeScanResult(
+      Array.from({ length: 40 }, (_, index) =>
+        makeFinding({
+          id: `mcp-template-${index}`,
+          severity: "low",
+          category: "mcp",
+          file: "mcp-configs/mcp-servers.json",
+          runtimeConfidence: "template-example",
+        })
+      )
+    );
+
+    const report = calculateScore(result);
+    expect(report.score.breakdown.mcp).toBe(90);
+    expect(report.score.numericScore).toBe(98);
+  });
+
+  it("applies the template-example cap independently per file", () => {
+    const result = makeScanResult([
+      ...Array.from({ length: 40 }, (_, index) =>
+        makeFinding({
+          id: `mcp-template-a-${index}`,
+          severity: "low",
+          category: "mcp",
+          file: "mcp-configs/servers-a.json",
+          runtimeConfidence: "template-example",
+        })
+      ),
+      ...Array.from({ length: 40 }, (_, index) =>
+        makeFinding({
+          id: `mcp-template-b-${index}`,
+          severity: "low",
+          category: "mcp",
+          file: "mcp-configs/servers-b.json",
+          runtimeConfidence: "template-example",
+        })
+      ),
+    ]);
+
+    const report = calculateScore(result);
+    expect(report.score.breakdown.mcp).toBe(80);
+    expect(report.score.numericScore).toBe(96);
+  });
+
+  it("discounts project-local findings in score weighting", () => {
+    const result = makeScanResult([
+      makeFinding({
+        id: "project-local",
+        severity: "high",
+        category: "permissions",
+        runtimeConfidence: "project-local-optional",
+      }),
+    ]);
+
+    const report = calculateScore(result);
+    expect(report.score.breakdown.permissions).toBe(89);
+    expect(report.score.numericScore).toBe(98);
+  });
+
+  it("discounts docs-example findings in score weighting", () => {
+    const result = makeScanResult([
+      makeFinding({
+        id: "docs-example",
+        severity: "high",
+        category: "agents",
+        runtimeConfidence: "docs-example",
+      }),
+    ]);
+
+    const report = calculateScore(result);
+    expect(report.score.breakdown.agents).toBe(96);
+    expect(report.score.numericScore).toBe(99);
+  });
+
+  it("discounts plugin-manifest findings in score weighting", () => {
+    const result = makeScanResult([
+      makeFinding({
+        id: "plugin-manifest",
+        severity: "medium",
+        category: "hooks",
+        runtimeConfidence: "plugin-manifest",
+      }),
+    ]);
+
+    const report = calculateScore(result);
+    expect(report.score.breakdown.hooks).toBe(98);
+    expect(report.score.numericScore).toBe(100);
+  });
+
   it("grades correctly at boundaries", () => {
     // A: >= 90 — 2 medium in one category
     expect(calculateScore(makeScanResult([

@@ -1,6 +1,16 @@
 import type { Finding, Grade, ReportSummary, SecurityReport, SecurityScore, ScoreBreakdown } from "../types.js";
 import type { ScanResult } from "../scanner/index.js";
 
+const SCORE_DEDUCTIONS: Record<string, number> = {
+  critical: 25,
+  high: 15,
+  medium: 5,
+  low: 2,
+  info: 0,
+};
+
+const TEMPLATE_EXAMPLE_CATEGORY_CAP = 10;
+
 /**
  * Calculate security score from findings.
  * Score starts at 100 and deducts based on severity.
@@ -38,16 +48,6 @@ function summarizeFindings(
 }
 
 function computeScore(findings: ReadonlyArray<Finding>): SecurityScore {
-  // Deductions per severity
-  const deductions: Record<string, number> = {
-    critical: 25,
-    high: 15,
-    medium: 5,
-    low: 2,
-    info: 0,
-  };
-
-  let totalDeduction = 0;
   const categoryDeductions: Record<string, number> = {
     secrets: 0,
     permissions: 0,
@@ -55,25 +55,40 @@ function computeScore(findings: ReadonlyArray<Finding>): SecurityScore {
     mcp: 0,
     agents: 0,
   };
+  const templateInventoryDeductions = new Map<string, number>();
 
   for (const finding of findings) {
-    const deduction = deductions[finding.severity] ?? 0;
-    totalDeduction += deduction;
-
-    // Map finding category to score category
     const scoreCategory = mapToScoreCategory(finding.category);
+    const deduction = (SCORE_DEDUCTIONS[finding.severity] ?? 0) * confidenceWeight(finding);
+
+    if (isTemplateInventoryFinding(finding)) {
+      const templateKey = `${scoreCategory}:${finding.file}`;
+      templateInventoryDeductions.set(
+        templateKey,
+        (templateInventoryDeductions.get(templateKey) ?? 0) + deduction
+      );
+      continue;
+    }
+
     categoryDeductions[scoreCategory] =
       (categoryDeductions[scoreCategory] ?? 0) + deduction;
+  }
+
+  for (const [templateKey, deduction] of templateInventoryDeductions) {
+    const [scoreCategory] = templateKey.split(":", 1);
+    categoryDeductions[scoreCategory] =
+      (categoryDeductions[scoreCategory] ?? 0) +
+      Math.min(deduction, TEMPLATE_EXAMPLE_CATEGORY_CAP);
   }
 
   // Compute per-category scores (each 0-100)
   const maxCategoryScore = 100;
   const breakdown: ScoreBreakdown = {
-    secrets: Math.max(0, maxCategoryScore - categoryDeductions.secrets),
-    permissions: Math.max(0, maxCategoryScore - categoryDeductions.permissions),
-    hooks: Math.max(0, maxCategoryScore - categoryDeductions.hooks),
-    mcp: Math.max(0, maxCategoryScore - categoryDeductions.mcp),
-    agents: Math.max(0, maxCategoryScore - categoryDeductions.agents),
+    secrets: roundedCategoryScore(maxCategoryScore, categoryDeductions.secrets),
+    permissions: roundedCategoryScore(maxCategoryScore, categoryDeductions.permissions),
+    hooks: roundedCategoryScore(maxCategoryScore, categoryDeductions.hooks),
+    mcp: roundedCategoryScore(maxCategoryScore, categoryDeductions.mcp),
+    agents: roundedCategoryScore(maxCategoryScore, categoryDeductions.agents),
   };
 
   // Overall score = average of category scores
@@ -84,6 +99,34 @@ function computeScore(findings: ReadonlyArray<Finding>): SecurityScore {
   const grade = scoreToGrade(numericScore);
 
   return { grade, numericScore, breakdown };
+}
+
+function isTemplateInventoryFinding(finding: Finding): boolean {
+  return finding.runtimeConfidence === "template-example" && finding.category !== "secrets";
+}
+
+function confidenceWeight(finding: Finding): number {
+  if (
+    (finding.runtimeConfidence === "template-example" ||
+      finding.runtimeConfidence === "docs-example") &&
+    finding.category !== "secrets"
+  ) {
+    return 0.25;
+  }
+
+  if (finding.runtimeConfidence === "project-local-optional" && finding.category !== "secrets") {
+    return 0.75;
+  }
+
+  if (finding.runtimeConfidence === "plugin-manifest" && finding.category !== "secrets") {
+    return 0.5;
+  }
+
+  return 1;
+}
+
+function roundedCategoryScore(maxCategoryScore: number, deduction: number): number {
+  return Math.max(0, Math.round(maxCategoryScore - deduction));
 }
 
 function mapToScoreCategory(category: string): string {

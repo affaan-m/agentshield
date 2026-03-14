@@ -173,7 +173,7 @@ interface Finding {
 
 Current caveat:
 - report output now distinguishes example docs, plugin manifests, and non-shell hook implementations from active runtime findings
-- scoring discounts non-secret `template-example` findings to `0.25x` to reduce template-catalog inflation
+- scoring discounts non-secret `template-example` findings to `0.25x` and caps them at `10` deduction points per file and score category to reduce template-catalog inflation
 - scoring discounts non-secret `docs-example` findings to `0.25x` to reduce example-config inflation
 - scoring discounts non-secret `project-local-optional` findings to `0.75x` to reduce project-local score inflation
 - scoring discounts non-secret `plugin-manifest` findings to `0.5x` to reduce declarative-manifest inflation

@@ -162,7 +162,7 @@ AgentShield scans both active MCP config and repository-shipped MCP templates.
 - Findings from `settings.local.json` are emitted as `runtimeConfidence: project-local-optional`.
 - Findings from locations such as `mcp-configs/`, `config/mcp/`, or `configs/mcp/` indicate risky MCP definitions present in repository templates, not guaranteed active runtime enablement.
 - JSON, markdown, terminal, and HTML outputs now expose source context via `runtimeConfidence: active-runtime | project-local-optional | template-example | docs-example | plugin-manifest | hook-code`.
-- Non-secret `template-example` MCP findings are score-weighted at `0.25x` so template catalogs do not depress grades as aggressively as enabled config.
+- Non-secret `template-example` MCP findings are score-weighted at `0.25x`, and one template file is capped at `10` deduction points per score category so a single MCP catalog cannot score like dozens of enabled servers.
 - In template files, findings such as risky server type, remote URL transport, `npx -y`, unpinned packages, and environment inheritance are still valuable, but they should be interpreted as "this repo ships a risky MCP template" rather than "this MCP is definitely enabled right now."
 - Aggregate findings like large MCP server counts are especially likely to overstate runtime exposure when the source file is a template catalog.
 
@@ -190,7 +190,7 @@ Structured JSON under `.claude/subagents/` and `.claude/slash-commands/` is anal
 - Cross-file hook-manifest awareness now suppresses settings-only `hooks-no-pretooluse` when a companion `hooks/hooks.json` manifest defines PreToolUse hooks.
 - Manifest-referenced hook implementations are now discovered from `hooks/hooks.json`-style indirection; shell targets continue through hook rules, and non-shell `hook-code` targets now emit targeted findings for explicit `output(...)` context injection, transcript input access, and remote shell payloads executed via child-process wrappers.
 - Current known high-signal caveats are broader non-shell hook execution that still needs language-aware analysis beyond those current `hook-code` signals, and `skill-md` prompt text that still bypasses most agent/injection rules.
-- `runtimeConfidence` now appears on MCP findings, `settings.local.json`, docs/examples, plugin manifests, and manifest-resolved non-shell hook code. Scoring discounts non-secret `template-example` and `docs-example` findings at `0.25x`, non-secret `project-local-optional` findings at `0.75x`, and non-secret `plugin-manifest` findings at `0.5x`. `hook-code` findings currently stay at full weight, but the active rules there are narrow language-aware implementation signals.
+- `runtimeConfidence` now appears on MCP findings, `settings.local.json`, docs/examples, plugin manifests, and manifest-resolved non-shell hook code. Scoring discounts non-secret `template-example` and `docs-example` findings at `0.25x`, non-secret `project-local-optional` findings at `0.75x`, and non-secret `plugin-manifest` findings at `0.5x`. Non-secret `template-example` findings are also capped at `10` deduction points per file and score category so one catalog file cannot dominate the grade. `hook-code` findings currently stay at full weight, but the active rules there are narrow language-aware implementation signals.
 - Practical reading rule: `template-example` means "repo ships this risky template", not "this is definitely enabled right now."
 - Practical reading rule: `docs-example` means "repo ships risky sample guidance", not "this example is active runtime config."
 - Practical reading rule: `plugin-manifest` means "the repo declares this hook behavior", while `hook-code` means "the scanner reached the referenced non-shell implementation."
@@ -276,7 +276,7 @@ Current patterns from the latest live scans:
 - example/tutorial config needs example-aware wording and weighting, not blanket suppression
 - declarative hook manifests and executable hook implementations need different handling
 - many remaining agent findings are policy findings about intentionally privileged agents, not obvious rule bugs
-- the latest alert review reduced specialist agent-capability severity inflation and repo-scoped filesystem MCP inflation; remaining noise is now mostly template interpretation and active-runtime remote MCP URLs
+- the latest alert review reduced specialist agent-capability severity inflation, repo-scoped filesystem MCP inflation, and template-catalog score inflation; remaining noise is now mostly template count/interpretation and active-runtime remote MCP URLs
 
 Recurring pattern signatures to recognize:
 - one template file dominating the report usually means confidence/weighting work, not a broken matcher
@@ -425,7 +425,7 @@ Notes:
 - `docs-example` means docs/tutorial/example content such as `docs/guide/settings.json` or `commands/*.md`.
 - `plugin-manifest` means declarative hook manifests such as `hooks/hooks.json`.
 - `hook-code` means a manifest-resolved non-shell implementation such as `scripts/hooks/session-start.js`.
-- Score weighting discounts non-secret `template-example` and `docs-example` findings to `0.25x`, non-secret `project-local-optional` findings to `0.75x`, and non-secret `plugin-manifest` findings to `0.5x`; committed secrets still count at full weight. See [`false-positive-audit.md`](./false-positive-audit.md).
+- Score weighting discounts non-secret `template-example` and `docs-example` findings to `0.25x`, non-secret `project-local-optional` findings to `0.75x`, and non-secret `plugin-manifest` findings to `0.5x`; committed secrets still count at full weight. Non-secret `template-example` findings are also capped at `10` deduction points per file and score category. See [`false-positive-audit.md`](./false-positive-audit.md).
 
 ## API Reference
 

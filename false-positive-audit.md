@@ -1,6 +1,6 @@
 # AgentShield False Positive Audit
 
-This note captures the current false-positive, miss, and confidence-scoring state of AgentShield after live validation on March 13, 2026.
+This note captures the current false-positive, miss, and confidence-scoring state of AgentShield after live validation on March 14, 2026.
 
 Audit method:
 - real scans were run with `npx tsx src/index.ts scan --format json`
@@ -14,15 +14,15 @@ Validation repos used:
 - `/Users/affoon/Documents/GitHub/basket-trader`
 
 Current scan snapshots:
-- `everything-claude-code`: `103` files, `88` findings, grade `C (70)`, now with only `7` high findings after specialist agent-capability severity downgrades, `51` findings with `runtimeConfidence: template-example`, and `3` info-level `hook-code` findings
+- `everything-claude-code`: `103` files, `88` findings, grade `B (75)`, now with only `7` high findings after specialist agent-capability severity downgrades, `51` findings with `runtimeConfidence: template-example`, and `3` info-level `hook-code` findings
 - `PMX-backend`: `17` files, `27` findings, grade `C (72)`, now with only `1` high finding after structured agent-capability downgrades and repo-scoped filesystem MCP grading
 - `basket-trader`: `3` files, `2` findings, grade `A (99)`, now split into `1` medium and `1` low after the project-local exact-allowlist downgrade for `hooks-no-pretooluse`
 
 Recent alerts reviewed on the current scanner:
-- `everything-claude-code/mcp-configs/mcp-servers.json` remains the largest alert cluster at `51` findings, but those all carry `runtimeConfidence: template-example`; this is still the main false-positive interpretation risk, not a new matcher bug
+- `everything-claude-code/mcp-configs/mcp-servers.json` remains the largest alert cluster at `51` findings, but those all carry `runtimeConfidence: template-example`; the score model now caps that one file at `10` MCP deduction points, so the remaining issue is report interpretation and count volume, not raw grade distortion
 - `PMX-backend/.claude/settings.json` remains the hottest active-runtime file at `11` findings, but its repo-scoped filesystem MCP is now graded `medium` instead of `high`
 - `basket-trader/launch-video/.claude/settings.local.json` now emits only `2` findings, both `project-local-optional`; those are still worth surfacing, but they now read as scope-limited exposure rather than repo-wide runtime risk
-- conclusion from this pass: the strongest remaining severity inflation was agent capability noise on narrow specialist configs, and that is now reduced; the main remaining noise is template interpretation and active-runtime remote MCP URLs
+- conclusion from this pass: the strongest remaining score inflation was template-catalog MCP debt, and that is now reduced; the main remaining noise is template count/interpretation and active-runtime remote MCP URLs
 
 Targeted source-kind confirmation scans:
 - a synthetic `docs/guide/settings.json` example now emits `runtimeConfidence: docs-example`, rewrites titles as `Example config: ...`, and downgrades structural severities one level (`Bash(*)` moved from `critical` to `high`, `permissions-no-deny-list` from `high` to `medium`, `hooks-no-pretooluse` from `medium` to `low`)
@@ -33,7 +33,7 @@ Targeted source-kind confirmation scans:
 - manifest-resolved non-shell implementations continue to emit `runtimeConfidence: hook-code` with narrow language-aware findings, such as `Hook code injects content into Claude context`, and now also flag explicit remote shell payloads executed via child-process wrappers
 
 High-signal evidence from the refresh scan:
-- `everything-claude-code` still has `51/88` findings concentrated in `mcp-configs/mcp-servers.json`, but the MCP category now lands at `68` instead of `0` because non-secret `template-example` findings are score-weighted at `0.25x`
+- `everything-claude-code` still has `51/88` findings concentrated in `mcp-configs/mcp-servers.json`, but the MCP category now lands at `90` and the overall grade improves to `B (75)` because non-secret `template-example` findings are both score-weighted at `0.25x` and capped at `10` deduction points per file and score category
 - `commands/kotlin-test.md` no longer emits any secret findings after markdown example-password suppression landed
 - docs-only nested trees under `docs/` no longer emit agent noise, but standalone example `CLAUDE.md` files are now still inventoried; `everything-claude-code` gained `4` extra scanned files (`docs/ja-JP/examples/CLAUDE.md`, `docs/ko-KR/examples/CLAUDE.md`, `docs/zh-CN/CLAUDE.md`, and `docs/zh-CN/examples/CLAUDE.md`) without adding findings
 - `hooks/hooks.json` now emits `0` findings; direct manifest false positives for `permissions-no-block`, `hooks-silent-fail-*`, and `hooks-chained-commands-*` are fixed
@@ -64,7 +64,7 @@ Behavior validation edge cases confirmed in targeted scans:
 
 | Pattern | Class | Evidence | Current Status | Next Step |
 | --- | --- | --- | --- | --- |
-| MCP template catalogs | Confidence / scoring gap | `mcp-configs/mcp-servers.json` in `everything-claude-code` | Fixed for MCP scoring: template findings are relabeled, severity-adjusted, emit `runtimeConfidence: template-example`, and structural non-secret findings score at `0.25x` | Extend the same high-confidence language-aware treatment to non-MCP executable sources |
+| MCP template catalogs | Confidence / scoring gap | `mcp-configs/mcp-servers.json` in `everything-claude-code` | Fixed for MCP scoring: template findings are relabeled, severity-adjusted, emit `runtimeConfidence: template-example`, structural non-secret findings score at `0.25x`, and one template file is capped at `10` deduction points per score category | Extend the same high-confidence language-aware treatment to non-MCP executable sources |
 | Docs/example roots treated as live config | False positive | `docs/zh-CN/CLAUDE.md` in `everything-claude-code` | Fixed: docs-only example `CLAUDE.md` files are inventoried as standalone examples while noisy nested subtrees stay suppressed | Extend source-aware handling if other tutorial/example bundle names show up beyond the current path set |
 | Example passwords in command docs | False positive | `commands/kotlin-test.md` in `everything-claude-code` | Fixed: example/test markdown context now suppresses the hardcoded-password rule in docs/command paths | Extend fixtures as new doc/example patterns appear |
 | Exact network allow rules mislabeled as overly permissive | False positive | `.claude/settings.local.json` in `everything-claude-code` | Fixed: exact `curl`/`wget` commands with pinned URLs no longer trigger `permissions-permissive-*` | Keep the exact-vs-broad allowlist distinction covered in tests |
@@ -97,7 +97,7 @@ These are the current high-frequency patterns from the latest live scans, ordere
 Current evidence:
 - `everything-claude-code` still carries `51/88` findings from `mcp-configs/mcp-servers.json`
 - those findings are mostly legitimate template inventory findings, not active runtime exposure
-- this is why the scanner now emits `runtimeConfidence: template-example` and discounts non-secret template findings to `0.25x`
+- this is why the scanner now emits `runtimeConfidence: template-example`, discounts non-secret template findings to `0.25x`, and caps one template file at `10` deduction points per score category
 
 Interpretation:
 - the main source of scan noise is still "real but lower-confidence" inventory, not obviously wrong matching logic
@@ -149,7 +149,7 @@ These cases still need analyst attention, but they usually do not justify weaken
 
 Current evidence:
 - the latest live scan did not produce a new repeated bad matcher pattern
-- the biggest remaining noisy cluster is still template MCP inventory with `runtimeConfidence: template-example`
+- the biggest remaining noisy cluster is still template MCP inventory with `runtimeConfidence: template-example`, but it no longer dominates the score the way it used to
 - the smallest remaining scope-noise cluster is project-local config in `settings.local.json`
 
 Interpretation:
@@ -603,12 +603,13 @@ This is the correct direction and should remain the baseline for future source-a
 
 Current behavior:
 - non-secret `template-example` findings now score at `0.25x`
+- non-secret `template-example` findings are also capped at `10` deduction points per file and score category
 - non-secret `docs-example` findings now score at `0.25x`
 - non-secret `project-local-optional` findings now score at `0.75x`
 - non-secret `plugin-manifest` findings now score at `0.5x`
 - `hook-code` findings currently stay at full weight, but the active rules there are intentionally narrow and language-aware
 - committed real secrets still stay at full score weight even if they appear in a template file
-- `everything-claude-code` still carries `51` template-example findings in the report, but now lands at `C (70)` with `mcp: 68` and `permissions: 83`
+- `everything-claude-code` still carries `51` template-example findings in the report, but now lands at `B (75)` with `mcp: 90` and `permissions: 83`
 - `basket-trader` now lands at `A (99)` instead of `A (98)` because its `settings.local.json` findings are clearly marked project-local and slightly discounted in score weight
 - the synthetic docs-example fixture now lands at `A (99)` instead of looking like a live broken runtime config
 - the synthetic plugin-manifest fixture lands at `A (98)` with visible, but correctly contextualized, manifest findings
@@ -619,7 +620,7 @@ Current weighting:
 | --- | --- | --- |
 | `active-runtime` | `mcp.json`, `.claude/mcp.json`, active `settings.json` | `1.0x` |
 | `project-local-optional` | `settings.local.json` | `0.75x` for structural non-secret findings, `1.0x` for committed real secrets |
-| `template-example` | `mcp-configs/mcp-servers.json` | `0.25x` for structural findings, `1.0x` for committed real secrets |
+| `template-example` | `mcp-configs/mcp-servers.json` | `0.25x` for structural findings, capped at `10` deduction points per file and score category, `1.0x` for committed real secrets |
 | `docs-example` | `docs/guide/settings.json`, `commands/kotlin-test.md` | `0.25x` for structural findings, `1.0x` for committed real secrets |
 | `plugin-manifest` | `hooks/hooks.json` | `0.5x` for structural findings, `1.0x` for committed real secrets |
 | `hook-code` | `scripts/hooks/session-start.js` | `1.0x`, but current findings are narrow language-aware signals only |
