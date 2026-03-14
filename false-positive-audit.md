@@ -208,6 +208,19 @@ Use these rules to decide whether the scanner is noisy or the repo is simply ris
 - If the finding is driven by examples, tables, or fenced code blocks inside an agent prompt, narrow the heuristic to effective prompt prose instead of lowering severity globally.
 - If the finding is a real secret, do not treat it as false-positive work even when it lives in docs or examples.
 
+## Preferred Fix Order By Finding Kind
+
+Use this order when deciding how to reduce scanner noise. It keeps accuracy work focused on the right intervention.
+
+| Finding kind | First response | Acceptable change | Avoid |
+| --- | --- | --- | --- |
+| `active-runtime` | assume the finding may be real | matcher narrowing only if the behavior itself is misidentified | downgrading just because the repo author intended the risk |
+| `project-local-optional` | check whether scope, exactness, or local-only behavior is overstated | severity or score adjustment tied to project-local scope | suppressing the finding entirely |
+| `template-example` / `docs-example` | treat as shipped-risk inventory, not live runtime | relabel, reweight, and downgrade structural findings | hiding real secrets or collapsing the finding into nothing |
+| `plugin-manifest` | verify whether the manifest is declarative or the implementation is the real risk | cross-file context, manifest-aware wording, implementation follow-through | applying shell-execution rules directly to manifest JSON |
+| `hook-code` | ask whether the code performs one explicit risky behavior | add one narrow language-aware rule with tests | generic child-process or wrapper matching |
+| agent capability findings | decide whether this is policy or a scanner bug | role-metadata heuristics, prompt-size normalization, or better wording | treating all privileged agents as false positives |
+
 ## Triage Rules For Current Reports
 
 Use these rules when reading current AgentShield output before more source-aware scoring lands.

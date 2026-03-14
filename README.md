@@ -232,6 +232,21 @@ jq '.findings | group_by(.file) | map({
 }) | sort_by(-.count)[:20]' report.json
 ```
 
+Confidence-first triage commands:
+
+```bash
+# Highest-signal findings first: active runtime + project-local
+jq '.findings
+  | map(select((.runtimeConfidence // "active-runtime") | IN("active-runtime","project-local-optional")))
+  | map(select(.severity | IN("critical","high","medium")))
+  | map({file, severity, runtimeConfidence, title})' report.json
+
+# Lower-confidence inventory that usually needs interpretation, not suppression
+jq '.findings
+  | map(select((.runtimeConfidence // "") | IN("template-example","docs-example","plugin-manifest")))
+  | map({file, severity, runtimeConfidence, title})' report.json
+```
+
 Recommended audit order:
 - `active-runtime` and `project-local-optional`: treat as highest-signal findings first.
 - `template-example` and `docs-example`: confirm whether the repo is shipping risky guidance versus actually enabling it.
