@@ -18,6 +18,12 @@ Current scan snapshots:
 - `PMX-backend`: `17` files, `27` findings, grade `C (66)`, `9` findings now emitted from `.claude/slash-commands/*.json`
 - `basket-trader`: `3` files, `2` findings, grade `A (99)`, now split into `1` medium and `1` low after the project-local exact-allowlist downgrade for `hooks-no-pretooluse`
 
+Recent alerts reviewed on the current scanner:
+- `everything-claude-code/mcp-configs/mcp-servers.json` remains the largest alert cluster at `51` findings, but those all carry `runtimeConfidence: template-example`; this is still the main false-positive interpretation risk, not a new matcher bug
+- `PMX-backend/.claude/settings.json` remains the hottest active-runtime file at `11` findings; the current alerts there still look directionally correct and were not reclassified as false positives in this pass
+- `basket-trader/launch-video/.claude/settings.local.json` now emits only `2` findings, both `project-local-optional`; those are still worth surfacing, but they now read as scope-limited exposure rather than repo-wide runtime risk
+- conclusion from this pass: no new high-confidence false-positive matcher bug surfaced in the latest alerts; the current remaining noise is still dominated by source-confidence interpretation and mild project-local severity inflation
+
 Targeted source-kind confirmation scans:
 - a synthetic `docs/guide/settings.json` example now emits `runtimeConfidence: docs-example`, rewrites titles as `Example config: ...`, and downgrades structural severities one level (`Bash(*)` moved from `critical` to `high`, `permissions-no-deny-list` from `high` to `medium`, `hooks-no-pretooluse` from `medium` to `low`)
 - a docs-only `docs/guide/CLAUDE.md` with a real `ghp_...` token now scans as a standalone `docs-example` file and still emits a `critical` secret finding
@@ -134,6 +140,17 @@ These cases still need analyst attention, but they usually do not justify weaken
 - `project-local-optional` findings in committed `settings.local.json` are not false positives. They are narrower-scope exposure and should stay visible unless the underlying matcher is wrong.
 - agent findings on intentionally privileged workflows are not false positives just because the repo author meant to grant those capabilities. That is a product and policy decision, not a scanner bug.
 - real secrets found in docs, examples, manifests, or local settings are not false positives. Those should continue to stay critical.
+
+### 0.6 Current Remaining Alert Noise Is Mostly Interpretive
+
+Current evidence:
+- the latest live scan did not produce a new repeated bad matcher pattern
+- the biggest remaining noisy cluster is still template MCP inventory with `runtimeConfidence: template-example`
+- the smallest remaining scope-noise cluster is project-local config in `settings.local.json`
+
+Interpretation:
+- current audit work should stay focused on wording, confidence, and score modeling before inventing new suppressions
+- if a future scan produces a new high-count cluster outside those source kinds, that is the point to revisit rule logic first
 
 ## Recommendations For Reducing False Positives
 

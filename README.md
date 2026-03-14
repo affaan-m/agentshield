@@ -273,6 +273,7 @@ Current patterns from the latest live scans:
 - example/tutorial config needs example-aware wording and weighting, not blanket suppression
 - declarative hook manifests and executable hook implementations need different handling
 - many remaining agent findings are policy findings about intentionally privileged agents, not obvious rule bugs
+- the latest alert review did not surface a new repeated matcher bug; remaining noise is still mostly template interpretation and project-local scope handling
 
 Recommended operating model:
 - Start with `runtimeConfidence` before changing any rule. Separate `active-runtime` from `template-example`, `docs-example`, `plugin-manifest`, and `project-local-optional`.
