@@ -60,6 +60,7 @@ describe("corpus structure", () => {
       "agent-md",
       "skill-md",
       "hook-script",
+      "hook-code",
       "rule-md",
       "context-md",
       "unknown",

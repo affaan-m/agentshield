@@ -1,5 +1,11 @@
 import type { ConfigFile, Finding, Rule } from "../types.js";
 
+function isHookManifestConfig(file: ConfigFile, config: unknown): boolean {
+  if (!/(^|\/)hooks\/[^/]+\.json$/i.test(file.path)) return false;
+  if (!config || typeof config !== "object") return false;
+  return "hooks" in config;
+}
+
 /**
  * Dangerous permission patterns that grant excessive access.
  * These are only dangerous when they appear in the ALLOW list.
@@ -141,6 +147,135 @@ function parsePermissionLists(content: string): {
   }
 }
 
+interface ConfigPathValue {
+  readonly path: string;
+  readonly value: unknown;
+}
+
+function findConfigKeyValues(
+  value: unknown,
+  keyPattern: RegExp,
+  currentPath = "",
+): ReadonlyArray<ConfigPathValue> {
+  const matches: ConfigPathValue[] = [];
+
+  if (Array.isArray(value)) {
+    value.forEach((item, index) => {
+      const childPath = `${currentPath}[${index}]`;
+      matches.push(...findConfigKeyValues(item, keyPattern, childPath));
+    });
+    return matches;
+  }
+
+  if (!value || typeof value !== "object") {
+    return matches;
+  }
+
+  for (const [key, child] of Object.entries(value as Record<string, unknown>)) {
+    const childPath = currentPath ? `${currentPath}.${key}` : key;
+
+    if (keyPattern.test(key)) {
+      matches.push({ path: childPath, value: child });
+    }
+
+    matches.push(...findConfigKeyValues(child, keyPattern, childPath));
+  }
+
+  return matches;
+}
+
+function isExternalUrl(value: string): boolean {
+  if (!/^https?:\/\//i.test(value)) return false;
+
+  return !/^https?:\/\/(localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1\])/i.test(value);
+}
+
+function getBashPermissionCommand(entry: string): string | null {
+  const match = entry.match(/^Bash\((.*)\)$/s);
+  return match ? match[1].trim() : null;
+}
+
+function isScopedNetworkAllowEntry(entry: string): boolean {
+  const command = getBashPermissionCommand(entry);
+  if (!command) return false;
+  if (!/\b(?:curl|wget)\b/i.test(command)) return false;
+
+  const hasShellExpansion = /\$\(|\$\{?[A-Za-z_]/.test(command) || /`[^`]+`/.test(command);
+  if (hasShellExpansion) return false;
+  if (command.includes("*")) return false;
+  if (/\|\s*(?:sh|bash|zsh)\b/i.test(command)) return false;
+
+  const segments = command
+    .split(/\s*(?:&&|\|\||;|\n)\s*/)
+    .map((segment) => segment.trim())
+    .filter(Boolean);
+
+  let sawNetworkSegment = false;
+
+  for (const segment of segments) {
+    if (!/\b(?:curl|wget)\b/i.test(segment)) continue;
+    sawNetworkSegment = true;
+
+    if (!/https?:\/\/[^\s"'`)]+/i.test(segment)) {
+      return false;
+    }
+  }
+
+  return sawNetworkSegment;
+}
+
+function hasDynamicShellBehavior(command: string): boolean {
+  return (
+    /(?:\$\(|\$\{?[A-Za-z_]|`[^`]+`)/.test(command) ||
+    /(?:&&|\|\||;|\||>|<)/.test(command) ||
+    command.includes("*")
+  );
+}
+
+function isScopedInterpreterScriptAllowEntry(entry: string): boolean {
+  const command = getBashPermissionCommand(entry);
+  if (!command) return false;
+  if (!/^(?:python|python3|node)\s+/i.test(command)) return false;
+  if (hasDynamicShellBehavior(command)) return false;
+  if (/\s(?:-c|-e|-i|-m|-p|-r|--eval|--print|--require)\b/.test(command)) return false;
+
+  const scriptMatch = command.match(/^(?:python|python3|node)\s+(?:"([^"]+)"|'([^']+)'|([^\s]+))/i);
+  const scriptTarget = scriptMatch?.[1] ?? scriptMatch?.[2] ?? scriptMatch?.[3];
+  if (!scriptTarget) return false;
+  if (scriptTarget.startsWith("-")) return false;
+
+  return (
+    /[\\/]/.test(scriptTarget) ||
+    /\.(?:js|cjs|mjs|ts|cts|mts|py)$/i.test(scriptTarget)
+  );
+}
+
+function isReadOnlyDockerAllowEntry(entry: string): boolean {
+  const command = getBashPermissionCommand(entry);
+  if (!command) return false;
+  if (!/^docker\s+/i.test(command)) return false;
+  if (hasDynamicShellBehavior(command)) return false;
+
+  return /^(?:docker\s+(?:ps|images|version|info)\b|docker\s+(?:image|container|context)\s+ls\b)/i.test(
+    command.trim()
+  );
+}
+
+function isSettingsLocalFile(file: ConfigFile): boolean {
+  return /(^|[\\/])settings\.local\.json$/i.test(file.path);
+}
+
+function isExactAllowEntry(entry: string): boolean {
+  if (!/^[A-Za-z]+\(.+\)$/.test(entry)) return false;
+  if (entry.includes("*")) return false;
+  if (/\$\(|\$\{?[A-Za-z_]/.test(entry) || /`[^`]+`/.test(entry)) return false;
+  return true;
+}
+
+function hasOnlyExactAllowEntries(allowEntries: ReadonlyArray<string>): boolean {
+  return allowEntries.length > 0 && allowEntries.every((entry) => isExactAllowEntry(entry));
+}
+
 /**
  * Destructive git commands that should never be in the allow list.
  */
@@ -193,6 +328,14 @@ export const permissionRules: ReadonlyArray<Rule> = [
 
       // Only check patterns against the ALLOW list, not the deny list
       for (const entry of perms.allow) {
+        if (
+          isScopedNetworkAllowEntry(entry) ||
+          isScopedInterpreterScriptAllowEntry(entry) ||
+          isReadOnlyDockerAllowEntry(entry)
+        ) {
+          continue;
+        }
+
         for (const check of OVERLY_PERMISSIVE) {
           if (check.pattern.test(entry)) {
             findings.push({
@@ -250,13 +393,20 @@ export const permissionRules: ReadonlyArray<Rule> = [
       const findings: Finding[] = [];
 
       if (perms.deny.length === 0 && perms.allow.length > 0) {
+        const isScopedProjectLocalConfig =
+          isSettingsLocalFile(file) && hasOnlyExactAllowEntries(perms.allow);
+
         findings.push({
           id: "permissions-no-deny-list",
-          severity: "high",
+          severity: isScopedProjectLocalConfig ? "medium" : "high",
           category: "permissions",
-          title: "No deny list configured",
+          title: isScopedProjectLocalConfig
+            ? "Project-local config has no deny list"
+            : "No deny list configured",
           description:
-            "settings.json has no deny list. Without explicit denials, the agent may run dangerous operations if the allow list is too broad.",
+            isScopedProjectLocalConfig
+              ? "settings.local.json has no deny list. The current allow list appears tightly scoped, so this is less risky than a broad runtime config, but explicit denials still improve safety."
+              : "settings.json has no deny list. Without explicit denials, the agent may run dangerous operations if the allow list is too broad.",
           file: file.path,
           fix: {
             description: "Add a deny list for dangerous operations",
@@ -579,6 +729,10 @@ export const permissionRules: ReadonlyArray<Rule> = [
       try {
         const config = JSON.parse(file.content);
 
+        if (isHookManifestConfig(file, config)) {
+          return [];
+        }
+
         // Only flag if the file has other configuration but no permissions
         const hasOtherConfig = Object.keys(config).some(
           (k) => k !== "permissions" && k !== "$schema"
@@ -609,6 +763,49 @@ export const permissionRules: ReadonlyArray<Rule> = [
       }
 
       return [];
+    },
+  },
+  {
+    id: "permissions-model-endpoint-override",
+    name: "Model Endpoint Override",
+    description: "Checks for external API base URL overrides that can reroute model traffic through attacker-controlled infrastructure",
+    severity: "critical",
+    category: "misconfiguration",
+    check(file: ConfigFile): ReadonlyArray<Finding> {
+      if (file.type !== "settings-json") return [];
+
+      try {
+        const config = JSON.parse(file.content);
+        const overrideKeys = findConfigKeyValues(
+          config,
+          /^(ANTHROPIC_BASE_URL|OPENAI_BASE_URL|AZURE_OPENAI_ENDPOINT|MODEL_BASE_URL)$/i,
+        );
+
+        return overrideKeys.flatMap(({ path, value }, index) => {
+          if (typeof value !== "string" || !isExternalUrl(value)) {
+            return [];
+          }
+
+          return [{
+            id: `permissions-model-endpoint-override-${index}`,
+            severity: "critical" as const,
+            category: "misconfiguration" as const,
+            title: "External model endpoint override in config",
+            description:
+              "This configuration overrides the model API base URL with an external host. In a repo-level settings file, that can silently reroute prompts, tool calls, and API keys through attacker-controlled infrastructure before the user notices.",
+            file: file.path,
+            evidence: `${path}: ${value}`,
+            fix: {
+              description: "Remove the repo-level endpoint override or point it to a trusted local endpoint only",
+              before: `"${path}": "${value}"`,
+              after: `# Remove ${path} override`,
+              auto: false,
+            },
+          }];
+        });
+      } catch {
+        return [];
+      }
     },
   },
   {

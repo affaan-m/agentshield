@@ -1,8 +1,10 @@
-# MiniClaw Architecture
+# MiniClaw Subpath API and Architecture
+
+This file documents the MiniClaw runtime specifically. Scanner report JSON and package-surface notes for AgentShield live in the repo-level [`README.md`](../../README.md) and [`API.md`](../../API.md).
 
 ## Overview
 
-MiniClaw is a lightweight, secure, sandboxed AI agent — the antithesis of multi-channel orchestration platforms like OpenClaw. Where OpenClaw exposes many attack surfaces (Telegram, Discord, email, community plugins), MiniClaw presents a single HTTP endpoint backed by a containerized sandbox.
+MiniClaw is a lightweight, secure, sandboxed AI agent — the antithesis of multi-channel orchestration platforms like OpenClaw. Where OpenClaw exposes many attack surfaces (Telegram, Discord, email, community plugins), MiniClaw presents a single HTTP endpoint backed by an isolated filesystem sandbox with scoped tools and network policy.
 
 **Design mantra**: Minimal attack surface, maximum security, simple to deploy.
 
@@ -11,7 +13,7 @@ MiniClaw is a lightweight, secure, sandboxed AI agent — the antithesis of mult
 | Principle | OpenClaw | MiniClaw |
 |-----------|----------|----------|
 | Access points | Many (Telegram, X, Discord, email) | One (single HTTP endpoint) |
-| Execution | Host machine, broad access | Containerized, sandboxed |
+| Execution | Host machine, broad access | Sandboxed session, scoped filesystem + tools |
 | Skills | Unvetted community marketplace | Manually audited, local only |
 | Network exposure | Multiple ports, services | Minimal, single entry point |
 | Blast radius | Everything agent can access | Sandboxed to project directory |
@@ -83,9 +85,34 @@ MiniClaw is a lightweight, secure, sandboxed AI agent — the antithesis of mult
 - Even when enabled, commands are scoped and time-limited
 - No access to host system paths outside sandbox
 
-## API Design
+## Package API
 
-Single HTTP server with minimal endpoints:
+Stable import surface:
+
+```ts
+import {
+  startMiniClaw,
+  createMiniClawSession,
+  routePrompt,
+  createSafeWhitelist,
+  createGuardedWhitelist,
+  createCustomWhitelist,
+  createMiniClawServer,
+} from "ecc-agentshield/miniclaw";
+```
+
+High-value exports:
+- `startMiniClaw(config?)` starts the built-in HTTP server with secure defaults
+- `createMiniClawSession(config?)` creates a sandbox session for embedding
+- `routePrompt(request, session)` sanitizes and executes a prompt against an existing session
+- `createSafeWhitelist()`, `createGuardedWhitelist()`, and `createCustomWhitelist()` define tool policies
+- `createMiniClawServer(config)` exposes the lower-level server factory
+
+Core exported types include `PromptRequest`, `PromptResponse`, `MiniClawSession`, `MiniClawConfig`, `SandboxConfig`, and `SecurityEvent`.
+
+## HTTP API
+
+Single HTTP server with one prompt-processing endpoint and a small session/control surface:
 
 ### `POST /api/prompt`
 Primary endpoint. Accepts a prompt and returns a response.
@@ -110,11 +137,58 @@ Primary endpoint. Accepts a prompt and returns a response.
 ### `POST /api/session`
 Creates a new sandboxed session.
 
+Example response:
+```json
+{
+  "sessionId": "uuid",
+  "createdAt": "2026-03-13T19:42:00.000Z",
+  "allowedTools": ["read", "search", "list"],
+  "maxDuration": 300000
+}
+```
+
 ### `GET /api/session`
-Returns current session information.
+Returns the current active session list.
+
+Example response:
+```json
+{
+  "sessions": [
+    {
+      "id": "uuid",
+      "createdAt": "2026-03-13T19:42:00.000Z",
+      "allowedTools": ["read", "search", "list"],
+      "maxDuration": 300000
+    }
+  ]
+}
+```
 
 ### `DELETE /api/session/:id`
 Destroys a session and cleans up its sandbox.
+
+### `GET /api/events/:sessionId`
+Returns the security event log for a session.
+
+### `GET /api/health`
+Returns a basic health payload:
+
+```json
+{
+  "status": "ok",
+  "sessions": 1
+}
+```
+
+### Error format
+
+Errors are returned as JSON:
+
+```json
+{
+  "error": "Session \"uuid\" not found"
+}
+```
 
 ## Sandbox Architecture
 
@@ -141,7 +215,9 @@ Destroys a session and cleans up its sandbox.
 
 ## Dashboard UI Specification
 
-The dashboard is a self-contained React component (`<MiniClawDashboard />`) designed to be dropped into any React application.
+The dashboard source lives in `src/miniclaw/dashboard.tsx` and can be vendored into a React application.
+
+It is not currently exported as a separate npm subpath such as `ecc-agentshield/miniclaw/dashboard`.
 
 ### Features
 - Dark theme, minimal aesthetic
@@ -153,7 +229,7 @@ The dashboard is a self-contained React component (`<MiniClawDashboard />`) desi
 
 ### Usage
 ```tsx
-import { MiniClawDashboard } from '@agentshield/miniclaw/dashboard';
+import { MiniClawDashboard } from "./MiniClawDashboard";
 
 <MiniClawDashboard endpoint="http://localhost:3847" />
 ```

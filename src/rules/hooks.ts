@@ -283,11 +283,34 @@ function getHookSearchTargets(file: ConfigFile): ReadonlyArray<HookSearchTarget>
   }
 }
 
+function getLineBounds(content: string, index: number): { start: number; end: number } {
+  const start = content.lastIndexOf("\n", index - 1) + 1;
+  const nextNewline = content.indexOf("\n", index);
+  return {
+    start,
+    end: nextNewline === -1 ? content.length : nextNewline,
+  };
+}
+
+function getLineContentAtIndex(content: string, index: number): string {
+  const { start, end } = getLineBounds(content, index);
+  return content.slice(start, end);
+}
+
+function isCommentOnlyShellMatch(content: string, index: number): boolean {
+  const line = getLineContentAtIndex(content, index).trimStart();
+  return line.startsWith("#");
+}
+
 function findAllHookMatches(file: ConfigFile, pattern: RegExp): Array<HookMatch> {
   const matches: HookMatch[] = [];
 
   for (const target of getHookSearchTargets(file)) {
     for (const match of findAllMatches(target.content, pattern)) {
+      if (file.type === "hook-script" && isCommentOnlyShellMatch(target.content, match.index ?? 0)) {
+        continue;
+      }
+
       matches.push({
         match,
         line: target.baseLine + findLineNumber(target.content, match.index ?? 0) - 1,

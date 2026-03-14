@@ -2,6 +2,7 @@ import chalk from "chalk";
 import type {
   Finding,
   SecurityReport,
+  RuntimeConfidence,
   Severity,
   InjectionSuiteResult,
   SandboxResult,
@@ -492,6 +493,9 @@ function renderFinding(finding: Finding): string {
 
   lines.push(`    ${icon} ${finding.title}`);
   lines.push(`      ${location}`);
+  if (finding.runtimeConfidence) {
+    lines.push(`      ${chalk.dim(`Runtime confidence: ${formatRuntimeConfidence(finding.runtimeConfidence)}`)}`);
+  }
   lines.push(`      ${chalk.dim(finding.description)}`);
 
   if (finding.evidence) {
@@ -507,6 +511,23 @@ function renderFinding(finding: Finding): string {
 
   lines.push("");
   return lines.join("\n");
+}
+
+function formatRuntimeConfidence(value: RuntimeConfidence): string {
+  switch (value) {
+    case "active-runtime":
+      return "active runtime";
+    case "project-local-optional":
+      return "project-local optional";
+    case "template-example":
+      return "template/example";
+    case "docs-example":
+      return "docs/example";
+    case "plugin-manifest":
+      return "plugin manifest";
+    case "hook-code":
+      return "hook-code implementation";
+  }
 }
 
 function groupBySeverity(

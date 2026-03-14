@@ -27,6 +27,25 @@ describe("opus prompts", () => {
       expect(ATTACKER_SYSTEM_PROMPT).toContain("Data exfiltration");
       expect(ATTACKER_SYSTEM_PROMPT).toContain("Supply chain");
     });
+
+    it("attacker prompt covers modern indirect and confirmation-driven attack chains", () => {
+      expect(ATTACKER_SYSTEM_PROMPT).toContain("tool responses");
+      expect(ATTACKER_SYSTEM_PROMPT).toContain("Link-preview exfiltration");
+      expect(ATTACKER_SYSTEM_PROMPT).toContain("Persistent memory poisoning");
+      expect(ATTACKER_SYSTEM_PROMPT).toContain("Post-exploit confirmation signal");
+    });
+
+    it("defender prompt covers containment and verification guidance", () => {
+      expect(DEFENDER_SYSTEM_PROMPT).toContain("kill switches");
+      expect(DEFENDER_SYSTEM_PROMPT).toContain("containment or rollback");
+      expect(DEFENDER_SYSTEM_PROMPT).toContain("verify the fix");
+    });
+
+    it("auditor prompt emphasizes concrete exploitability and blast radius", () => {
+      expect(AUDITOR_SYSTEM_PROMPT).toContain("concrete exploit path");
+      expect(AUDITOR_SYSTEM_PROMPT).toContain("blast radius");
+      expect(AUDITOR_SYSTEM_PROMPT).toContain("automatic trigger surface");
+    });
   });
 
   describe("buildConfigContext", () => {

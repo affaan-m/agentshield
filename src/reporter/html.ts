@@ -1,4 +1,4 @@
-import type { Finding, SecurityReport, Severity, Grade } from "../types.js";
+import type { Finding, SecurityReport, Severity, Grade, RuntimeConfidence } from "../types.js";
 
 /**
  * Render a security report as a self-contained HTML file.
@@ -255,6 +255,9 @@ function renderFindingCard(finding: Finding): string {
   const location = finding.line
     ? `${escapeHtml(finding.file)}:${finding.line}`
     : escapeHtml(finding.file);
+  const runtimeConfidenceBadge = finding.runtimeConfidence
+    ? `<span class="runtime-confidence-badge">${escapeHtml(formatRuntimeConfidence(finding.runtimeConfidence))}</span>`
+    : "";
 
   const evidenceBlock = finding.evidence
     ? `<div class="finding-evidence"><strong>Evidence:</strong><pre><code>${escapeHtml(finding.evidence)}</code></pre></div>`
@@ -272,6 +275,7 @@ function renderFindingCard(finding: Finding): string {
     <div class="finding-card">
       <div class="finding-header">
         <span class="severity-badge" style="background-color: ${color};">${finding.severity.toUpperCase()}</span>
+        ${runtimeConfidenceBadge}
         <span class="finding-title">${escapeHtml(finding.title)}</span>
       </div>
       <div class="finding-meta">
@@ -282,6 +286,23 @@ function renderFindingCard(finding: Finding): string {
       ${evidenceBlock}
       ${fixBlock}
     </div>`;
+}
+
+function formatRuntimeConfidence(value: RuntimeConfidence): string {
+  switch (value) {
+    case "active-runtime":
+      return "active runtime";
+    case "project-local-optional":
+      return "project-local optional";
+    case "template-example":
+      return "template/example";
+    case "docs-example":
+      return "docs/example";
+    case "plugin-manifest":
+      return "plugin manifest";
+    case "hook-code":
+      return "hook-code implementation";
+  }
 }
 
 // ─── Timestamp Formatting ────────────────────────────────────
@@ -579,6 +600,19 @@ function inlineStyles(): string {
       border-radius: 12px;
       text-transform: uppercase;
       letter-spacing: 0.5px;
+      flex-shrink: 0;
+    }
+
+    .runtime-confidence-badge {
+      font-size: 11px;
+      font-weight: 600;
+      color: #c9d1d9;
+      background: #161b22;
+      border: 1px solid #30363d;
+      padding: 2px 8px;
+      border-radius: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.3px;
       flex-shrink: 0;
     }
 

@@ -1,5 +1,24 @@
 import type { SecurityReport } from "../types.js";
 
+function formatRuntimeConfidence(value: string): string {
+  switch (value) {
+    case "active-runtime":
+      return "active runtime";
+    case "project-local-optional":
+      return "project-local optional";
+    case "template-example":
+      return "template/example";
+    case "docs-example":
+      return "docs/example";
+    case "plugin-manifest":
+      return "plugin manifest";
+    case "hook-code":
+      return "hook-code implementation";
+    default:
+      return value;
+  }
+}
+
 /**
  * Render a security report as formatted JSON.
  */
@@ -74,6 +93,9 @@ export function renderMarkdownReport(report: SecurityReport): string {
       lines.push("");
       lines.push(`- **Severity:** ${finding.severity}`);
       lines.push(`- **Category:** ${finding.category}`);
+      if (finding.runtimeConfidence) {
+        lines.push(`- **Runtime Confidence:** ${formatRuntimeConfidence(finding.runtimeConfidence)}`);
+      }
       lines.push(`- **File:** \`${finding.file}${finding.line ? `:${finding.line}` : ""}\``);
       lines.push(`- **Description:** ${finding.description}`);
 

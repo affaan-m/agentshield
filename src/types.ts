@@ -21,10 +21,19 @@ export interface Finding {
   readonly title: string;
   readonly description: string;
   readonly file: string;
+  readonly runtimeConfidence?: RuntimeConfidence;
   readonly line?: number;
   readonly evidence?: string;
   readonly fix?: Fix;
 }
+
+export type RuntimeConfidence =
+  | "active-runtime"
+  | "project-local-optional"
+  | "template-example"
+  | "docs-example"
+  | "plugin-manifest"
+  | "hook-code";
 
 export type FindingCategory =
   | "secrets"
@@ -66,6 +75,7 @@ export type ConfigFileType =
   | "agent-md"
   | "skill-md"
   | "hook-script"
+  | "hook-code"
   | "rule-md"
   | "context-md"
   | "unknown";
@@ -78,7 +88,10 @@ export interface Rule {
   readonly description: string;
   readonly severity: Severity;
   readonly category: FindingCategory;
-  readonly check: (file: ConfigFile) => ReadonlyArray<Finding>;
+  readonly check: (
+    file: ConfigFile,
+    allFiles?: ReadonlyArray<ConfigFile>
+  ) => ReadonlyArray<Finding>;
 }
 
 // ─── Security Report ───────────────────────────────────────

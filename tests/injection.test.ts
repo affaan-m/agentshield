@@ -110,6 +110,13 @@ describe("Injection Payloads", () => {
       expect(payload.payload).not.toContain("FIXME");
     }
   });
+
+  it("should include modern agent-specific indirect injection payloads", () => {
+    expect(getPayloadById("indirect-007")?.name).toContain("PDF Attachment OCR");
+    expect(getPayloadById("indirect-008")?.expectedBehavior).toContain("link-preview crawlers");
+    expect(getPayloadById("indirect-009")?.expectedBehavior).toContain("persistent memory");
+    expect(getPayloadById("indirect-011")?.payload).toContain("remote MCP server");
+  });
 });
 
 // ─── Payload Filtering ───────────────────────────────────

@@ -77,6 +77,7 @@ describe("renderTerminalReport", () => {
           title: "Unvalidated hook",
           description: "Hook does not validate input",
           file: "settings.json",
+          runtimeConfidence: "template-example",
         },
       ],
       summary: {
@@ -95,6 +96,36 @@ describe("renderTerminalReport", () => {
     expect(output).toContain("Unvalidated hook");
     expect(output).toContain("CRITICAL");
     expect(output).toContain("MEDIUM");
+    expect(output).toContain("Runtime confidence: template/example");
+  });
+
+  it("renders new source-kind confidence labels", () => {
+    const report = makeReport({
+      findings: [
+        {
+          id: "HOOK-002",
+          severity: "info",
+          category: "hooks",
+          title: "Hook code finding",
+          description: "Hook code source",
+          file: "scripts/hooks/session-start.js",
+          runtimeConfidence: "hook-code",
+        },
+      ],
+      summary: {
+        totalFindings: 1,
+        critical: 0,
+        high: 0,
+        medium: 0,
+        low: 0,
+        info: 1,
+        filesScanned: 1,
+        autoFixable: 0,
+      },
+    });
+
+    const output = renderTerminalReport(report);
+    expect(output).toContain("Runtime confidence: hook-code implementation");
   });
 
   it("shows evidence when present", () => {

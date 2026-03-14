@@ -198,8 +198,11 @@ Structured JSON under `.claude/subagents/` and `.claude/slash-commands/` is anal
 - Current edge case: tutorial/example bundles outside the current `docs/`, `commands/`, `examples/`, `samples/`, `demo/`, `tutorial/`, `guide/`, `cookbook/`, and `playground/` heuristics can still be treated as live config until broader example-root classification lands.
 - Docs-only nested `CLAUDE.md` roots under `docs/` are now skipped unless runtime config companions exist in the same subtree.
 - Exact `Bash(curl https://...)` and `Bash(wget https://...)` allow entries with pinned literal URLs no longer trigger the generic `permissions-permissive-*` finding; wildcard and dynamic network permissions still do.
+- Exact `Bash(node scripts/foo.js ...)` and `Bash(python3 ./tools/audit.py ...)` wrapper commands no longer trigger the generic interpreter-access finding; inline eval forms such as `node -e` and `python -c` still do.
+- Exact read-only Docker inventory commands such as `Bash(docker ps)` and `Bash(docker image ls)` no longer trigger the generic Docker-access finding; execution-oriented forms such as `docker run` and `docker exec` still do.
 - Exact `settings.local.json` allowlists now downgrade `permissions-no-deny-list` from high to medium when every allow entry is fully specified; wildcard or dynamic project-local permissions still keep the higher severity.
 - Exact local-only `settings.local.json` allowlists now also downgrade `hooks-no-pretooluse` from medium to low; broader or network-capable project-local configs still keep the higher severity.
+- Comment-only shell-hook lines are now ignored by the hook exfiltration, sensitive-path, and silent-fail regex rules, so inline remediation notes and commented examples no longer look like live hook behavior.
 - Narrow specialist agents, subagents, and slash commands now downgrade generic Bash-access and escalation-chain findings from high to medium; broader generalist workflows still keep the higher severity.
 - Repo-scoped filesystem MCP servers using relative paths like `./` now grade lower than unrestricted root/home filesystem access; root-level filesystem exposure still stays high.
 - Defensive agent-review content that mentions patterns like ``fetch(userProvidedUrl)`` no longer triggers `agents-injection-surface`; direct instructions to fetch/process external content still do.

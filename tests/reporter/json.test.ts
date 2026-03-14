@@ -53,6 +53,7 @@ describe("renderJsonReport", () => {
           title: "Test finding",
           description: "A test",
           file: "test.md",
+          runtimeConfidence: "template-example",
         },
       ],
       summary: {
@@ -69,6 +70,35 @@ describe("renderJsonReport", () => {
     const parsed = JSON.parse(renderJsonReport(report));
     expect(parsed.findings).toHaveLength(1);
     expect(parsed.findings[0].title).toBe("Test finding");
+    expect(parsed.findings[0].runtimeConfidence).toBe("template-example");
+  });
+
+  it("preserves new source-kind confidence values in output", () => {
+    const report = makeReport({
+      findings: [
+        {
+          id: "TEST-002",
+          severity: "info",
+          category: "hooks",
+          title: "Hook code source",
+          description: "A test",
+          file: "scripts/hooks/session-start.js",
+          runtimeConfidence: "hook-code",
+        },
+      ],
+      summary: {
+        totalFindings: 1,
+        critical: 0,
+        high: 0,
+        medium: 0,
+        low: 0,
+        info: 1,
+        filesScanned: 1,
+        autoFixable: 0,
+      },
+    });
+    const parsed = JSON.parse(renderJsonReport(report));
+    expect(parsed.findings[0].runtimeConfidence).toBe("hook-code");
   });
 });
 
@@ -111,6 +141,7 @@ describe("renderMarkdownReport", () => {
           title: "Hardcoded key",
           description: "Found a key",
           file: "CLAUDE.md",
+          runtimeConfidence: "active-runtime",
           line: 10,
           evidence: "sk-***",
           fix: { description: "Use env var", before: "sk-xxx", after: "${KEY}", auto: true },
@@ -130,6 +161,7 @@ describe("renderMarkdownReport", () => {
     const output = renderMarkdownReport(report);
     expect(output).toContain("Hardcoded key");
     expect(output).toContain("**Severity:** critical");
+    expect(output).toContain("**Runtime Confidence:** active runtime");
     expect(output).toContain("**Evidence:** `sk-***`");
     expect(output).toContain("**Auto-fixable:** Yes");
     expect(output).toContain("`CLAUDE.md:10`");

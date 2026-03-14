@@ -1,0 +1,74 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  id-token: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          registry-url: https://registry.npmjs.org
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Verify tag matches package version
+        if: github.event_name == 'push'
+        run: |
+          PKG_VERSION=$(node -p "require('./package.json').version")
+          EXPECTED_TAG="v$PKG_VERSION"
+          if [ "${GITHUB_REF_NAME}" != "$EXPECTED_TAG" ]; then
+            echo "Tag ${GITHUB_REF_NAME} does not match package.json version $PKG_VERSION"
+            exit 1
+          fi
+
+      - name: Type check
+        run: npm run typecheck
+
+      - name: Run full test suite
+        run: npm test
+
+      - name: Build release artifacts
+        run: npm run build
+
+      - name: Verify committed action bundle is up to date
+        run: git diff --exit-code -- dist action.yml
+
+      - name: Pack npm artifact
+        run: npm pack
+
+      - name: Publish to npm
+        if: github.event_name == 'push'
+        run: npm publish --access public --provenance
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Create GitHub release
+        if: github.event_name == 'push'
+        uses: softprops/action-gh-release@v2
+        with:
+          draft: false
+          generate_release_notes: true
+          body_path: release-draft.md

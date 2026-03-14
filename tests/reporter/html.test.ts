@@ -95,6 +95,7 @@ describe("renderHtmlReport", () => {
           title: "Risky MCP server",
           description: "Shell runner detected",
           file: "mcp.json",
+          runtimeConfidence: "active-runtime",
         },
       ],
       summary: {
@@ -113,8 +114,38 @@ describe("renderHtmlReport", () => {
     expect(html).toContain("CRITICAL");
     expect(html).toContain("Risky MCP server");
     expect(html).toContain("HIGH");
+    expect(html).toContain("active runtime");
     expect(html).toContain("auto-fixable");
     expect(html).toContain("CLAUDE.md:5");
+  });
+
+  it("renders new source-kind confidence badges", () => {
+    const report = makeReport({
+      findings: [
+        {
+          id: "DOC-001",
+          severity: "medium",
+          category: "agents",
+          title: "Docs example finding",
+          description: "Example content",
+          file: "docs/guide/CLAUDE.md",
+          runtimeConfidence: "docs-example",
+        },
+      ],
+      summary: {
+        totalFindings: 1,
+        critical: 0,
+        high: 0,
+        medium: 1,
+        low: 0,
+        info: 0,
+        filesScanned: 1,
+        autoFixable: 0,
+      },
+    });
+
+    const html = renderHtmlReport(report);
+    expect(html).toContain("docs/example");
   });
 
   it("escapes HTML entities in user content", () => {
