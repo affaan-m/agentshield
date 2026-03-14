@@ -163,6 +163,18 @@ These signatures come from the latest real-repo scans and are a faster way to re
 | a very small cluster in `settings.local.json` with `runtimeConfidence: project-local-optional` | `basket-trader/launch-video/.claude/settings.local.json` | scope is already modeled; the remaining question is severity, not whether the finding should exist | tune severity or score only if the allowlist is exact and local-only |
 | info-only findings in manifest-resolved non-shell hook files | `scripts/hooks/session-start.js`, `session-end.js`, `evaluate-session.js` | the scanner has reached real implementation code but is intentionally using narrow rules | add behavior-specific language-aware rules only when a new explicit risky action is confirmed |
 
+## Common Noisy File Archetypes
+
+These file types recur in false-positive investigations. Use the file archetype before the finding count as the first hint for how to interpret alerts.
+
+| File archetype | Typical `runtimeConfidence` | Common noise pattern | Recommended review approach |
+| --- | --- | --- | --- |
+| `mcp-configs/*.json`, `config/mcp/*.json` | `template-example` | many MCP findings from one inventory file | confirm whether the same servers are actually enabled in runtime config |
+| `settings.local.json` | `project-local-optional` | small clusters of permission or hook findings that look harsher than their real scope | verify whether the allowlist is exact, local-only, and committed for team use |
+| `hooks/hooks.json` | `plugin-manifest` | declarative metadata looks like direct execution | follow the referenced implementation before changing the rule |
+| `scripts/hooks/*.js`, `scripts/hooks/*.ts` reached through manifests | `hook-code` | real implementation code with intentionally narrow findings | only add behavior-specific rules when a concrete risky action is present |
+| `.claude/subagents/*.json`, `.claude/slash-commands/*.json` | usually none | broad `agents-*` clusters on structured tool definitions | treat as policy review first, then check for actual heuristic bugs |
+
 ## Recommendations For Reducing False Positives
 
 These recommendations are based on the current live scan profile, not hypothetical scanner behavior.

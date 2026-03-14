@@ -280,6 +280,12 @@ Recurring pattern signatures to recognize:
 - broad `agents-*` clusters across files with explicit tool metadata usually mean policy review, not false-positive suppression
 - very small `project-local-optional` clusters usually mean scope is already modeled and only severity may need tuning
 
+When to open a false-positive issue instead of just triaging the report:
+- the same finding pattern reproduces across at least one real repo and one minimal synthetic fixture
+- the finding is wrong for its own source kind, not just lower-confidence than `active-runtime`
+- the fix needs matcher changes, not just better wording, score weighting, or cross-file context
+- the finding would still be misleading even after reading `runtimeConfidence`
+
 Recommended operating model:
 - Start with `runtimeConfidence` before changing any rule. Separate `active-runtime` from `template-example`, `docs-example`, `plugin-manifest`, and `project-local-optional`.
 - Reclassify before suppressing. If the finding is real but lower confidence, keep it visible and adjust wording or score weight instead of hiding it.
