@@ -55,6 +55,94 @@ describe("secretRules", () => {
       expect(findings.some((f) => f.title.includes("connection string"))).toBe(true);
     });
 
+    it("does not flag placeholder connection strings in markdown examples", () => {
+      const file = makeFile(
+        "| DATABASE_URL | postgres://user:pass@host:5432/db |",
+        "skill-md"
+      );
+      const findings = runAllSecretRules(file);
+      expect(findings.some((f) => f.title.includes("connection string"))).toBe(false);
+    });
+
+    it("does not flag example passwords in docs command code blocks", () => {
+      const file: ConfigFile = {
+        path: "commands/kotlin-test.md",
+        type: "skill-md",
+        content: [
+          "# Example Session",
+          "",
+          "```kotlin",
+          'test("short password returns Invalid") {',
+          '  val request = RegistrationRequest(password = "SecureP@ss1")',
+          "}",
+          "```",
+        ].join("\n"),
+      };
+
+      const findings = runAllSecretRules(file);
+      expect(findings.some((f) => f.title.includes("Hardcoded password"))).toBe(false);
+    });
+
+    it("still detects hardcoded passwords in non-doc markdown files", () => {
+      const file: ConfigFile = {
+        path: "agents/reviewer.md",
+        type: "agent-md",
+        content: [
+          "```bash",
+          'password = "super_secret_123"',
+          "```",
+        ].join("\n"),
+      };
+
+      const findings = runAllSecretRules(file);
+      expect(findings.some((f) => f.title.includes("Hardcoded password"))).toBe(true);
+    });
+
+    it("still detects passwords in docs without example or test context", () => {
+      const file: ConfigFile = {
+        path: "docs/deployment.md",
+        type: "skill-md",
+        content: 'password = "super_secret_123"',
+      };
+
+      const findings = runAllSecretRules(file);
+      expect(findings.some((f) => f.title.includes("Hardcoded password"))).toBe(true);
+    });
+
+    it("does not flag example passwords in examples/ markdown fixtures", () => {
+      const file: ConfigFile = {
+        path: "examples/demo/setup.md",
+        type: "skill-md",
+        content: [
+          "# Sample Setup",
+          "",
+          "```bash",
+          'password = "SecureP@ss1"',
+          "```",
+        ].join("\n"),
+      };
+
+      const findings = runAllSecretRules(file);
+      expect(findings.some((f) => f.title.includes("Hardcoded password"))).toBe(false);
+    });
+
+    it("does not flag example passwords in tutorial/demo markdown fixtures", () => {
+      const file: ConfigFile = {
+        path: "tutorials/demo-app/setup.md",
+        type: "skill-md",
+        content: [
+          "# Tutorial Setup",
+          "",
+          "```bash",
+          'password = "SecureP@ss1"',
+          "```",
+        ].join("\n"),
+      };
+
+      const findings = runAllSecretRules(file);
+      expect(findings.some((f) => f.title.includes("Hardcoded password"))).toBe(false);
+    });
+
     it("detects Slack tokens", () => {
       const file = makeFile("xoxb-1234567890-abcdefghij");
       const findings = runAllSecretRules(file);

@@ -1,4 +1,5 @@
 import type { ConfigFile, Finding, Rule } from "../types.js";
+import { isExampleLikePath as isExampleLikePathString } from "../source-context.js";
 
 /**
  * Secret detection patterns.
@@ -134,6 +135,111 @@ function findAllMatches(content: string, pattern: RegExp): Array<RegExpMatchArra
   return [...content.matchAll(new RegExp(pattern.source, flags))];
 }
 
+function maskSecretValue(value: string): string {
+  if (value.length <= 12) return value;
+  return value.substring(0, 8) + "..." + value.substring(value.length - 4);
+}
+
+function extractDelimitedToken(content: string, startIndex: number): string {
+  let endIndex = startIndex;
+  while (endIndex < content.length) {
+    const char = content[endIndex];
+    if (/\s/.test(char) || /["'`)\]}>]/.test(char)) {
+      break;
+    }
+    endIndex += 1;
+  }
+
+  return content.slice(startIndex, endIndex).replace(/[.,;:]+$/, "");
+}
+
+function isMarkdownLikeFile(file: ConfigFile): boolean {
+  return [
+    "claude-md",
+    "agent-md",
+    "skill-md",
+    "rule-md",
+    "context-md",
+  ].includes(file.type);
+}
+
+function isExampleLikePath(file: ConfigFile): boolean {
+  return isExampleLikePathString(file.path);
+}
+
+function hasNearbyCodeFence(content: string, matchIndex: number): boolean {
+  const windowStart = Math.max(0, matchIndex - 800);
+  const windowEnd = Math.min(content.length, matchIndex + 800);
+  const window = content.slice(windowStart, windowEnd);
+  return /```|~~~~/.test(window);
+}
+
+function hasExampleOrTestContext(content: string, matchIndex: number): boolean {
+  const windowStart = Math.max(0, matchIndex - 1200);
+  const windowEnd = Math.min(content.length, matchIndex + 400);
+  const window = content.slice(windowStart, windowEnd).toLowerCase();
+
+  return [
+    "example",
+    "sample",
+    "fixture",
+    "test(",
+    "shouldbe",
+    "returns invalid",
+    "returns valid",
+    " passed",
+    " failed",
+    "funspec",
+    "stringspec",
+    "behaviorspec",
+  ].some((marker) => window.includes(marker));
+}
+
+function isLikelyMarkdownExamplePassword(
+  file: ConfigFile,
+  secretPatternName: string,
+  matchIndex: number
+): boolean {
+  if (secretPatternName !== "hardcoded-password") return false;
+  if (!isMarkdownLikeFile(file)) return false;
+  if (!isExampleLikePath(file)) return false;
+
+  return hasNearbyCodeFence(file.content, matchIndex) || hasExampleOrTestContext(file.content, matchIndex);
+}
+
+function isLikelyPlaceholderConnectionString(file: ConfigFile, rawValue: string): boolean {
+  if (!isMarkdownLikeFile(file)) return false;
+
+  try {
+    const url = new URL(rawValue);
+    const username = decodeURIComponent(url.username).toLowerCase();
+    const password = decodeURIComponent(url.password).toLowerCase();
+    const hostname = url.hostname.toLowerCase();
+    const databaseName = url.pathname.replace(/^\/+/, "").toLowerCase();
+
+    const genericUsernames = new Set(["user", "username", "dbuser", "demo"]);
+    const genericPasswords = new Set(["pass", "password", "passwd", "demo", "example"]);
+    const genericDatabases = new Set(["db", "database", "dbname", "mydb"]);
+
+    const hasGenericHost =
+      hostname === "host" ||
+      hostname === "hostname" ||
+      hostname === "db" ||
+      hostname === "database" ||
+      hostname === "example" ||
+      hostname === "example.com" ||
+      hostname.endsWith(".example.com");
+
+    return (
+      genericUsernames.has(username) &&
+      genericPasswords.has(password) &&
+      (hasGenericHost || genericDatabases.has(databaseName))
+    );
+  } catch {
+    return false;
+  }
+}
+
 export const secretRules: ReadonlyArray<Rule> = [
   {
     id: "secrets-hardcoded",
@@ -158,8 +264,23 @@ export const secretRules: ReadonlyArray<Rule> = [
             continue;
           }
 
-          const maskedValue =
-            match[0].substring(0, 8) + "..." + match[0].substring(match[0].length - 4);
+          if (isLikelyMarkdownExamplePassword(file, secretPattern.name, idx)) {
+            continue;
+          }
+
+          const rawValue =
+            secretPattern.name === "connection-string"
+              ? extractDelimitedToken(file.content, idx)
+              : match[0];
+
+          if (
+            secretPattern.name === "connection-string" &&
+            isLikelyPlaceholderConnectionString(file, rawValue)
+          ) {
+            continue;
+          }
+
+          const maskedValue = maskSecretValue(rawValue);
 
           findings.push({
             id: `secrets-${secretPattern.name}-${idx}`,
@@ -172,7 +293,7 @@ export const secretRules: ReadonlyArray<Rule> = [
             evidence: maskedValue,
             fix: {
               description: `Replace with environment variable reference`,
-              before: match[0],
+              before: rawValue,
               after: `\${${secretPattern.name.toUpperCase().replace(/-/g, "_")}}`,
               auto: false,
             },

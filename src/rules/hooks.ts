@@ -76,7 +76,415 @@ function findAllMatches(content: string, pattern: RegExp): Array<RegExpMatchArra
   return [...content.matchAll(new RegExp(pattern.source, pattern.flags.includes("g") ? pattern.flags : pattern.flags + "g"))];
 }
 
+interface HookSearchTarget {
+  readonly content: string;
+  readonly baseLine: number;
+}
+
+interface HookMatch {
+  readonly match: RegExpMatchArray;
+  readonly line: number;
+  readonly content: string;
+  readonly commandContext: string;
+}
+
+interface HookCodeLineMatch {
+  readonly line: number;
+  readonly content: string;
+}
+
+interface HookCodeContentMatch {
+  readonly line: number;
+  readonly content: string;
+}
+
+function isPluginHookManifest(file: ConfigFile): boolean {
+  return (
+    file.type === "settings-json" &&
+    /(?:^|[\\/])(?:\.claude[\\/])?hooks[\\/]hooks\.json$/i.test(file.path)
+  );
+}
+
+function normalizeConfigPath(filePath: string): string {
+  return filePath.replace(/\\/g, "/");
+}
+
+function isProjectLocalSettingsFile(file: ConfigFile): boolean {
+  return /(?:^|\/)settings\.local\.json$/i.test(normalizeConfigPath(file.path));
+}
+
+function isExactPermissionEntry(entry: string): boolean {
+  return !/[*`]|(?:\$\{)|(?:\$\()/.test(entry);
+}
+
+function isLocalOnlyScopedCommand(entry: string): boolean {
+  return !/\b(?:https?:\/\/|curl\b|wget\b|ssh\b|scp\b|nc\b|netcat\b|docker\b|kubectl\b)\b/i.test(
+    entry
+  );
+}
+
+function hasExactLocalOnlyAllowlist(content: string): boolean {
+  try {
+    const config = JSON.parse(content);
+    const allow = config?.permissions?.allow;
+    if (!Array.isArray(allow) || allow.length === 0) return false;
+
+    return allow.every(
+      (entry) =>
+        typeof entry === "string" && isExactPermissionEntry(entry) && isLocalOnlyScopedCommand(entry)
+    );
+  } catch {
+    return false;
+  }
+}
+
+function stripSettingsPath(filePath: string): string | null {
+  const normalized = normalizeConfigPath(filePath);
+  if (/^\.claude\/settings(?:\.local)?\.json$/i.test(normalized)) return "";
+  if (/^settings(?:\.local)?\.json$/i.test(normalized)) return "";
+
+  const match = normalized.match(/^(.*?)(?:\/\.claude)?\/settings(?:\.local)?\.json$/i);
+  if (match) {
+    return match[1].replace(/\/$/, "");
+  }
+
+  return null;
+}
+
+function getCompanionHookManifestPaths(file: ConfigFile): ReadonlyArray<string> {
+  const prefix = stripSettingsPath(file.path);
+  if (prefix === null) return [];
+
+  const candidates = [
+    prefix ? `${prefix}/hooks/hooks.json` : "hooks/hooks.json",
+    prefix ? `${prefix}/.claude/hooks/hooks.json` : ".claude/hooks/hooks.json",
+  ];
+
+  return [...new Set(candidates.map(normalizeConfigPath))];
+}
+
+function hasPreToolUseHooksInConfig(content: string): boolean {
+  try {
+    const config = JSON.parse(content);
+    return Array.isArray(config?.hooks?.PreToolUse) && config.hooks.PreToolUse.length > 0;
+  } catch {
+    return false;
+  }
+}
+
+function hasCompanionManifestPreToolUseHooks(
+  file: ConfigFile,
+  allFiles: ReadonlyArray<ConfigFile> | undefined
+): boolean {
+  if (!allFiles || allFiles.length === 0) return false;
+
+  const candidates = new Set(getCompanionHookManifestPaths(file));
+  if (candidates.size === 0) return false;
+
+  return allFiles.some(
+    (other) =>
+      other !== file &&
+      other.type === "settings-json" &&
+      candidates.has(normalizeConfigPath(other.path)) &&
+      hasPreToolUseHooksInConfig(other.content)
+  );
+}
+
+function extractHookCommands(entry: unknown): ReadonlyArray<string> {
+  const commands: string[] = [];
+
+  if (!entry || typeof entry !== "object") {
+    return commands;
+  }
+
+  const record = entry as {
+    hook?: unknown;
+    command?: unknown;
+    hooks?: unknown;
+  };
+
+  if (typeof record.hook === "string" && record.hook.length > 0) {
+    commands.push(record.hook);
+  }
+
+  if (typeof record.command === "string" && record.command.length > 0) {
+    commands.push(record.command);
+  }
+
+  if (Array.isArray(record.hooks)) {
+    for (const nestedHook of record.hooks) {
+      if (!nestedHook || typeof nestedHook !== "object") {
+        continue;
+      }
+
+      const command = (nestedHook as { command?: unknown }).command;
+      if (typeof command === "string" && command.length > 0) {
+        commands.push(command);
+      }
+    }
+  }
+
+  return commands;
+}
+
+function findJsonStringIndex(
+  content: string,
+  value: string,
+  searchOffsets: Map<string, number>,
+): number {
+  const escapedValue = JSON.stringify(value).slice(1, -1);
+  const startIndex = searchOffsets.get(escapedValue) ?? 0;
+  const index = content.indexOf(escapedValue, startIndex);
+
+  if (index !== -1) {
+    searchOffsets.set(escapedValue, index + escapedValue.length);
+  }
+
+  return index;
+}
+
+function getHookSearchTargets(file: ConfigFile): ReadonlyArray<HookSearchTarget> {
+  if (file.type === "hook-script") {
+    return [{ content: file.content, baseLine: 1 }];
+  }
+
+  if (file.type !== "settings-json") {
+    return [];
+  }
+
+  try {
+    const config = JSON.parse(file.content);
+    const hookGroups = config?.hooks;
+
+    if (!hookGroups || typeof hookGroups !== "object") {
+      return [];
+    }
+
+    const targets: HookSearchTarget[] = [];
+    const searchOffsets = new Map<string, number>();
+
+    for (const group of Object.values(hookGroups)) {
+      if (!Array.isArray(group)) {
+        continue;
+      }
+
+      for (const entry of group) {
+        for (const command of extractHookCommands(entry)) {
+          const index = findJsonStringIndex(file.content, command, searchOffsets);
+          const baseLine = index === -1 ? 1 : findLineNumber(file.content, index);
+          targets.push({ content: command, baseLine });
+        }
+      }
+    }
+
+    return targets;
+  } catch {
+    return [];
+  }
+}
+
+function findAllHookMatches(file: ConfigFile, pattern: RegExp): Array<HookMatch> {
+  const matches: HookMatch[] = [];
+
+  for (const target of getHookSearchTargets(file)) {
+    for (const match of findAllMatches(target.content, pattern)) {
+      matches.push({
+        match,
+        line: target.baseLine + findLineNumber(target.content, match.index ?? 0) - 1,
+        content: target.content,
+        commandContext: getCommandContext(target.content, match.index ?? 0),
+      });
+    }
+  }
+
+  return matches;
+}
+
+function getCommandContext(content: string, matchIndex: number): string {
+  const prefix = content.slice(0, matchIndex);
+  const separators: ReadonlyArray<{ token: string; width: number }> = [
+    { token: "&&", width: 2 },
+    { token: "||", width: 2 },
+    { token: ";", width: 1 },
+    { token: "\n", width: 1 },
+    { token: "|", width: 1 },
+  ];
+
+  let startIndex = 0;
+  for (const { token, width } of separators) {
+    const index = prefix.lastIndexOf(token);
+    if (index !== -1 && index + width > startIndex) {
+      startIndex = index + width;
+    }
+  }
+
+  return prefix.slice(startIndex).trim();
+}
+
+function isBenignLoggingProbe(commandContext: string): boolean {
+  const normalized = commandContext.replace(/\s+/g, " ").trim().toLowerCase();
+
+  const benignProbePatterns: ReadonlyArray<RegExp> = [
+    /^(?:(?:el)?if\s+)?command\s+-v\b/,
+    /^(?:(?:el)?if\s+)?which\b/,
+    /^(?:(?:el)?if\s+)?type\b/,
+    /^(?:(?:el)?if\s+)?hash\b/,
+    /^(?:(?:el)?if\s+)?git\s+rev-parse\s+--git-dir\b/,
+    /^(?:(?:el)?if\s+)?(?:pnpm|npm)\s+list\b/,
+  ];
+
+  return benignProbePatterns.some((pattern) => pattern.test(normalized));
+}
+
+function findHookCodeLineMatch(file: ConfigFile, patterns: ReadonlyArray<RegExp>): HookCodeLineMatch | null {
+  if (file.type !== "hook-code") return null;
+
+  const lines = file.content.split("\n");
+
+  for (const [index, lineContent] of lines.entries()) {
+    const trimmed = lineContent.trim();
+    if (trimmed.length === 0) continue;
+    if (/^(?:\/\/|#|\/\*|\*|\*\/)/.test(trimmed)) continue;
+
+    for (const pattern of patterns) {
+      const regex = new RegExp(
+        pattern.source,
+        pattern.flags.includes("g") ? pattern.flags : pattern.flags + "g",
+      );
+      if (regex.test(lineContent)) {
+        return {
+          line: index + 1,
+          content: trimmed,
+        };
+      }
+    }
+  }
+
+  return null;
+}
+
+function findHookCodeContentMatch(
+  file: ConfigFile,
+  patterns: ReadonlyArray<RegExp>
+): HookCodeContentMatch | null {
+  if (file.type !== "hook-code") return null;
+
+  for (const pattern of patterns) {
+    const regex = new RegExp(
+      pattern.source,
+      pattern.flags.includes("g") ? pattern.flags : pattern.flags + "g",
+    );
+
+    const match = regex.exec(file.content);
+    if (!match || match.index == null) continue;
+
+    const line = findLineNumber(file.content, match.index);
+    const lineContent = file.content.split("\n")[line - 1]?.trim() ?? match[0].trim();
+    if (/^(?:\/\/|#|\/\*|\*|\*\/)/.test(lineContent)) continue;
+
+    return {
+      line,
+      content: lineContent || match[0].trim(),
+    };
+  }
+
+  return null;
+}
+
+const HOOK_CODE_CONTEXT_OUTPUT_PATTERN = /\boutput\s*\(/g;
+
+const HOOK_CODE_TRANSCRIPT_ACCESS_PATTERNS: ReadonlyArray<RegExp> = [
+  /\.\s*transcript_path\b/g,
+  /\[['"]transcript_path['"]\]/g,
+  /\bprocess\.env\.CLAUDE_TRANSCRIPT_PATH\b/g,
+  /\bos\.environ(?:\.get)?\(\s*["']CLAUDE_TRANSCRIPT_PATH["']\s*\)/g,
+  /\bos\.getenv\(\s*["']CLAUDE_TRANSCRIPT_PATH["']\s*\)/g,
+  /\bENV\[\s*["']CLAUDE_TRANSCRIPT_PATH["']\s*\]/g,
+];
+
+const HOOK_CODE_REMOTE_SHELL_PAYLOAD_PATTERNS: ReadonlyArray<RegExp> = [
+  /\b(?:spawnSync|spawn|execFileSync|execFile)\s*\([\s\S]{0,120}["'`](?:bash|sh|zsh)["'`][\s\S]{0,120}["'`]-l?c["'`][\s\S]{0,320}(?:curl|wget)[\s\S]{0,200}\|\s*(?:bash|sh|zsh)\b/gi,
+  /\bexecSync\s*\([\s\S]{0,320}(?:curl|wget)[\s\S]{0,200}\|\s*(?:bash|sh|zsh)\b/gi,
+];
+
 export const hookRules: ReadonlyArray<Rule> = [
+  {
+    id: "hooks-hook-code-context-output",
+    name: "Hook Code Context Output",
+    description:
+      "Checks non-shell hook implementations for explicit output back into Claude context",
+    severity: "info",
+    category: "hooks",
+    check(file: ConfigFile): ReadonlyArray<Finding> {
+      const match = findHookCodeLineMatch(file, [HOOK_CODE_CONTEXT_OUTPUT_PATTERN]);
+      if (!match) return [];
+      return [
+        {
+          id: `hooks-code-context-output-${match.line}`,
+          severity: "info",
+          category: "hooks",
+          title: "Hook code injects content into Claude context",
+          description:
+            "This non-shell hook implementation calls an output helper that writes content back into Claude context. That is often legitimate, but it should be reviewed because untrusted summaries or derived data can become prompt-injection surface.",
+          file: file.path,
+          line: match.line,
+          evidence: match.content,
+        },
+      ];
+    },
+  },
+  {
+    id: "hooks-hook-code-transcript-access",
+    name: "Hook Code Transcript Access",
+    description:
+      "Checks non-shell hook implementations for direct access to Claude transcript input",
+    severity: "info",
+    category: "hooks",
+    check(file: ConfigFile): ReadonlyArray<Finding> {
+      const match = findHookCodeLineMatch(file, HOOK_CODE_TRANSCRIPT_ACCESS_PATTERNS);
+      if (!match) return [];
+
+      return [
+        {
+          id: `hooks-code-transcript-access-${match.line}`,
+          severity: "info",
+          category: "hooks",
+          title: "Hook code reads Claude transcript input",
+          description:
+            "This non-shell hook implementation reads transcript-derived input (`transcript_path` or `CLAUDE_TRANSCRIPT_PATH`). That is common for Stop and SessionEnd hooks, but it should be reviewed because downstream logic can process sensitive prompt and tool history.",
+          file: file.path,
+          line: match.line,
+          evidence: match.content,
+        },
+      ];
+    },
+  },
+  {
+    id: "hooks-hook-code-remote-shell-payload",
+    name: "Hook Code Remote Shell Payload",
+    description:
+      "Checks non-shell hook implementations for child-process execution that downloads and pipes remote shell payloads",
+    severity: "high",
+    category: "hooks",
+    check(file: ConfigFile): ReadonlyArray<Finding> {
+      const match = findHookCodeContentMatch(file, HOOK_CODE_REMOTE_SHELL_PAYLOAD_PATTERNS);
+      if (!match) return [];
+
+      return [
+        {
+          id: `hooks-code-remote-shell-payload-${match.line}`,
+          severity: "high",
+          category: "hooks",
+          title: "Hook code executes remote shell payload via child process",
+          description:
+            "This non-shell hook implementation shells out to a command interpreter and pipes a remote download into `bash`/`sh`. That hides dangerous shell behavior behind a wrapper language and can reintroduce prompt-injection, supply-chain, or remote-code-execution risk.",
+          file: file.path,
+          line: match.line,
+          evidence: match.content,
+        },
+      ];
+    },
+  },
   {
     id: "hooks-injection",
     name: "Hook Command Injection",
@@ -89,9 +497,9 @@ export const hookRules: ReadonlyArray<Rule> = [
       const findings: Finding[] = [];
 
       for (const injPattern of INJECTION_PATTERNS) {
-        const matches = findAllMatches(file.content, injPattern.pattern);
+        const matches = findAllHookMatches(file, injPattern.pattern);
 
-        for (const match of matches) {
+        for (const { match, line } of matches) {
           findings.push({
             id: `hooks-injection-${match.index}`,
             severity: "critical",
@@ -99,7 +507,7 @@ export const hookRules: ReadonlyArray<Rule> = [
             title: "Potential command injection in hook",
             description: injPattern.description,
             file: file.path,
-            line: findLineNumber(file.content, match.index ?? 0),
+            line,
             evidence: match[0],
             fix: {
               description:
@@ -127,9 +535,9 @@ export const hookRules: ReadonlyArray<Rule> = [
       const findings: Finding[] = [];
 
       for (const exfilPattern of EXFILTRATION_PATTERNS) {
-        const matches = findAllMatches(file.content, exfilPattern.pattern);
+        const matches = findAllHookMatches(file, exfilPattern.pattern);
 
-        for (const match of matches) {
+        for (const { match, line } of matches) {
           findings.push({
             id: `hooks-exfiltration-${match.index}`,
             severity: "high",
@@ -137,7 +545,7 @@ export const hookRules: ReadonlyArray<Rule> = [
             title: "Hook sends data to external service",
             description: `${exfilPattern.description}. If a hook is compromised or misconfigured, it could exfiltrate code, secrets, or session data.`,
             file: file.path,
-            line: findLineNumber(file.content, match.index ?? 0),
+            line,
             evidence: match[0],
           });
         }
@@ -154,6 +562,7 @@ export const hookRules: ReadonlyArray<Rule> = [
     category: "hooks",
     check(file: ConfigFile): ReadonlyArray<Finding> {
       if (file.type !== "settings-json") return [];
+      if (isPluginHookManifest(file)) return [];
 
       const findings: Finding[] = [];
 
@@ -164,9 +573,9 @@ export const hookRules: ReadonlyArray<Rule> = [
       ];
 
       for (const { pattern, desc } of silentFailPatterns) {
-        const matches = findAllMatches(file.content, pattern);
+        const matches = findAllHookMatches(file, pattern);
 
-        for (const match of matches) {
+        for (const { match, line } of matches) {
           findings.push({
             id: `hooks-silent-fail-${match.index}`,
             severity: "medium",
@@ -174,7 +583,7 @@ export const hookRules: ReadonlyArray<Rule> = [
             title: `Hook silently suppresses errors: ${desc}`,
             description: `Hook uses "${match[0]}" which suppresses errors. A failing security hook that silently passes could miss real vulnerabilities.`,
             file: file.path,
-            line: findLineNumber(file.content, match.index ?? 0),
+            line,
             evidence: match[0],
             fix: {
               description: "Remove error suppression to surface failures",
@@ -195,22 +604,35 @@ export const hookRules: ReadonlyArray<Rule> = [
     description: "Checks if there are PreToolUse hooks for security validation",
     severity: "medium",
     category: "misconfiguration",
-    check(file: ConfigFile): ReadonlyArray<Finding> {
+    check(file: ConfigFile, allFiles?: ReadonlyArray<ConfigFile>): ReadonlyArray<Finding> {
       if (file.type !== "settings-json") return [];
+      if (isPluginHookManifest(file)) return [];
 
       try {
         const config = JSON.parse(file.content);
         const preHooks = config?.hooks?.PreToolUse ?? [];
 
         if (preHooks.length === 0) {
+          if (hasCompanionManifestPreToolUseHooks(file, allFiles)) {
+            return [];
+          }
+
+          const severity =
+            isProjectLocalSettingsFile(file) && hasExactLocalOnlyAllowlist(file.content)
+              ? "low"
+              : "medium";
+          const description =
+            severity === "low"
+              ? "No PreToolUse hooks are defined. This config is project-local and narrowly scoped to exact local commands, so the missing hook is still worth noting but is less urgent than broader runtime configs."
+              : "No PreToolUse hooks are defined. These hooks can catch dangerous operations before they run, providing an essential security layer.";
+
           return [
             {
               id: "hooks-no-pretooluse",
-              severity: "medium",
+              severity,
               category: "misconfiguration",
               title: "No PreToolUse security hooks configured",
-              description:
-                "No PreToolUse hooks are defined. These hooks can catch dangerous operations before they run, providing an essential security layer.",
+              description,
               file: file.path,
               fix: {
                 description: "Add PreToolUse hooks for security-sensitive operations",
@@ -248,30 +670,30 @@ export const hookRules: ReadonlyArray<Rule> = [
         const networkPatterns = /\b(curl|wget|fetch|http|nc|netcat)\b/i;
 
         for (const hook of postHooks) {
-          const hookConfig = hook as { matcher?: string; hook?: string };
+          const hookConfig = hook as { matcher?: string };
           const matcher = hookConfig.matcher ?? "";
-          const command = hookConfig.hook ?? "";
-
           const isBroadMatcher =
             matcher === "" ||
             broadMatchers.some((m) => m !== "" && matcher === m);
 
-          if (isBroadMatcher && networkPatterns.test(command)) {
-            findings.push({
-              id: `hooks-unthrottled-network-${findings.length}`,
-              severity: "medium",
-              category: "hooks",
-              title: `PostToolUse hook makes network request on broad matcher "${matcher || "*"}"`,
-              description: `A PostToolUse hook fires on "${matcher || "every tool call"}" and runs a network command (${command.substring(0, 60)}...). Without throttling, this fires on every matching tool call — potentially hundreds per session — causing performance degradation and potential data exposure.`,
-              file: file.path,
-              evidence: `matcher: "${matcher}", hook: "${command.substring(0, 80)}"`,
-              fix: {
-                description: "Add rate limiting or narrow the matcher",
-                before: `"matcher": "${matcher}"`,
-                after: `"matcher": "Bash(npm publish)" or add throttle logic`,
-                auto: false,
-              },
-            });
+          for (const command of extractHookCommands(hook)) {
+            if (isBroadMatcher && networkPatterns.test(command)) {
+              findings.push({
+                id: `hooks-unthrottled-network-${findings.length}`,
+                severity: "medium",
+                category: "hooks",
+                title: `PostToolUse hook makes network request on broad matcher "${matcher || "*"}"`,
+                description: `A PostToolUse hook fires on "${matcher || "every tool call"}" and runs a network command (${command.substring(0, 60)}...). Without throttling, this fires on every matching tool call — potentially hundreds per session — causing performance degradation and potential data exposure.`,
+                file: file.path,
+                evidence: `matcher: "${matcher}", hook: "${command.substring(0, 80)}"`,
+                fix: {
+                  description: "Add rate limiting or narrow the matcher",
+                  before: `"matcher": "${matcher}"`,
+                  after: `"matcher": "Bash(npm publish)" or add throttle logic`,
+                  auto: false,
+                },
+              });
+            }
           }
         }
       } catch {
@@ -320,8 +742,8 @@ export const hookRules: ReadonlyArray<Rule> = [
       ];
 
       for (const { pattern, desc } of sensitivePathPatterns) {
-        const matches = findAllMatches(file.content, pattern);
-        for (const match of matches) {
+        const matches = findAllHookMatches(file, pattern);
+        for (const { match, line } of matches) {
           findings.push({
             id: `hooks-sensitive-file-${match.index}`,
             severity: "high",
@@ -329,7 +751,7 @@ export const hookRules: ReadonlyArray<Rule> = [
             title: `Hook accesses sensitive path: ${match[0]}`,
             description: `A hook references "${match[0]}" — ${desc}. Hooks should not access sensitive system files. This could expose credentials, keys, or system configuration.`,
             file: file.path,
-            line: findLineNumber(file.content, match.index ?? 0),
+            line,
             evidence: match[0],
           });
         }
@@ -413,27 +835,26 @@ export const hookRules: ReadonlyArray<Rule> = [
         ];
 
         for (const hook of sessionHooks) {
-          const hookConfig = hook as { hook?: string };
-          const command = hookConfig.hook ?? "";
-
-          for (const { pattern, desc, severity } of remoteExecutionPatterns) {
-            if (pattern.test(command)) {
-              findings.push({
-                id: `hooks-session-start-download-${findings.length}`,
-                severity,
-                category: "hooks",
-                title: `SessionStart hook downloads remote content`,
-                description: `A SessionStart hook runs "${command.substring(0, 80)}". ${desc}. SessionStart hooks run automatically at the beginning of every session without user confirmation.`,
-                file: file.path,
-                evidence: command.substring(0, 100),
-                fix: {
-                  description: "Remove remote downloads from SessionStart or use a local script",
-                  before: command.substring(0, 60),
-                  after: "# Use pre-installed local tools instead",
-                  auto: false,
-                },
-              });
-              break;
+          for (const command of extractHookCommands(hook)) {
+            for (const { pattern, desc, severity } of remoteExecutionPatterns) {
+              if (pattern.test(command)) {
+                findings.push({
+                  id: `hooks-session-start-download-${findings.length}`,
+                  severity,
+                  category: "hooks",
+                  title: `SessionStart hook downloads remote content`,
+                  description: `A SessionStart hook runs "${command.substring(0, 80)}". ${desc}. SessionStart hooks run automatically at the beginning of every session without user confirmation.`,
+                  file: file.path,
+                  evidence: command.substring(0, 100),
+                  fix: {
+                    description: "Remove remote downloads from SessionStart or use a local script",
+                    before: command.substring(0, 60),
+                    after: "# Use pre-installed local tools instead",
+                    auto: false,
+                  },
+                });
+                break;
+              }
             }
           }
         }
@@ -482,8 +903,8 @@ export const hookRules: ReadonlyArray<Rule> = [
       ];
 
       for (const { pattern, description } of bgPatterns) {
-        const matches = findAllMatches(file.content, pattern);
-        for (const match of matches) {
+        const matches = findAllHookMatches(file, pattern);
+        for (const { match, line } of matches) {
           findings.push({
             id: `hooks-bg-process-${match.index}`,
             severity: "high",
@@ -491,7 +912,7 @@ export const hookRules: ReadonlyArray<Rule> = [
             title: `Hook spawns background process: ${match[0].trim()}`,
             description: `${description}. Background processes in hooks can be used for persistent backdoors or data exfiltration that outlives the session.`,
             file: file.path,
-            line: findLineNumber(file.content, match.index ?? 0),
+            line,
             evidence: match[0].trim(),
           });
         }
@@ -511,39 +932,28 @@ export const hookRules: ReadonlyArray<Rule> = [
 
       const findings: Finding[] = [];
 
-      // Pattern: accessing env vars AND sending data externally in the same command
       const envAccessPatterns = /\$\{?\w*(KEY|TOKEN|SECRET|PASSWORD|PASS|CRED|AUTH)\w*\}?/gi;
-      const networkPatterns = /\b(curl|wget|nc|netcat|sendmail|mail\s+-s)\b/gi;
-
-      // Check if content has BOTH env access and network patterns
-      const hasEnvAccess = envAccessPatterns.test(file.content);
       const envAccessRegex = new RegExp(envAccessPatterns.source, envAccessPatterns.flags);
-      envAccessPatterns.lastIndex = 0;
-      const hasNetwork = networkPatterns.test(file.content);
-      networkPatterns.lastIndex = 0;
+      const networkCheck = /\b(curl|wget|nc|netcat|sendmail|mail\s+-s)\b/i;
 
-      if (hasEnvAccess && hasNetwork) {
-        const matches = findAllMatches(file.content, envAccessRegex);
-        for (const match of matches) {
-          // Check if there's a network command in the surrounding context (same line or nearby)
-          const lineStart = file.content.lastIndexOf("\n", match.index ?? 0) + 1;
-          const lineEnd = file.content.indexOf("\n", (match.index ?? 0) + match[0].length);
-          const line = file.content.substring(lineStart, lineEnd === -1 ? undefined : lineEnd);
+      for (const { match, line, content } of findAllHookMatches(file, envAccessRegex)) {
+        // Check if there's a network command in the same hook command line.
+        const lineStart = content.lastIndexOf("\n", match.index ?? 0) + 1;
+        const lineEnd = content.indexOf("\n", (match.index ?? 0) + match[0].length);
+        const evidenceLine = content.substring(lineStart, lineEnd === -1 ? undefined : lineEnd);
 
-          const networkCheck = new RegExp(networkPatterns.source, "i");
-          if (networkCheck.test(line)) {
-            findings.push({
-              id: `hooks-env-exfil-${match.index}`,
-              severity: "critical",
-              category: "exposure",
-              title: `Hook combines env var access with network call`,
-              description: `A hook accesses an environment variable (${match[0]}) and sends data over the network in the same command. This pattern can exfiltrate secrets from the environment to external services.`,
-              file: file.path,
-              line: findLineNumber(file.content, match.index ?? 0),
-              evidence: line.trim().substring(0, 100),
-            });
-            break; // One finding per file for this pattern
-          }
+        if (networkCheck.test(evidenceLine)) {
+          findings.push({
+            id: `hooks-env-exfil-${match.index}`,
+            severity: "critical",
+            category: "exposure",
+            title: `Hook combines env var access with network call`,
+            description: `A hook accesses an environment variable (${match[0]}) and sends data over the network in the same command. This pattern can exfiltrate secrets from the environment to external services.`,
+            file: file.path,
+            line,
+            evidence: evidenceLine.trim().substring(0, 100),
+          });
+          break; // One finding per file for this pattern
         }
       }
 
@@ -558,6 +968,7 @@ export const hookRules: ReadonlyArray<Rule> = [
     category: "hooks",
     check(file: ConfigFile): ReadonlyArray<Finding> {
       if (file.type !== "settings-json") return [];
+      if (isPluginHookManifest(file)) return [];
 
       const findings: Finding[] = [];
 
@@ -577,32 +988,31 @@ export const hookRules: ReadonlyArray<Rule> = [
         ];
 
         for (const hook of allHooks) {
-          const hookConfig = hook as { hook?: string; matcher?: string };
-          const command = hookConfig.hook ?? "";
+          for (const command of extractHookCommands(hook)) {
+            // Only flag if there are 3+ chained commands (2 is common/normal)
+            let chainCount = 0;
+            for (const { pattern } of chainPatterns) {
+              const matches = [...command.matchAll(new RegExp(pattern.source, "g"))];
+              chainCount += matches.length;
+            }
 
-          // Only flag if there are 3+ chained commands (2 is common/normal)
-          let chainCount = 0;
-          for (const { pattern } of chainPatterns) {
-            const matches = [...command.matchAll(new RegExp(pattern.source, "g"))];
-            chainCount += matches.length;
-          }
-
-          if (chainCount >= 3) {
-            findings.push({
-              id: `hooks-chained-commands-${findings.length}`,
-              severity: "medium",
-              category: "hooks",
-              title: `Hook has ${chainCount + 1} chained commands`,
-              description: `A hook chains ${chainCount + 1} commands together: "${command.substring(0, 80)}...". Complex chained commands in hooks are harder to audit and may perform operations beyond the hook's stated purpose. Consider breaking into a dedicated script file.`,
-              file: file.path,
-              evidence: command.substring(0, 100),
-              fix: {
-                description: "Move complex logic to a script file",
-                before: command.substring(0, 50),
-                after: '"hook": "./scripts/hook-check.sh"',
-                auto: false,
-              },
-            });
+            if (chainCount >= 3) {
+              findings.push({
+                id: `hooks-chained-commands-${findings.length}`,
+                severity: "medium",
+                category: "hooks",
+                title: `Hook has ${chainCount + 1} chained commands`,
+                description: `A hook chains ${chainCount + 1} commands together: "${command.substring(0, 80)}...". Complex chained commands in hooks are harder to audit and may perform operations beyond the hook's stated purpose. Consider breaking into a dedicated script file.`,
+                file: file.path,
+                evidence: command.substring(0, 100),
+                fix: {
+                  description: "Move complex logic to a script file",
+                  before: command.substring(0, 50),
+                  after: '"hook": "./scripts/hook-check.sh"',
+                  auto: false,
+                },
+              });
+            }
           }
         }
       } catch {
@@ -632,31 +1042,31 @@ export const hookRules: ReadonlyArray<Rule> = [
         const broadMatchers = ["Edit", "Write", ""];
 
         for (const hook of postHooks) {
-          const hookConfig = hook as { matcher?: string; hook?: string };
+          const hookConfig = hook as { matcher?: string };
           const matcher = hookConfig.matcher ?? "";
-          const command = hookConfig.hook ?? "";
-
           const isBroadMatcher =
             matcher === "" ||
             broadMatchers.some((m) => m !== "" && matcher === m);
 
-          const expensiveMatch = command.match(expensiveCommands);
-          if (isBroadMatcher && expensiveMatch) {
-            findings.push({
-              id: `hooks-expensive-unscoped-${findings.length}`,
-              severity: "low",
-              category: "hooks",
-              title: `PostToolUse runs "${expensiveMatch[0]}" on broad matcher "${matcher || "*"}"`,
-              description: `A PostToolUse hook runs "${expensiveMatch[0]}" on every "${matcher || "tool call"}" event. Build tools and linters can take seconds to run — firing on every edit wastes resources and slows down the agent. Scope the matcher to specific file types or add conditional checks.`,
-              file: file.path,
-              evidence: `matcher: "${matcher}", hook: "${command.substring(0, 80)}"`,
-              fix: {
-                description: "Scope the matcher to reduce unnecessary runs",
-                before: `"matcher": "${matcher}"`,
-                after: `"matcher": "Edit(*.ts)" or add file-extension check in the hook script`,
-                auto: false,
-              },
-            });
+          for (const command of extractHookCommands(hook)) {
+            const expensiveMatch = command.match(expensiveCommands);
+            if (isBroadMatcher && expensiveMatch) {
+              findings.push({
+                id: `hooks-expensive-unscoped-${findings.length}`,
+                severity: "low",
+                category: "hooks",
+                title: `PostToolUse runs "${expensiveMatch[0]}" on broad matcher "${matcher || "*"}"`,
+                description: `A PostToolUse hook runs "${expensiveMatch[0]}" on every "${matcher || "tool call"}" event. Build tools and linters can take seconds to run — firing on every edit wastes resources and slows down the agent. Scope the matcher to specific file types or add conditional checks.`,
+                file: file.path,
+                evidence: `matcher: "${matcher}", hook: "${command.substring(0, 80)}"`,
+                fix: {
+                  description: "Scope the matcher to reduce unnecessary runs",
+                  before: `"matcher": "${matcher}"`,
+                  after: `"matcher": "Edit(*.ts)" or add file-extension check in the hook script`,
+                  auto: false,
+                },
+              });
+            }
           }
         }
       } catch {
@@ -700,8 +1110,8 @@ export const hookRules: ReadonlyArray<Rule> = [
       ];
 
       for (const { pattern, description } of worldReadablePatterns) {
-        const matches = findAllMatches(file.content, pattern);
-        for (const match of matches) {
+        const matches = findAllHookMatches(file, pattern);
+        for (const { match, line } of matches) {
           // mktemp is generally safe — only flag if combined with risky patterns
           if (pattern.source.includes("mktemp")) continue;
 
@@ -712,7 +1122,7 @@ export const hookRules: ReadonlyArray<Rule> = [
             title: `Hook writes to world-readable path: ${match[0].trim()}`,
             description: `${description}. Other users or processes on the system can read the output, which may contain secrets, code, or session data.`,
             file: file.path,
-            line: findLineNumber(file.content, match.index ?? 0),
+            line,
             evidence: match[0].trim(),
           });
         }
@@ -751,8 +1161,8 @@ export const hookRules: ReadonlyArray<Rule> = [
       ];
 
       for (const { pattern, description } of sourcePatterns) {
-        const matches = findAllMatches(file.content, pattern);
-        for (const match of matches) {
+        const matches = findAllHookMatches(file, pattern);
+        for (const { match, line } of matches) {
           findings.push({
             id: `hooks-source-env-${match.index}`,
             severity: "high",
@@ -760,7 +1170,7 @@ export const hookRules: ReadonlyArray<Rule> = [
             title: `Hook sources script from environment path: ${match[0].trim()}`,
             description: `${description}. If the environment variable is attacker-controlled, this enables arbitrary code execution through the sourced script.`,
             file: file.path,
-            line: findLineNumber(file.content, match.index ?? 0),
+            line,
             evidence: match[0].trim(),
           });
         }
@@ -803,8 +1213,8 @@ export const hookRules: ReadonlyArray<Rule> = [
       ];
 
       for (const { pattern, description } of deletePatterns) {
-        const matches = findAllMatches(file.content, pattern);
-        for (const match of matches) {
+        const matches = findAllHookMatches(file, pattern);
+        for (const { match, line } of matches) {
           findings.push({
             id: `hooks-file-delete-${match.index}`,
             severity: "high",
@@ -812,7 +1222,7 @@ export const hookRules: ReadonlyArray<Rule> = [
             title: `Hook deletes files: ${match[0].trim()}`,
             description: `${description}. A hook that deletes files could destroy source code, logs, or evidence of compromise.`,
             file: file.path,
-            line: findLineNumber(file.content, match.index ?? 0),
+            line,
             evidence: match[0].trim(),
           });
         }
@@ -859,8 +1269,8 @@ export const hookRules: ReadonlyArray<Rule> = [
       ];
 
       for (const { pattern, description } of cronPatterns) {
-        const matches = findAllMatches(file.content, pattern);
-        for (const match of matches) {
+        const matches = findAllHookMatches(file, pattern);
+        for (const { match, line } of matches) {
           findings.push({
             id: `hooks-cron-persist-${match.index}`,
             severity: "critical",
@@ -868,7 +1278,7 @@ export const hookRules: ReadonlyArray<Rule> = [
             title: `Hook installs persistence mechanism: ${match[0].trim()}`,
             description: `${description}. Hooks should not install persistence mechanisms. This could allow a compromised hook to maintain access even after the session ends.`,
             file: file.path,
-            line: findLineNumber(file.content, match.index ?? 0),
+            line,
             evidence: match[0].trim(),
           });
         }
@@ -916,8 +1326,8 @@ export const hookRules: ReadonlyArray<Rule> = [
       ];
 
       for (const { pattern, description, severity } of envMutationPatterns) {
-        const matches = findAllMatches(file.content, pattern);
-        for (const match of matches) {
+        const matches = findAllHookMatches(file, pattern);
+        for (const { match, line } of matches) {
           findings.push({
             id: `hooks-env-mutation-${match.index}`,
             severity,
@@ -925,7 +1335,7 @@ export const hookRules: ReadonlyArray<Rule> = [
             title: `Hook mutates environment: ${match[0].trim()}`,
             description: `${description}. Hooks that modify environment variables can silently alter the behavior of all subsequent commands in the session.`,
             file: file.path,
-            line: findLineNumber(file.content, match.index ?? 0),
+            line,
             evidence: match[0].trim(),
           });
         }
@@ -972,8 +1382,8 @@ export const hookRules: ReadonlyArray<Rule> = [
       ];
 
       for (const { pattern, description } of gitConfigPatterns) {
-        const matches = findAllMatches(file.content, pattern);
-        for (const match of matches) {
+        const matches = findAllHookMatches(file, pattern);
+        for (const { match, line } of matches) {
           findings.push({
             id: `hooks-git-config-${match.index}`,
             severity: "high",
@@ -981,7 +1391,7 @@ export const hookRules: ReadonlyArray<Rule> = [
             title: `Hook modifies git config: ${match[0].trim()}`,
             description: `${description}. Hooks should not modify git configuration as this can undermine version control integrity.`,
             file: file.path,
-            line: findLineNumber(file.content, match.index ?? 0),
+            line,
             evidence: match[0].trim(),
           });
         }
@@ -1028,8 +1438,8 @@ export const hookRules: ReadonlyArray<Rule> = [
       ];
 
       for (const { pattern, description } of userModPatterns) {
-        const matches = findAllMatches(file.content, pattern);
-        for (const match of matches) {
+        const matches = findAllHookMatches(file, pattern);
+        for (const { match, line } of matches) {
           findings.push({
             id: `hooks-user-mod-${match.index}`,
             severity: "critical",
@@ -1037,7 +1447,7 @@ export const hookRules: ReadonlyArray<Rule> = [
             title: `Hook modifies user accounts: ${match[0].trim()}`,
             description: `${description}. Hooks should never create, modify, or delete user accounts. A compromised hook with this capability can create backdoor accounts for persistent access.`,
             file: file.path,
-            line: findLineNumber(file.content, match.index ?? 0),
+            line,
             evidence: match[0].trim(),
           });
         }
@@ -1084,8 +1494,8 @@ export const hookRules: ReadonlyArray<Rule> = [
       ];
 
       for (const { pattern, description } of privEscPatterns) {
-        const matches = findAllMatches(file.content, pattern);
-        for (const match of matches) {
+        const matches = findAllHookMatches(file, pattern);
+        for (const { match, line } of matches) {
           findings.push({
             id: `hooks-priv-esc-${match.index}`,
             severity: "critical",
@@ -1093,7 +1503,7 @@ export const hookRules: ReadonlyArray<Rule> = [
             title: `Hook uses privilege escalation: ${match[0].trim()}`,
             description: `${description}. Hooks should never escalate privileges. A compromised hook with root access can take over the entire system.`,
             file: file.path,
-            line: findLineNumber(file.content, match.index ?? 0),
+            line,
             evidence: match[0].trim(),
           });
         }
@@ -1140,8 +1550,8 @@ export const hookRules: ReadonlyArray<Rule> = [
       ];
 
       for (const { pattern, description } of listenerPatterns) {
-        const matches = findAllMatches(file.content, pattern);
-        for (const match of matches) {
+        const matches = findAllHookMatches(file, pattern);
+        for (const { match, line } of matches) {
           findings.push({
             id: `hooks-network-listener-${match.index}`,
             severity: "critical",
@@ -1149,7 +1559,7 @@ export const hookRules: ReadonlyArray<Rule> = [
             title: `Hook opens network listener: ${match[0].trim()}`,
             description: `${description}. Hooks should not open network listeners. This could create a backdoor accessible from the network.`,
             file: file.path,
-            line: findLineNumber(file.content, match.index ?? 0),
+            line,
             evidence: match[0].trim(),
           });
         }
@@ -1188,8 +1598,8 @@ export const hookRules: ReadonlyArray<Rule> = [
       ];
 
       for (const { pattern, description } of wipePatterns) {
-        const matches = findAllMatches(file.content, pattern);
-        for (const match of matches) {
+        const matches = findAllHookMatches(file, pattern);
+        for (const { match, line } of matches) {
           findings.push({
             id: `hooks-disk-wipe-${match.index}`,
             severity: "critical",
@@ -1197,7 +1607,7 @@ export const hookRules: ReadonlyArray<Rule> = [
             title: `Hook uses disk wiping command: ${match[0].trim()}`,
             description: `${description}. Hooks should never perform destructive disk operations. This could permanently destroy data.`,
             file: file.path,
-            line: findLineNumber(file.content, match.index ?? 0),
+            line,
             evidence: match[0].trim(),
           });
         }
@@ -1244,12 +1654,12 @@ export const hookRules: ReadonlyArray<Rule> = [
       ];
 
       for (const { pattern, description } of profilePatterns) {
-        const matches = findAllMatches(file.content, pattern);
-        for (const match of matches) {
+        const matches = findAllHookMatches(file, pattern);
+        for (const { match, line, content } of matches) {
           // Check if the context suggests writing/appending (not just reading)
           const idx = match.index ?? 0;
           const contextStart = Math.max(0, idx - 50);
-          const context = file.content.substring(contextStart, idx + match[0].length + 50);
+          const context = content.substring(contextStart, idx + match[0].length + 50);
           const isWrite = />>|>|tee|echo\s+.*>|sed\s+-i|append/.test(context);
 
           if (isWrite) {
@@ -1260,7 +1670,7 @@ export const hookRules: ReadonlyArray<Rule> = [
               title: `Hook modifies shell profile: ${match[0].trim()}`,
               description: `${description}. Writing to shell profile files is a classic persistence technique — malicious code injected here survives across reboots and terminal sessions.`,
               file: file.path,
-              line: findLineNumber(file.content, match.index ?? 0),
+              line,
               evidence: context.trim().substring(0, 80),
             });
           }
@@ -1280,6 +1690,7 @@ export const hookRules: ReadonlyArray<Rule> = [
       if (file.type !== "settings-json" && file.type !== "hook-script") return [];
 
       const findings: Finding[] = [];
+      const seenFindings = new Set<string>();
 
       const logPatterns: ReadonlyArray<{
         readonly pattern: RegExp;
@@ -1304,17 +1715,28 @@ export const hookRules: ReadonlyArray<Rule> = [
       ];
 
       for (const { pattern, description } of logPatterns) {
-        const matches = findAllMatches(file.content, pattern);
-        for (const match of matches) {
+        const matches = findAllHookMatches(file, pattern);
+        for (const { match, line, commandContext } of matches) {
+          if (match[0].includes("/dev/null") && isBenignLoggingProbe(commandContext)) {
+            continue;
+          }
+
+          const evidence = match[0].trim();
+          const dedupeKey = `${line}:${evidence}:${description}`;
+          if (seenFindings.has(dedupeKey)) {
+            continue;
+          }
+          seenFindings.add(dedupeKey);
+
           findings.push({
             id: `hooks-logging-disabled-${match.index}`,
             severity: "high",
             category: "hooks",
-            title: `Hook disables logging: ${match[0].trim()}`,
+            title: `Hook disables logging: ${evidence}`,
             description: `${description}. Disabling logging or clearing audit trails in hooks is a defense evasion technique that makes it harder to detect and investigate compromises.`,
             file: file.path,
-            line: findLineNumber(file.content, match.index ?? 0),
-            evidence: match[0].trim(),
+            line,
+            evidence,
           });
         }
       }
@@ -1352,8 +1774,8 @@ export const hookRules: ReadonlyArray<Rule> = [
       ];
 
       for (const { pattern, description } of sshKeyPatterns) {
-        const matches = findAllMatches(file.content, pattern);
-        for (const match of matches) {
+        const matches = findAllHookMatches(file, pattern);
+        for (const { match, line } of matches) {
           findings.push({
             id: `hooks-ssh-key-${match.index}`,
             severity: "critical",
@@ -1361,7 +1783,7 @@ export const hookRules: ReadonlyArray<Rule> = [
             title: `Hook manipulates SSH keys: ${match[0].trim()}`,
             description: `${description}. Hooks should not create or distribute SSH keys as this enables unauthorized remote access.`,
             file: file.path,
-            line: findLineNumber(file.content, match.index ?? 0),
+            line,
             evidence: match[0].trim(),
           });
         }
@@ -1404,8 +1826,8 @@ export const hookRules: ReadonlyArray<Rule> = [
       ];
 
       for (const { pattern, description } of bgPatterns) {
-        const matches = findAllMatches(file.content, pattern);
-        for (const match of matches) {
+        const matches = findAllHookMatches(file, pattern);
+        for (const { match, line } of matches) {
           findings.push({
             id: `hooks-bg-process-${match.index}`,
             severity: "high",
@@ -1413,7 +1835,7 @@ export const hookRules: ReadonlyArray<Rule> = [
             title: `Hook starts background process: ${match[0].trim()}`,
             description: `${description}. Hooks that start persistent background processes can maintain execution even after the agent session ends — a common persistence technique.`,
             file: file.path,
-            line: findLineNumber(file.content, match.index ?? 0),
+            line,
             evidence: match[0].trim(),
           });
         }
@@ -1452,8 +1874,8 @@ export const hookRules: ReadonlyArray<Rule> = [
       ];
 
       for (const { pattern, description } of dnsPatterns) {
-        const matches = findAllMatches(file.content, pattern);
-        for (const match of matches) {
+        const matches = findAllHookMatches(file, pattern);
+        for (const { match, line } of matches) {
           findings.push({
             id: `hooks-dns-exfil-${match.index}`,
             severity: "critical",
@@ -1461,7 +1883,7 @@ export const hookRules: ReadonlyArray<Rule> = [
             title: `Hook uses DNS for exfiltration: ${match[0].trim().substring(0, 60)}`,
             description: `${description}. DNS queries bypass most firewalls and proxy filters, making this a common out-of-band exfiltration technique.`,
             file: file.path,
-            line: findLineNumber(file.content, match.index ?? 0),
+            line,
             evidence: match[0].trim(),
           });
         }
@@ -1500,8 +1922,8 @@ export const hookRules: ReadonlyArray<Rule> = [
       ];
 
       for (const { pattern, description } of fwPatterns) {
-        const matches = findAllMatches(file.content, pattern);
-        for (const match of matches) {
+        const matches = findAllHookMatches(file, pattern);
+        for (const { match, line } of matches) {
           findings.push({
             id: `hooks-fw-modify-${match.index}`,
             severity: "critical",
@@ -1509,7 +1931,7 @@ export const hookRules: ReadonlyArray<Rule> = [
             title: `Hook modifies firewall: ${match[0].trim()}`,
             description: `${description}. Hooks should not modify firewall rules — this could expose the system to network attacks.`,
             file: file.path,
-            line: findLineNumber(file.content, match.index ?? 0),
+            line,
             evidence: match[0].trim(),
           });
         }
@@ -1552,8 +1974,8 @@ export const hookRules: ReadonlyArray<Rule> = [
       ];
 
       for (const { pattern, description } of installPatterns) {
-        const matches = findAllMatches(file.content, pattern);
-        for (const match of matches) {
+        const matches = findAllHookMatches(file, pattern);
+        for (const { match, line } of matches) {
           findings.push({
             id: `hooks-global-install-${match.index}`,
             severity: "high",
@@ -1561,7 +1983,7 @@ export const hookRules: ReadonlyArray<Rule> = [
             title: `Hook installs packages: ${match[0].trim()}`,
             description: `${description}. Hooks that install packages can introduce supply chain risks and modify the system's behavior for all future commands.`,
             file: file.path,
-            line: findLineNumber(file.content, match.index ?? 0),
+            line,
             evidence: match[0].trim(),
           });
         }
@@ -1604,8 +2026,8 @@ export const hookRules: ReadonlyArray<Rule> = [
       ];
 
       for (const { pattern, description } of containerEscapePatterns) {
-        const matches = findAllMatches(file.content, pattern);
-        for (const match of matches) {
+        const matches = findAllHookMatches(file, pattern);
+        for (const { match, line } of matches) {
           findings.push({
             id: `hooks-container-escape-${match.index}`,
             severity: "critical",
@@ -1613,7 +2035,7 @@ export const hookRules: ReadonlyArray<Rule> = [
             title: `Hook uses container escape technique: ${match[0].trim()}`,
             description: `${description}. These Docker flags break container isolation and allow full host access from within the container.`,
             file: file.path,
-            line: findLineNumber(file.content, match.index ?? 0),
+            line,
             evidence: match[0].trim(),
           });
         }
@@ -1660,8 +2082,8 @@ export const hookRules: ReadonlyArray<Rule> = [
       ];
 
       for (const { pattern, description } of credPatterns) {
-        const matches = findAllMatches(file.content, pattern);
-        for (const match of matches) {
+        const matches = findAllHookMatches(file, pattern);
+        for (const { match, line } of matches) {
           findings.push({
             id: `hooks-cred-access-${match.index}`,
             severity: "critical",
@@ -1669,7 +2091,7 @@ export const hookRules: ReadonlyArray<Rule> = [
             title: `Hook accesses credential store: ${match[0].trim()}`,
             description: `${description}. Hooks should never access credential stores — this enables credential theft for lateral movement.`,
             file: file.path,
-            line: findLineNumber(file.content, match.index ?? 0),
+            line,
             evidence: match[0].trim(),
           });
         }
@@ -1716,8 +2138,8 @@ export const hookRules: ReadonlyArray<Rule> = [
       ];
 
       for (const { pattern, description } of reverseShellPatterns) {
-        const matches = findAllMatches(file.content, pattern);
-        for (const match of matches) {
+        const matches = findAllHookMatches(file, pattern);
+        for (const { match, line } of matches) {
           findings.push({
             id: `hooks-reverse-shell-${match.index}`,
             severity: "critical",
@@ -1725,7 +2147,7 @@ export const hookRules: ReadonlyArray<Rule> = [
             title: `Hook establishes reverse shell: ${match[0].trim().substring(0, 60)}`,
             description: `${description}. Reverse shells give attackers interactive command execution on the target system.`,
             file: file.path,
-            line: findLineNumber(file.content, match.index ?? 0),
+            line,
             evidence: match[0].trim().substring(0, 80),
           });
         }
@@ -1776,8 +2198,8 @@ export const hookRules: ReadonlyArray<Rule> = [
       ];
 
       for (const { pattern, description } of clipboardPatterns) {
-        const matches = findAllMatches(file.content, pattern);
-        for (const match of matches) {
+        const matches = findAllHookMatches(file, pattern);
+        for (const { match, line } of matches) {
           findings.push({
             id: `hooks-clipboard-${match.index}`,
             severity: "high",
@@ -1785,7 +2207,7 @@ export const hookRules: ReadonlyArray<Rule> = [
             title: `Hook accesses clipboard: ${match[0].trim()}`,
             description: `${description}. Clipboard access in hooks can be used to steal passwords, tokens, and other sensitive data that users copy.`,
             file: file.path,
-            line: findLineNumber(file.content, match.index ?? 0),
+            line,
             evidence: match[0].trim(),
           });
         }
@@ -1836,8 +2258,8 @@ export const hookRules: ReadonlyArray<Rule> = [
       ];
 
       for (const { pattern, description } of logTamperPatterns) {
-        const matches = findAllMatches(file.content, pattern);
-        for (const match of matches) {
+        const matches = findAllHookMatches(file, pattern);
+        for (const { match, line } of matches) {
           findings.push({
             id: `hooks-log-tamper-${match.index}`,
             severity: "critical",
@@ -1845,7 +2267,7 @@ export const hookRules: ReadonlyArray<Rule> = [
             title: `Hook tampers with logs: ${match[0].trim()}`,
             description: `${description}. Log tampering is a strong indicator of malicious intent — attackers erase evidence of their actions.`,
             file: file.path,
-            line: findLineNumber(file.content, match.index ?? 0),
+            line,
             evidence: match[0].trim(),
           });
         }
