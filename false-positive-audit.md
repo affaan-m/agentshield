@@ -747,6 +747,41 @@ Recommended interpretation:
 - If the top noisy file is active runtime config, assume the findings are more likely to be real until proven otherwise.
 - If the issue disappears only when a companion file is present, classify it as missing context, not a bad matcher.
 
+## False-Positive Issue Template
+
+Use this template when opening a scanner-accuracy issue. It keeps future audit work reproducible.
+
+```md
+## False-Positive Report
+
+- Repo:
+- Scanner commit/version:
+- File:
+- Finding ID(s):
+- Severity:
+- runtimeConfidence:
+
+### Why this looks wrong
+- [fill in]
+
+### Evidence
+- real repo reproduction:
+- minimal synthetic reproduction:
+- nearby true-positive that must keep working:
+
+### Preferred fix shape
+- matcher narrowing / confidence / severity / score / docs only
+
+### Notes
+- [fill in]
+```
+
+Required evidence before treating it as a rule bug:
+- one real repo reproduction
+- one minimal fixture
+- one nearby true-positive guard case
+- explanation for why `runtimeConfidence` and current wording are still insufficient
+
 ## Release Gate For Accuracy Changes
 
 Before including false-positive work in a release, verify all of the following:

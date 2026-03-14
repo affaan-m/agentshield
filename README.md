@@ -263,6 +263,7 @@ Rule-design guidelines:
 When you change rule accuracy, update both:
 - [`false-positive-audit.md`](./false-positive-audit.md) with the new baseline and remaining gaps
 - the targeted regression tests for the specific rule family you changed
+- if you are filing a scanner-noise bug, start from the audit doc's [`False-Positive Issue Template`](./false-positive-audit.md#false-positive-issue-template)
 
 #### Reducing False Positives In Practice
 
