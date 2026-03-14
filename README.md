@@ -294,6 +294,13 @@ Recommended operating model:
 - For `hook-code`, add only narrow language-aware rules for explicit risky behavior. Avoid broad wrapper heuristics.
 - For agent rules, anchor on role metadata and lead instructions before matching arbitrary later prose.
 
+Repo conventions that help AgentShield scan accurately:
+- put reusable MCP catalogs under template paths such as `mcp-configs/` instead of live runtime config files
+- keep local-only overrides in `settings.local.json`
+- keep tutorials and examples under example-like paths such as `docs/`, `examples/`, `tutorials/`, `demos/`, or `guides/`
+- keep `hooks/hooks.json` declarative and put the implementation in separate hook script files
+- keep large agent examples inside fenced code blocks so prompt-size and role heuristics stay accurate
+
 Current high-value places to audit first:
 - files with the highest finding count
 - files with `runtimeConfidence: template-example`

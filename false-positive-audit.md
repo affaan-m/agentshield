@@ -214,6 +214,17 @@ These recommendations are based on the current live scan profile, not hypothetic
 - This is what fixed `agents-explorer-write` and reduced defensive-review false positives.
 - Treat remaining Bash-access findings as policy questions unless a matcher bug is obvious.
 
+## Repo Authoring Conventions That Improve Accuracy
+
+These conventions reduce false-positive interpretation risk without weakening the scanner.
+
+- keep reusable MCP inventories under `mcp-configs/`, `config/mcp/`, or similar template directories instead of mixing them into live runtime config
+- keep project-local overrides in `settings.local.json`, and prefer exact local-only allow entries when possible
+- keep sample/tutorial bundles under example-like paths such as `docs/`, `examples/`, `tutorials/`, `demos/`, `guides/`, or `cookbook/`
+- keep declarative hook manifests in `hooks/hooks.json` and the actual implementation code in separate `scripts/hooks/` or `skills/**/hooks/` files
+- keep large agent examples inside fenced code blocks and keep the lead role metadata concise, so the scanner can distinguish live instructions from examples
+- clearly mark sample credentials as examples or fixtures and keep them in example-like paths rather than operational config directories
+
 ## False-Positive Reduction Playbook
 
 Use this before changing rule code. Most current scan noise is better solved by confidence modeling than by weakening detection.
