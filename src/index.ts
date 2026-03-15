@@ -192,7 +192,7 @@ const program = new Command();
 program
   .name("agentshield")
   .description("Security auditor for AI agent configurations")
-  .version("1.3.0");
+  .version("1.5.0");
 
 program
   .command("scan")
@@ -432,8 +432,8 @@ miniclaw
     const rateLimit = parseInt(options.rateLimit, 10);
     const maxDuration = parseInt(options.maxDuration, 10);
 
-    if (isNaN(port) || port < 1 || port > 65535) {
-      console.error("Error: Invalid port number. Must be between 1 and 65535.");
+    if (isNaN(port) || port < 0 || port > 65535) {
+      console.error("Error: Invalid port number. Must be between 0 and 65535.");
       process.exit(1);
     }
 
@@ -482,8 +482,13 @@ miniclaw
     });
 
     server.on("listening", () => {
-      console.log(`  Listening on http://${options.hostname}:${port}`);
-      console.log(`  Health check: http://${options.hostname}:${port}/api/health`);
+      const address = server.address();
+      const boundPort =
+        address && typeof address === "object" && "port" in address
+          ? address.port
+          : port;
+      console.log(`  Listening on http://${options.hostname}:${boundPort}`);
+      console.log(`  Health check: http://${options.hostname}:${boundPort}/api/health`);
       console.log(`\n  Press Ctrl+C to stop.\n`);
     });
 

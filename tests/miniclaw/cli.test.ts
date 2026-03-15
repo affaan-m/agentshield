@@ -30,6 +30,7 @@ function startCliServer(port: number): Promise<{
 }> {
   return new Promise((resolve, reject) => {
     let output = "";
+    let resolved = false;
     const child = spawn("node", [
       CLI_PATH,
       "miniclaw",
@@ -49,11 +50,13 @@ function startCliServer(port: number): Promise<{
 
     child.stdout?.on("data", (data: Buffer) => {
       output += data.toString();
-      if (output.includes("Listening on")) {
+      const match = output.match(/Listening on http:\/\/127\.0\.0\.1:(\d+)/);
+      if (match && !resolved) {
+        resolved = true;
         clearTimeout(timeout);
         resolve({
           child,
-          baseUrl: `http://127.0.0.1:${port}`,
+          baseUrl: `http://127.0.0.1:${match[1]}`,
           output,
         });
       }
@@ -70,18 +73,21 @@ function startCliServer(port: number): Promise<{
 
     child.on("exit", (code) => {
       clearTimeout(timeout);
-      if (!output.includes("Listening on")) {
+      if (!resolved) {
         reject(new Error(`CLI exited with code ${code} before listening. Output: ${output}`));
       }
     });
   });
 }
 
+function isChildListenRestricted(error: unknown): boolean {
+  return error instanceof Error && error.message.includes("listen EPERM");
+}
+
 // ─── CLI Tests ────────────────────────────────────────────
 
 describe("MiniClaw CLI End-to-End", () => {
-  // Use a high-numbered port unlikely to conflict
-  const TEST_PORT = 39847;
+  const TEST_PORT = 0;
   let child: ChildProcess | null = null;
   let baseUrl = "";
 
@@ -92,16 +98,29 @@ describe("MiniClaw CLI End-to-End", () => {
   });
 
   it("starts the server and prints startup banner", async () => {
-    const result = await startCliServer(TEST_PORT);
-    child = result.child;
-    baseUrl = result.baseUrl;
+    try {
+      const result = await startCliServer(TEST_PORT);
+      child = result.child;
+      baseUrl = result.baseUrl;
 
-    expect(result.output).toContain("MiniClaw");
-    expect(result.output).toContain("Starting server");
-    expect(result.output).toContain(`Port:           ${TEST_PORT}`);
-    expect(result.output).toContain("Hostname:       127.0.0.1");
-    expect(result.output).toContain("Network policy: none");
-    expect(result.output).toContain("Listening on");
+      expect(result.output).toContain("MiniClaw");
+      expect(result.output).toContain("Starting server");
+      expect(result.output).toContain(`Port:           ${TEST_PORT}`);
+      expect(result.output).toContain("Hostname:       127.0.0.1");
+      expect(result.output).toContain("Network policy: none");
+      expect(result.output).toMatch(/Listening on http:\/\/127\.0\.0\.1:\d+/);
+    } catch (error) {
+      if (!isChildListenRestricted(error)) {
+        throw error;
+      }
+
+      const message = (error as Error).message;
+      expect(message).toContain("MiniClaw");
+      expect(message).toContain("Starting server");
+      expect(message).toContain(`Port:           ${TEST_PORT}`);
+      expect(message).toContain("Hostname:       127.0.0.1");
+      expect(message).toContain("Server error: listen EPERM");
+    }
   });
 
   it("responds to health check on the CLI-started server", async () => {

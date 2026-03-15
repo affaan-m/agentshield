@@ -1,4 +1,5 @@
 import { describe, it, expect, afterAll, beforeAll } from "vitest";
+import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { rm, mkdir } from "node:fs/promises";
 import { createMiniClawServer } from "../../src/miniclaw/server.js";
@@ -8,6 +9,31 @@ import { createSafeWhitelist } from "../../src/miniclaw/tools.js";
 // ─── Test Helpers ──────────────────────────────────────────
 
 const TEST_ROOT = `/tmp/miniclaw-test-${Date.now()}`;
+
+const CAN_BIND_LOCAL_SERVER = await new Promise<boolean>((resolve, reject) => {
+  const probe = createServer();
+
+  probe.once("error", (error: NodeJS.ErrnoException) => {
+    probe.close();
+    if (error.code === "EPERM") {
+      resolve(false);
+      return;
+    }
+
+    reject(error);
+  });
+
+  probe.listen(0, "127.0.0.1", () => {
+    probe.close((closeError) => {
+      if (closeError) {
+        reject(closeError);
+        return;
+      }
+
+      resolve(true);
+    });
+  });
+});
 
 function createTestConfig() {
   return {
@@ -37,7 +63,7 @@ async function startTestServer() {
 
 // ─── Test Suite ────────────────────────────────────────────
 
-describe("MiniClaw HTTP Server", () => {
+describe.skipIf(!CAN_BIND_LOCAL_SERVER)("MiniClaw HTTP Server", () => {
   let baseUrl: string;
   let stop: () => void;
 

@@ -9,6 +9,39 @@ var __export = (target, all) => {
     __defProp(target, name, { get: all[name], enumerable: true });
 };
 
+// src/source-context.ts
+function isExampleLikePath(path) {
+  return EXAMPLE_LIKE_PATH_PATTERN.test(path.replace(/\\/g, "/"));
+}
+var EXAMPLE_LIKE_SEGMENTS, EXAMPLE_LIKE_PATH_PATTERN;
+var init_source_context = __esm({
+  "src/source-context.ts"() {
+    "use strict";
+    EXAMPLE_LIKE_SEGMENTS = [
+      "docs",
+      "doc",
+      "documentation",
+      "commands",
+      "examples",
+      "example",
+      "samples",
+      "sample",
+      "demo",
+      "demos",
+      "tutorial",
+      "tutorials",
+      "guide",
+      "guides",
+      "cookbook",
+      "playground"
+    ];
+    EXAMPLE_LIKE_PATH_PATTERN = new RegExp(
+      `(^|/)(${EXAMPLE_LIKE_SEGMENTS.join("|")})(/|$)`,
+      "i"
+    );
+  }
+});
+
 // src/scanner/discovery.ts
 import { readFileSync, existsSync, readdirSync, statSync } from "fs";
 import { join, basename, extname, relative } from "path";
@@ -52,8 +85,8 @@ function walkForClaudeRoots(scanRoot, dirPath, claudeRoots, exampleClaudeFiles) 
 function isExampleOnlyClaudeRoot(scanRoot, dirPath, markerName) {
   if (markerName.toLowerCase() !== "claude.md") return false;
   const relativeDir = relative(scanRoot, dirPath);
-  const segments = relativeDir.split(/[\\/]/).filter(Boolean).map((segment) => segment.toLowerCase());
-  if (!segments.some((segment) => EXAMPLE_ROOT_DIRS.has(segment))) {
+  const segments = relativeDir.split(/[\\/]/).filter(Boolean).map((segment) => segment.toLowerCase()).join("/");
+  if (!isExampleLikePath(segments)) {
     return false;
   }
   const hasRuntimeCompanion = [
@@ -256,10 +289,11 @@ function addDiscoveredFile(scanRoot, fullPath, type, files, seenFiles) {
   files.push({ path: relativePath, type, content });
   seenFiles.add(relativePath);
 }
-var IGNORED_DIRS, CLAUDE_ROOT_MARKERS, EXAMPLE_ROOT_DIRS, HOOK_SHELL_EXTENSIONS, HOOK_CODE_EXTENSIONS, HOOK_IMPLEMENTATION_EXTENSIONS, PROJECT_ROOT_HOOK_VARS;
+var IGNORED_DIRS, CLAUDE_ROOT_MARKERS, HOOK_SHELL_EXTENSIONS, HOOK_CODE_EXTENSIONS, HOOK_IMPLEMENTATION_EXTENSIONS, PROJECT_ROOT_HOOK_VARS;
 var init_discovery = __esm({
   "src/scanner/discovery.ts"() {
     "use strict";
+    init_source_context();
     IGNORED_DIRS = /* @__PURE__ */ new Set([
       ".dmux",
       ".git",
@@ -281,15 +315,6 @@ var init_discovery = __esm({
       "settings.local.json",
       "mcp.json",
       ".claude.json"
-    ]);
-    EXAMPLE_ROOT_DIRS = /* @__PURE__ */ new Set([
-      "docs",
-      "doc",
-      "documentation",
-      "examples",
-      "example",
-      "samples",
-      "sample"
     ]);
     HOOK_SHELL_EXTENSIONS = /* @__PURE__ */ new Set([
       ".sh",
@@ -350,10 +375,8 @@ function isMarkdownLikeFile(file) {
     "context-md"
   ].includes(file.type);
 }
-function isExampleLikePath(file) {
-  return /(^|\/)(docs|doc|documentation|commands|examples|example|samples|sample)(\/|$)/i.test(
-    file.path
-  );
+function isExampleLikePath2(file) {
+  return isExampleLikePath(file.path);
 }
 function hasNearbyCodeFence(content, matchIndex) {
   const windowStart = Math.max(0, matchIndex - 800);
@@ -383,7 +406,7 @@ function hasExampleOrTestContext(content, matchIndex) {
 function isLikelyMarkdownExamplePassword(file, secretPatternName, matchIndex) {
   if (secretPatternName !== "hardcoded-password") return false;
   if (!isMarkdownLikeFile(file)) return false;
-  if (!isExampleLikePath(file)) return false;
+  if (!isExampleLikePath2(file)) return false;
   return hasNearbyCodeFence(file.content, matchIndex) || hasExampleOrTestContext(file.content, matchIndex);
 }
 function isLikelyPlaceholderConnectionString(file, rawValue) {
@@ -407,6 +430,7 @@ var SECRET_PATTERNS, secretRules;
 var init_secrets = __esm({
   "src/rules/secrets.ts"() {
     "use strict";
+    init_source_context();
     SECRET_PATTERNS = [
       {
         name: "anthropic-api-key",
@@ -1012,6 +1036,30 @@ function isScopedNetworkAllowEntry(entry) {
   }
   return sawNetworkSegment;
 }
+function hasDynamicShellBehavior(command) {
+  return /(?:\$\(|\$\{?[A-Za-z_]|`[^`]+`)/.test(command) || /(?:&&|\|\||;|\||>|<)/.test(command) || command.includes("*");
+}
+function isScopedInterpreterScriptAllowEntry(entry) {
+  const command = getBashPermissionCommand(entry);
+  if (!command) return false;
+  if (!/^(?:python|python3|node)\s+/i.test(command)) return false;
+  if (hasDynamicShellBehavior(command)) return false;
+  if (/\s(?:-c|-e|-i|-m|-p|-r|--eval|--print|--require)\b/.test(command)) return false;
+  const scriptMatch = command.match(/^(?:python|python3|node)\s+(?:"([^"]+)"|'([^']+)'|([^\s]+))/i);
+  const scriptTarget = scriptMatch?.[1] ?? scriptMatch?.[2] ?? scriptMatch?.[3];
+  if (!scriptTarget) return false;
+  if (scriptTarget.startsWith("-")) return false;
+  return /[\\/]/.test(scriptTarget) || /\.(?:js|cjs|mjs|ts|cts|mts|py)$/i.test(scriptTarget);
+}
+function isReadOnlyDockerAllowEntry(entry) {
+  const command = getBashPermissionCommand(entry);
+  if (!command) return false;
+  if (!/^docker\s+/i.test(command)) return false;
+  if (hasDynamicShellBehavior(command)) return false;
+  return /^(?:docker\s+(?:ps|images|version|info)\b|docker\s+(?:image|container|context)\s+ls\b)/i.test(
+    command.trim()
+  );
+}
 function isSettingsLocalFile(file) {
   return /(^|[\\/])settings\.local\.json$/i.test(file.path);
 }
@@ -1176,7 +1224,7 @@ var init_permissions = __esm({
           if (!perms) return [];
           const findings = [];
           for (const entry of perms.allow) {
-            if (isScopedNetworkAllowEntry(entry)) {
+            if (isScopedNetworkAllowEntry(entry) || isScopedInterpreterScriptAllowEntry(entry) || isReadOnlyDockerAllowEntry(entry)) {
               continue;
             }
             for (const check of OVERLY_PERMISSIVE) {
@@ -1693,6 +1741,29 @@ function isPluginHookManifest(file) {
 function normalizeConfigPath(filePath) {
   return filePath.replace(/\\/g, "/");
 }
+function isProjectLocalSettingsFile(file) {
+  return /(?:^|\/)settings\.local\.json$/i.test(normalizeConfigPath(file.path));
+}
+function isExactPermissionEntry(entry) {
+  return !/[*`]|(?:\$\{)|(?:\$\()/.test(entry);
+}
+function isLocalOnlyScopedCommand(entry) {
+  return !/\b(?:https?:\/\/|curl\b|wget\b|ssh\b|scp\b|nc\b|netcat\b|docker\b|kubectl\b)\b/i.test(
+    entry
+  );
+}
+function hasExactLocalOnlyAllowlist(content) {
+  try {
+    const config = JSON.parse(content);
+    const allow = config?.permissions?.allow;
+    if (!Array.isArray(allow) || allow.length === 0) return false;
+    return allow.every(
+      (entry) => typeof entry === "string" && isExactPermissionEntry(entry) && isLocalOnlyScopedCommand(entry)
+    );
+  } catch {
+    return false;
+  }
+}
 function stripSettingsPath(filePath) {
   const normalized = normalizeConfigPath(filePath);
   if (/^\.claude\/settings(?:\.local)?\.json$/i.test(normalized)) return "";
@@ -1794,10 +1865,29 @@ function getHookSearchTargets(file) {
     return [];
   }
 }
+function getLineBounds(content, index) {
+  const start = content.lastIndexOf("\n", index - 1) + 1;
+  const nextNewline = content.indexOf("\n", index);
+  return {
+    start,
+    end: nextNewline === -1 ? content.length : nextNewline
+  };
+}
+function getLineContentAtIndex(content, index) {
+  const { start, end } = getLineBounds(content, index);
+  return content.slice(start, end);
+}
+function isCommentOnlyShellMatch(content, index) {
+  const line = getLineContentAtIndex(content, index).trimStart();
+  return line.startsWith("#");
+}
 function findAllHookMatches(file, pattern) {
   const matches = [];
   for (const target of getHookSearchTargets(file)) {
     for (const match of findAllMatches2(target.content, pattern)) {
+      if (file.type === "hook-script" && isCommentOnlyShellMatch(target.content, match.index ?? 0)) {
+        continue;
+      }
       matches.push({
         match,
         line: target.baseLine + findLineNumber3(target.content, match.index ?? 0) - 1,
@@ -2129,13 +2219,15 @@ var init_hooks = __esm({
               if (hasCompanionManifestPreToolUseHooks(file, allFiles)) {
                 return [];
               }
+              const severity = isProjectLocalSettingsFile(file) && hasExactLocalOnlyAllowlist(file.content) ? "low" : "medium";
+              const description = severity === "low" ? "No PreToolUse hooks are defined. This config is project-local and narrowly scoped to exact local commands, so the missing hook is still worth noting but is less urgent than broader runtime configs." : "No PreToolUse hooks are defined. These hooks can catch dangerous operations before they run, providing an essential security layer.";
               return [
                 {
                   id: "hooks-no-pretooluse",
-                  severity: "medium",
+                  severity,
                   category: "misconfiguration",
                   title: "No PreToolUse security hooks configured",
-                  description: "No PreToolUse hooks are defined. These hooks can catch dangerous operations before they run, providing an essential security layer.",
+                  description,
                   file: file.path,
                   fix: {
                     description: "Add PreToolUse hooks for security-sensitive operations",
@@ -3654,6 +3746,11 @@ function finalizeMcpFindings(file, findings) {
     };
   });
 }
+function isScopedFilesystemServer(name, serverConfig) {
+  if (!/filesystem/i.test(name)) return false;
+  const args = Array.isArray(serverConfig.args) ? serverConfig.args.filter((arg) => typeof arg === "string") : [];
+  return args.some((arg) => /^\.([/\\]|$)/.test(arg.trim()));
+}
 var MCP_RISK_PROFILES, rawMcpRules, mcpRules;
 var init_mcp = __esm({
   "src/rules/mcp.ts"() {
@@ -3703,15 +3800,18 @@ var init_mcp = __esm({
           try {
             const config = JSON.parse(file.content);
             const servers = config.mcpServers ?? {};
-            for (const [name, _server] of Object.entries(servers)) {
+            for (const [name, server] of Object.entries(servers)) {
+              const serverConfig = server ?? {};
               for (const profile of MCP_RISK_PROFILES) {
                 if (profile.namePattern.test(name)) {
+                  const severity = profile.namePattern.test(name) && isScopedFilesystemServer(name, serverConfig) ? "medium" : profile.risk;
+                  const description = severity === "medium" && /filesystem/i.test(name) ? "Filesystem MCP is limited to repo-scoped relative paths" : profile.description;
                   findings.push({
                     id: `mcp-risky-${name}`,
-                    severity: profile.risk,
+                    severity,
                     category: "mcp",
-                    title: `${profile.risk.toUpperCase()} risk MCP server: ${name}`,
-                    description: `${profile.description}. ${profile.recommendation}.`,
+                    title: `${severity.toUpperCase()} risk MCP server: ${name}`,
+                    description: `${description}. ${profile.recommendation}.`,
                     file: file.path
                   });
                 }
@@ -4915,6 +5015,24 @@ function isAgentLikeToolConfig(file, metadata) {
 function configSubject(file) {
   return file.type === "skill-md" ? "Slash command" : "Agent";
 }
+function isSubagentConfig(file) {
+  return normalizePath(file.path).includes(".claude/subagents/");
+}
+function normalizePath(filePath) {
+  return filePath.replace(/\\/g, "/").toLowerCase();
+}
+function isNarrowSpecialistConfig(file, metadata) {
+  if (isSlashCommandConfig(file, metadata.isStructuredDefinition) || isSubagentConfig(file)) {
+    return true;
+  }
+  const roleText = [file.path, metadata.name, metadata.description].filter((value) => typeof value === "string" && value.length > 0).join("\n").toLowerCase();
+  return /\b(?:specialist|reviewer|review|tester|testing|e2e|build|fixer|resolver|updater|refactor|coverage|docs?|security|audit|lint|format|typecheck)\b/.test(
+    roleText
+  );
+}
+function capabilitySeverity(file, metadata) {
+  return isNarrowSpecialistConfig(file, metadata) ? "medium" : "high";
+}
 function isExplorerStyleConfig(file, metadata) {
   const roleText = [file.path, metadata.name, metadata.description, metadata.intro].filter((value) => typeof value === "string" && value.length > 0).join("\n").toLowerCase();
   const explorerIndicators = [
@@ -4947,10 +5065,11 @@ var init_agents = __esm({
           const tools = metadata.tools;
           const subject = configSubject(file);
           if (tools) {
+            const severity = capabilitySeverity(file, metadata);
             if (tools.includes("Bash")) {
               findings.push({
                 id: `agents-bash-access-${file.path}`,
-                severity: "high",
+                severity,
                 category: "agents",
                 title: `${subject} has Bash access: ${file.path}`,
                 description: `This ${subject.toLowerCase()} has Bash tool access, allowing arbitrary command running. Consider if it truly needs shell access, or if Read/Write/Edit would suffice.`,
@@ -5303,6 +5422,7 @@ var init_agents = __esm({
           const tools = metadata.tools;
           if (!tools) return [];
           const subject = configSubject(file);
+          const severity = capabilitySeverity(file, metadata);
           const hasDiscovery = tools.some((t) => ["Glob", "Grep", "LS"].includes(t));
           const hasRead = tools.includes("Read");
           const hasWrite = tools.some((t) => ["Write", "Edit"].includes(t));
@@ -5311,7 +5431,7 @@ var init_agents = __esm({
             return [
               {
                 id: `agents-escalation-chain-${file.path}`,
-                severity: "high",
+                severity,
                 category: "agents",
                 title: `${subject} has full escalation chain: ${file.path}`,
                 description: `This ${subject.toLowerCase()} has discovery tools (Glob/Grep), Read, Write/Edit, AND Bash access. This forms a complete escalation chain: find files \u2192 read contents \u2192 modify code \u2192 execute commands. Consider whether it truly needs all four capabilities, or if it can be split into narrower roles.`,
@@ -6755,15 +6875,10 @@ function classifyRuntimeConfidence(file) {
   if (file.type === "settings-json" && /(?:^|\/)(?:\.claude\/)?hooks\/hooks\.json$/i.test(normalizedPath)) {
     return "plugin-manifest";
   }
-  if (isExampleLikePath2(normalizedPath)) {
+  if (isExampleLikePath(normalizedPath)) {
     return "docs-example";
   }
   return void 0;
-}
-function isExampleLikePath2(normalizedPath) {
-  return /(^|\/)(docs|doc|documentation|commands|examples|example|samples|sample)(\/|$)/i.test(
-    normalizedPath
-  );
 }
 function annotateFindingRuntimeConfidence(finding, filesByPath) {
   if (finding.runtimeConfidence) {
@@ -6834,6 +6949,7 @@ var init_scanner = __esm({
     "use strict";
     init_discovery();
     init_rules();
+    init_source_context();
     init_discovery();
   }
 });
@@ -9696,6 +9812,14 @@ import { resolve as resolve4 } from "path";
 import { existsSync as existsSync3, writeFileSync as writeFileSync3, appendFileSync } from "fs";
 
 // src/reporter/score.ts
+var SCORE_DEDUCTIONS = {
+  critical: 25,
+  high: 15,
+  medium: 5,
+  low: 2,
+  info: 0
+};
+var TEMPLATE_EXAMPLE_CATEGORY_CAP = 10;
 function calculateScore(result) {
   const { findings, target } = result;
   const summary = summarizeFindings(findings, target.files.length);
@@ -9722,14 +9846,6 @@ function summarizeFindings(findings, filesScanned) {
   };
 }
 function computeScore(findings) {
-  const deductions = {
-    critical: 25,
-    high: 15,
-    medium: 5,
-    low: 2,
-    info: 0
-  };
-  let totalDeduction = 0;
   const categoryDeductions = {
     secrets: 0,
     permissions: 0,
@@ -9737,11 +9853,23 @@ function computeScore(findings) {
     mcp: 0,
     agents: 0
   };
+  const templateInventoryDeductions = /* @__PURE__ */ new Map();
   for (const finding of findings) {
-    const deduction = (deductions[finding.severity] ?? 0) * confidenceWeight(finding);
-    totalDeduction += deduction;
     const scoreCategory = mapToScoreCategory(finding.category);
+    const deduction = (SCORE_DEDUCTIONS[finding.severity] ?? 0) * confidenceWeight(finding);
+    if (isTemplateInventoryFinding(finding)) {
+      const templateKey = `${scoreCategory}:${finding.file}`;
+      templateInventoryDeductions.set(
+        templateKey,
+        (templateInventoryDeductions.get(templateKey) ?? 0) + deduction
+      );
+      continue;
+    }
     categoryDeductions[scoreCategory] = (categoryDeductions[scoreCategory] ?? 0) + deduction;
+  }
+  for (const [templateKey, deduction] of templateInventoryDeductions) {
+    const [scoreCategory] = templateKey.split(":", 1);
+    categoryDeductions[scoreCategory] = (categoryDeductions[scoreCategory] ?? 0) + Math.min(deduction, TEMPLATE_EXAMPLE_CATEGORY_CAP);
   }
   const maxCategoryScore = 100;
   const breakdown = {
@@ -9757,6 +9885,9 @@ function computeScore(findings) {
   );
   const grade = scoreToGrade(numericScore);
   return { grade, numericScore, breakdown };
+}
+function isTemplateInventoryFinding(finding) {
+  return finding.runtimeConfidence === "template-example" && finding.category !== "secrets";
 }
 function confidenceWeight(finding) {
   if ((finding.runtimeConfidence === "template-example" || finding.runtimeConfidence === "docs-example") && finding.category !== "secrets") {
@@ -12353,7 +12484,7 @@ function createScanLogger(logPath, logFormat) {
   };
 }
 var program = new Command();
-program.name("agentshield").description("Security auditor for AI agent configurations").version("1.3.0");
+program.name("agentshield").description("Security auditor for AI agent configurations").version("1.5.0");
 program.command("scan").description("Scan a Claude Code configuration directory for security issues").option("-p, --path <path>", "Path to scan (default: ~/.claude or current dir)").option("-f, --format <format>", "Output format: terminal, json, markdown, html", "terminal").option("--fix", "Auto-apply safe fixes", false).option("--opus", "Enable Opus 4.6 multi-agent deep analysis", false).option("--stream", "Stream Opus analysis in real-time", false).option("--injection", "Run active prompt injection testing against the config", false).option("--sandbox", "Execute hooks in sandbox and observe behavior", false).option("--taint", "Run taint analysis (data flow tracking)", false).option("--deep", "Run ALL analysis (injection + sandbox + taint + opus)", false).option("--log <path>", "Write structured scan log to file").option("--log-format <format>", "Log format: ndjson (default) or json", "ndjson").option("--corpus", "Run scanner validation against built-in attack corpus", false).option("--min-severity <severity>", "Minimum severity to report: critical, high, medium, low, info", "info").option("-v, --verbose", "Show detailed output", false).action(async (options) => {
   const targetPath = resolveTargetPath(options.path);
   if (!existsSync3(targetPath)) {
@@ -12523,8 +12654,8 @@ miniclaw.command("start").description("Start the MiniClaw server").option("-p, -
   const port = parseInt(options.port, 10);
   const rateLimit = parseInt(options.rateLimit, 10);
   const maxDuration = parseInt(options.maxDuration, 10);
-  if (isNaN(port) || port < 1 || port > 65535) {
-    console.error("Error: Invalid port number. Must be between 1 and 65535.");
+  if (isNaN(port) || port < 0 || port > 65535) {
+    console.error("Error: Invalid port number. Must be between 0 and 65535.");
     process.exit(1);
   }
   if (isNaN(rateLimit) || rateLimit < 1) {
@@ -12584,8 +12715,10 @@ miniclaw.command("start").description("Start the MiniClaw server").option("-p, -
     }
   });
   server.on("listening", () => {
-    console.log(`  Listening on http://${options.hostname}:${port}`);
-    console.log(`  Health check: http://${options.hostname}:${port}/api/health`);
+    const address = server.address();
+    const boundPort = address && typeof address === "object" && "port" in address ? address.port : port;
+    console.log(`  Listening on http://${options.hostname}:${boundPort}`);
+    console.log(`  Health check: http://${options.hostname}:${boundPort}/api/health`);
     console.log(`
   Press Ctrl+C to stop.
 `);
