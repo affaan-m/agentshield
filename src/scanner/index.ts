@@ -3,16 +3,19 @@ import type {
   Finding,
   Rule,
   RuntimeConfidence,
+  SkillHealthSummary,
   ScanTarget,
   Severity,
 } from "../types.js";
 import { discoverConfigFiles } from "./discovery.js";
 import { getBuiltinRules } from "../rules/index.js";
 import { isExampleLikePath } from "../source-context.js";
+import { analyzeSkillHealth } from "../skills/health.js";
 
 export interface ScanResult {
   readonly target: ScanTarget;
   readonly findings: ReadonlyArray<Finding>;
+  readonly skillHealth?: SkillHealthSummary;
 }
 
 /**
@@ -22,8 +25,9 @@ export function scan(targetPath: string): ScanResult {
   const target = discoverConfigFiles(targetPath);
   const rules = getBuiltinRules();
   const findings = runRules(target.files, rules);
+  const skillHealth = analyzeSkillHealth(target.files);
 
-  return { target, findings };
+  return { target, findings, skillHealth };
 }
 
 /**

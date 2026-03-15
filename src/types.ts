@@ -40,6 +40,7 @@ export type FindingCategory =
   | "permissions"
   | "hooks"
   | "mcp"
+  | "skills"
   | "agents"
   | "injection"
   | "exposure"
@@ -102,6 +103,7 @@ export interface SecurityReport {
   readonly findings: ReadonlyArray<Finding>;
   readonly score: SecurityScore;
   readonly summary: ReportSummary;
+  readonly skillHealth?: SkillHealthSummary;
 }
 
 export interface SecurityScore {
@@ -118,6 +120,31 @@ export interface ScoreBreakdown {
   readonly hooks: number;
   readonly mcp: number;
   readonly agents: number;
+}
+
+export interface SkillHealthSummary {
+  readonly totalSkills: number;
+  readonly instrumentedSkills: number;
+  readonly versionedSkills: number;
+  readonly rollbackReadySkills: number;
+  readonly observedSkills: number;
+  readonly averageScore?: number;
+  readonly skills: ReadonlyArray<SkillHealth>;
+}
+
+export interface SkillHealth {
+  readonly skillName: string;
+  readonly file: string;
+  readonly version?: string;
+  readonly hasObservationHooks: boolean;
+  readonly hasFeedbackHooks: boolean;
+  readonly hasRollbackMetadata: boolean;
+  readonly score?: number;
+  readonly status: "healthy" | "watch" | "at-risk" | "unobserved";
+  readonly observedRuns: number;
+  readonly successRate?: number;
+  readonly averageFeedback?: number;
+  readonly historyFiles: ReadonlyArray<string>;
 }
 
 export interface ReportSummary {

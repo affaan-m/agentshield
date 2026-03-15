@@ -37,6 +37,40 @@ export function renderTerminalReport(report: SecurityReport): string {
   lines.push(renderBar("Agents", report.score.breakdown.agents));
   lines.push("");
 
+  if (report.skillHealth && report.skillHealth.totalSkills > 0) {
+    lines.push(chalk.bold("  Skill Health"));
+    lines.push(`  Skills discovered: ${report.skillHealth.totalSkills}`);
+    lines.push(`  Instrumented:      ${report.skillHealth.instrumentedSkills}`);
+    lines.push(`  Versioned:         ${report.skillHealth.versionedSkills}`);
+    lines.push(`  Rollback-ready:    ${report.skillHealth.rollbackReadySkills}`);
+    lines.push(`  With history:      ${report.skillHealth.observedSkills}`);
+    if (typeof report.skillHealth.averageScore === "number") {
+      lines.push(`  Average health:    ${report.skillHealth.averageScore}/100`);
+    }
+    lines.push("");
+
+    for (const skill of report.skillHealth.skills) {
+      const scoreText =
+        typeof skill.score === "number" ? `${skill.score}/100` : "unobserved";
+      lines.push(
+        `  ${chalk.bold(skill.skillName)} — ${scoreText} (${formatSkillStatus(skill.status)})`
+      );
+      lines.push(chalk.dim(`    File: ${skill.file}`));
+      if (typeof skill.successRate === "number") {
+        lines.push(
+          chalk.dim(
+            `    Runs: ${skill.observedRuns}, success: ${Math.round(skill.successRate * 100)}%` +
+              (typeof skill.averageFeedback === "number"
+                ? `, feedback: ${skill.averageFeedback.toFixed(1)}/5`
+                : "")
+          )
+        );
+      }
+    }
+
+    lines.push("");
+  }
+
   // Summary
   const s = report.summary;
   lines.push(chalk.bold("  Summary"));
@@ -527,6 +561,19 @@ function formatRuntimeConfidence(value: RuntimeConfidence): string {
       return "plugin manifest";
     case "hook-code":
       return "hook-code implementation";
+  }
+}
+
+function formatSkillStatus(status: "healthy" | "watch" | "at-risk" | "unobserved"): string {
+  switch (status) {
+    case "healthy":
+      return "healthy";
+    case "watch":
+      return "watch";
+    case "at-risk":
+      return "at-risk";
+    case "unobserved":
+      return "unobserved";
   }
 }
 

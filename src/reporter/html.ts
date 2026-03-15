@@ -1,4 +1,11 @@
-import type { Finding, SecurityReport, Severity, Grade, RuntimeConfidence } from "../types.js";
+import type {
+  Finding,
+  SecurityReport,
+  Severity,
+  Grade,
+  RuntimeConfidence,
+  SkillHealth,
+} from "../types.js";
 
 /**
  * Render a security report as a self-contained HTML file.
@@ -62,6 +69,25 @@ export function renderHtmlReport(report: SecurityReport): string {
         ${renderScoreBar("Agents", report.score.breakdown.agents)}
       </div>
     </section>
+
+    ${report.skillHealth && report.skillHealth.totalSkills > 0
+      ? `<section class="section">
+      <h2 class="section-title">Skill Health</h2>
+      <div class="stats-grid">
+        ${renderStatCard("Skills", String(report.skillHealth.totalSkills), "files")}
+        ${renderStatCard("Instrumented", String(report.skillHealth.instrumentedSkills), "fixable")}
+        ${renderStatCard("Versioned", String(report.skillHealth.versionedSkills), "medium")}
+        ${renderStatCard("Rollback-ready", String(report.skillHealth.rollbackReadySkills), "high")}
+        ${renderStatCard("With history", String(report.skillHealth.observedSkills), "info")}
+        ${typeof report.skillHealth.averageScore === "number"
+          ? renderStatCard("Avg health", `${report.skillHealth.averageScore}/100`, "findings")
+          : ""}
+      </div>
+      <div>
+        ${report.skillHealth.skills.map((skill) => renderSkillHealthCard(skill)).join("")}
+      </div>
+    </section>`
+      : ""}
 
     <!-- Severity Distribution -->
     <section class="section">
@@ -285,6 +311,30 @@ function renderFindingCard(finding: Finding): string {
       <p class="finding-description">${escapeHtml(finding.description)}</p>
       ${evidenceBlock}
       ${fixBlock}
+    </div>`;
+}
+
+function renderSkillHealthCard(skill: SkillHealth): string {
+  const score = typeof skill.score === "number" ? `${skill.score}/100` : "unobserved";
+  const detail = typeof skill.successRate === "number"
+    ? `Runs ${skill.observedRuns} • Success ${Math.round(skill.successRate * 100)}%${
+        typeof skill.averageFeedback === "number"
+          ? ` • Feedback ${skill.averageFeedback.toFixed(1)}/5`
+          : ""
+      }`
+    : "No execution history found";
+
+  return `
+    <div class="finding-card">
+      <div class="finding-header">
+        <span class="runtime-confidence-badge">${escapeHtml(skill.status)}</span>
+        <span class="finding-title">${escapeHtml(skill.skillName)}</span>
+      </div>
+      <div class="finding-meta">
+        <span class="finding-category">skill health</span>
+        <span class="finding-location">${escapeHtml(skill.file)}</span>
+      </div>
+      <p class="finding-description">${escapeHtml(`${score} — ${detail}`)}</p>
     </div>`;
 }
 

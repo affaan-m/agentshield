@@ -6761,6 +6761,340 @@ var agentRules = [
   }
 ];
 
+// src/skills/health.ts
+import { basename as basename2, dirname, extname as extname2 } from "path";
+import YAML from "yaml";
+var HISTORY_SUFFIXES = [
+  ".history.json",
+  ".observations.json",
+  ".observation.json",
+  ".feedback.json",
+  ".execution-history.json",
+  ".metrics.json"
+];
+function analyzeSkillHealth(files) {
+  const profiles = getSkillProfiles(files);
+  if (profiles.length === 0) return void 0;
+  const skills = profiles.map((profile) => {
+    const score = scoreSkill(profile);
+    return {
+      skillName: profile.skillName,
+      file: profile.file.path,
+      version: profile.version,
+      hasObservationHooks: profile.hasObservationHooks,
+      hasFeedbackHooks: profile.hasFeedbackHooks,
+      hasRollbackMetadata: profile.hasRollbackMetadata,
+      score,
+      status: classifySkillStatus(score),
+      observedRuns: profile.observedRuns,
+      successRate: profile.successRate,
+      averageFeedback: profile.averageFeedback,
+      historyFiles: profile.historyFiles.map((file) => file.path)
+    };
+  });
+  const scoredSkills = skills.filter((skill) => typeof skill.score === "number");
+  return {
+    totalSkills: skills.length,
+    instrumentedSkills: skills.filter(
+      (skill) => skill.hasObservationHooks && skill.hasFeedbackHooks
+    ).length,
+    versionedSkills: skills.filter((skill) => Boolean(skill.version)).length,
+    rollbackReadySkills: skills.filter((skill) => skill.hasRollbackMetadata).length,
+    observedSkills: skills.filter((skill) => skill.observedRuns > 0).length,
+    averageScore: scoredSkills.length > 0 ? Math.round(
+      scoredSkills.reduce((sum, skill) => sum + (skill.score ?? 0), 0) / scoredSkills.length
+    ) : void 0,
+    skills
+  };
+}
+function getSkillProfiles(files) {
+  const skillFiles = files.filter(isSkillDefinitionFile);
+  return skillFiles.map((file) => {
+    const frontmatter = parseSkillFrontmatter(file.content);
+    const historyFiles = getRelatedHistoryFiles(file, files);
+    const records = historyFiles.flatMap((historyFile) => parseHistoryFile(historyFile));
+    const successfulRuns = records.filter((record) => record.success === true).length;
+    const failedRuns = records.filter((record) => record.success === false).length;
+    const observedRuns = successfulRuns + failedRuns;
+    const feedbackValues = records.map((record) => record.feedback).filter((value) => typeof value === "number");
+    return {
+      skillName: inferSkillName(file, frontmatter.raw),
+      file,
+      version: extractVersion(frontmatter),
+      hasObservationHooks: hasObservationHooks(frontmatter),
+      hasFeedbackHooks: hasFeedbackHooks(frontmatter),
+      hasRollbackMetadata: hasRollbackMetadata(frontmatter),
+      historyFiles,
+      observedRuns,
+      successRate: observedRuns > 0 ? successfulRuns / observedRuns : void 0,
+      averageFeedback: feedbackValues.length > 0 ? Number(
+        (feedbackValues.reduce((sum, value) => sum + value, 0) / feedbackValues.length).toFixed(1)
+      ) : void 0
+    };
+  });
+}
+function isSkillDefinitionFile(file) {
+  const normalizedPath = file.path.replace(/\\/g, "/").toLowerCase();
+  const extension = extname2(normalizedPath);
+  return file.type === "skill-md" && (extension === ".md" || extension === ".markdown");
+}
+function parseSkillFrontmatter(content) {
+  const match = content.match(/^---\s*\n([\s\S]*?)\n---\s*\n?/);
+  if (!match) {
+    return { raw: {}, body: content };
+  }
+  try {
+    const parsed = YAML.parse(match[1]);
+    const raw = parsed && typeof parsed === "object" ? parsed : {};
+    return {
+      version: typeof raw.version === "string" ? raw.version : void 0,
+      metadata: raw.metadata && typeof raw.metadata === "object" ? raw.metadata : void 0,
+      raw,
+      body: content.slice(match[0].length)
+    };
+  } catch {
+    return { raw: {}, body: content };
+  }
+}
+function inferSkillName(file, frontmatter) {
+  if (typeof frontmatter.name === "string" && frontmatter.name.trim().length > 0) {
+    return frontmatter.name.trim();
+  }
+  const stem = basename2(file.path, extname2(file.path));
+  return stem.toLowerCase() === "skill" ? basename2(dirname(file.path)) : stem;
+}
+function extractVersion(frontmatter) {
+  if (frontmatter.version) return frontmatter.version;
+  const metadataVersion = frontmatter.metadata?.version;
+  return typeof metadataVersion === "string" ? metadataVersion : void 0;
+}
+function hasObservationHooks(frontmatter) {
+  return hasKey(frontmatter, /(?:^|_)(?:observe|observation)(?:_hook|_hooks)?$/) || /(?:^|\n)#{1,6}\s*(?:observe|observation|telemetry)\b/im.test(frontmatter.body) || /\bobservation hooks?\b/i.test(frontmatter.body);
+}
+function hasFeedbackHooks(frontmatter) {
+  return hasKey(frontmatter, /(?:^|_)feedback(?:_hook|_hooks)?$/) || /(?:^|\n)#{1,6}\s*feedback\b/im.test(frontmatter.body) || /\bfeedback hooks?\b/i.test(frontmatter.body);
+}
+function hasRollbackMetadata(frontmatter) {
+  return hasKey(frontmatter, /rollback(?:_strategy|_plan|_metadata)?$/) || hasKey(frontmatter, /previous_version$/) || /(?:^|\n)#{1,6}\s*rollback\b/im.test(frontmatter.body);
+}
+function hasKey(frontmatter, pattern) {
+  const stack = [frontmatter.raw];
+  while (stack.length > 0) {
+    const current = stack.pop();
+    if (!current || typeof current !== "object") continue;
+    for (const [key, value] of Object.entries(current)) {
+      if (pattern.test(key)) {
+        return truthyMetadata(value);
+      }
+      if (value && typeof value === "object") {
+        stack.push(value);
+      }
+    }
+  }
+  return false;
+}
+function truthyMetadata(value) {
+  if (typeof value === "string") return value.trim().length > 0;
+  if (typeof value === "number") return true;
+  if (typeof value === "boolean") return value;
+  if (Array.isArray(value)) return value.length > 0;
+  return Boolean(value);
+}
+function getRelatedHistoryFiles(skillFile, files) {
+  const normalizedDir = dirname(skillFile.path).replace(/\\/g, "/");
+  const skillStem = basename2(skillFile.path, extname2(skillFile.path));
+  const expectedPrefixes = /* @__PURE__ */ new Set([
+    `${skillStem}.`,
+    `${skillStem}-`,
+    `${skillStem}_`
+  ]);
+  if (skillStem.toLowerCase() === "skill") {
+    const parent = basename2(normalizedDir);
+    expectedPrefixes.add(`${parent}.`);
+    expectedPrefixes.add(`${parent}-`);
+    expectedPrefixes.add(`${parent}_`);
+  }
+  return files.filter((file) => {
+    if (file === skillFile || file.type !== "skill-md") return false;
+    if (dirname(file.path).replace(/\\/g, "/") !== normalizedDir) return false;
+    const lowerName = basename2(file.path).toLowerCase();
+    if (!lowerName.endsWith(".json")) return false;
+    return HISTORY_SUFFIXES.some((suffix) => lowerName.endsWith(suffix)) && [...expectedPrefixes].some((prefix) => lowerName.startsWith(prefix.toLowerCase()));
+  });
+}
+function parseHistoryFile(file) {
+  try {
+    const parsed = JSON.parse(file.content);
+    return extractRecords(parsed);
+  } catch {
+    return [];
+  }
+}
+function extractRecords(value) {
+  if (Array.isArray(value)) {
+    return value.flatMap((entry) => normalizeRunRecord(entry));
+  }
+  if (!value || typeof value !== "object") {
+    return [];
+  }
+  const record = value;
+  const arrays = [
+    record.runs,
+    record.history,
+    record.executions,
+    record.observations,
+    record.events,
+    record.entries
+  ];
+  for (const candidate of arrays) {
+    if (Array.isArray(candidate)) {
+      return candidate.flatMap((entry) => normalizeRunRecord(entry));
+    }
+  }
+  return normalizeRunRecord(record);
+}
+function normalizeRunRecord(value) {
+  if (!value || typeof value !== "object") {
+    return [];
+  }
+  const record = value;
+  const success = extractSuccess(record);
+  const feedback = extractFeedback(record);
+  if (typeof success !== "boolean" && typeof feedback !== "number") {
+    return [];
+  }
+  return [{ success, feedback }];
+}
+function extractSuccess(record) {
+  for (const key of ["success", "succeeded", "passed"]) {
+    if (typeof record[key] === "boolean") {
+      return record[key];
+    }
+  }
+  const status = [record.status, record.outcome, record.result].find((value) => typeof value === "string");
+  if (typeof status !== "string") return void 0;
+  const normalized = status.toLowerCase();
+  if (["success", "succeeded", "ok", "passed", "completed"].includes(normalized)) {
+    return true;
+  }
+  if (["failure", "failed", "error", "errored", "rollback", "reverted"].includes(normalized)) {
+    return false;
+  }
+  return void 0;
+}
+function extractFeedback(record) {
+  const candidates = [
+    record.feedback,
+    record.feedbackScore,
+    record.rating,
+    record.score,
+    record.userFeedback
+  ];
+  for (const candidate of candidates) {
+    const normalized = normalizeFeedback(candidate);
+    if (typeof normalized === "number") {
+      return normalized;
+    }
+  }
+  return void 0;
+}
+function normalizeFeedback(value) {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    if (value <= 5) return clampFeedback(value);
+    if (value <= 100) return clampFeedback(value / 20);
+  }
+  if (typeof value === "boolean") {
+    return value ? 5 : 1;
+  }
+  if (!value || typeof value !== "object") {
+    return void 0;
+  }
+  const record = value;
+  if (typeof record.rating === "number") return normalizeFeedback(record.rating);
+  if (typeof record.score === "number") return normalizeFeedback(record.score);
+  if (typeof record.positive === "boolean") return record.positive ? 5 : 1;
+  return void 0;
+}
+function clampFeedback(value) {
+  return Math.max(1, Math.min(5, Number(value.toFixed(1))));
+}
+function scoreSkill(profile) {
+  if (typeof profile.successRate !== "number") return void 0;
+  const successScore = profile.successRate * 80;
+  const feedbackScore = typeof profile.averageFeedback === "number" ? profile.averageFeedback / 5 * 20 : 0;
+  return Math.round(successScore + feedbackScore);
+}
+function classifySkillStatus(score) {
+  if (typeof score !== "number") return "unobserved";
+  if (score >= 85) return "healthy";
+  if (score >= 70) return "watch";
+  return "at-risk";
+}
+
+// src/rules/skills.ts
+function buildMissingFieldsLabel(missingFields) {
+  if (missingFields.length === 1) {
+    return missingFields[0];
+  }
+  return `${missingFields.slice(0, -1).join(", ")} and ${missingFields.at(-1)}`;
+}
+var skillRules = [
+  {
+    id: "skills-observation-feedback-hooks",
+    name: "Skill observation and feedback hooks",
+    description: "Checks whether SKILL.md files define observation and feedback hooks for self-improvement loops",
+    severity: "medium",
+    category: "skills",
+    check(file, allFiles = []) {
+      if (!isSkillDefinitionFile(file)) return [];
+      const profile = getSkillProfiles(allFiles).find((entry) => entry.file.path === file.path);
+      if (!profile) return [];
+      const missing = [];
+      if (!profile.hasObservationHooks) missing.push("observation hooks");
+      if (!profile.hasFeedbackHooks) missing.push("feedback hooks");
+      if (missing.length === 0) return [];
+      return [
+        {
+          id: `skills-missing-telemetry-${file.path}`,
+          severity: "medium",
+          category: "skills",
+          title: `Skill is missing ${buildMissingFieldsLabel(missing)}`,
+          description: `The skill "${profile.skillName}" does not define ${buildMissingFieldsLabel(missing)} in SKILL.md. ECC 2.0 self-improving skills need explicit observe/feedback hooks so runs can be inspected and amended safely.`,
+          file: file.path,
+          evidence: buildMissingFieldsLabel(missing)
+        }
+      ];
+    }
+  },
+  {
+    id: "skills-version-rollback-metadata",
+    name: "Skill version and rollback metadata",
+    description: "Checks whether SKILL.md files define versioning and rollback metadata",
+    severity: "medium",
+    category: "skills",
+    check(file, allFiles = []) {
+      if (!isSkillDefinitionFile(file)) return [];
+      const profile = getSkillProfiles(allFiles).find((entry) => entry.file.path === file.path);
+      if (!profile) return [];
+      const missing = [];
+      if (!profile.version) missing.push("version metadata");
+      if (!profile.hasRollbackMetadata) missing.push("rollback metadata");
+      if (missing.length === 0) return [];
+      return [
+        {
+          id: `skills-missing-governance-${file.path}`,
+          severity: "medium",
+          category: "skills",
+          title: `Skill is missing ${buildMissingFieldsLabel(missing)}`,
+          description: `The skill "${profile.skillName}" does not define ${buildMissingFieldsLabel(missing)}. Self-amending skills need explicit version and rollback markers so regressions can be evaluated and reversed.`,
+          file: file.path,
+          evidence: buildMissingFieldsLabel(missing)
+        }
+      ];
+    }
+  }
+];
+
 // src/rules/index.ts
 function getBuiltinRules() {
   return [
@@ -6768,6 +7102,7 @@ function getBuiltinRules() {
     ...permissionRules,
     ...hookRules,
     ...mcpRules,
+    ...skillRules,
     ...agentRules
   ];
 }
@@ -6777,7 +7112,8 @@ function scan(targetPath) {
   const target = discoverConfigFiles(targetPath);
   const rules = getBuiltinRules();
   const findings = runRules(target.files, rules);
-  return { target, findings };
+  const skillHealth = analyzeSkillHealth(target.files);
+  return { target, findings, skillHealth };
 }
 function runRules(files, rules) {
   const findings = [];
@@ -6888,7 +7224,7 @@ var SCORE_DEDUCTIONS = {
 };
 var TEMPLATE_EXAMPLE_CATEGORY_CAP = 10;
 function calculateScore(result) {
-  const { findings, target } = result;
+  const { findings, target, skillHealth } = result;
   const summary = summarizeFindings(findings, target.files.length);
   const score = computeScore(findings);
   return {
@@ -6896,7 +7232,8 @@ function calculateScore(result) {
     targetPath: target.path,
     findings,
     score,
-    summary
+    summary,
+    skillHealth
   };
 }
 function summarizeFindings(findings, filesScanned) {
@@ -6977,6 +7314,7 @@ function mapToScoreCategory(category) {
     permissions: "permissions",
     hooks: "hooks",
     mcp: "mcp",
+    skills: "agents",
     agents: "agents",
     injection: "agents",
     // prompt injection → agents category
@@ -7036,6 +7374,21 @@ function renderMarkdownReport(report) {
   lines.push(`| Info | ${s.info} |`);
   lines.push(`| Auto-fixable | ${s.autoFixable} |`);
   lines.push("");
+  if (report.skillHealth && report.skillHealth.totalSkills > 0) {
+    lines.push("## Skill Health");
+    lines.push("");
+    lines.push("| Metric | Value |");
+    lines.push("|--------|-------|");
+    lines.push(`| Skills discovered | ${report.skillHealth.totalSkills} |`);
+    lines.push(`| Instrumented | ${report.skillHealth.instrumentedSkills} |`);
+    lines.push(`| Versioned | ${report.skillHealth.versionedSkills} |`);
+    lines.push(`| Rollback-ready | ${report.skillHealth.rollbackReadySkills} |`);
+    lines.push(`| With history | ${report.skillHealth.observedSkills} |`);
+    if (typeof report.skillHealth.averageScore === "number") {
+      lines.push(`| Average health score | ${report.skillHealth.averageScore}/100 |`);
+    }
+    lines.push("");
+  }
   const categoryLabels = {
     secrets: "Secrets",
     permissions: "Permissions",

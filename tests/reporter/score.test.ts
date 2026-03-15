@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { calculateScore } from "../../src/reporter/score.js";
-import type { Finding, ScanTarget } from "../../src/types.js";
+import type { Finding, ScanTarget, SkillHealthSummary } from "../../src/types.js";
 import type { ScanResult } from "../../src/scanner/index.js";
 
 function makeScanResult(findings: Finding[]): ScanResult {
@@ -20,6 +20,33 @@ function makeFinding(overrides: Partial<Finding> = {}): Finding {
     description: "Test description",
     file: "test.json",
     ...overrides,
+  };
+}
+
+function makeSkillHealthSummary(): SkillHealthSummary {
+  return {
+    totalSkills: 1,
+    instrumentedSkills: 1,
+    versionedSkills: 1,
+    rollbackReadySkills: 1,
+    observedSkills: 1,
+    averageScore: 92,
+    skills: [
+      {
+        skillName: "self-improver",
+        file: "skills/self-improver.md",
+        version: "2.0.0",
+        hasObservationHooks: true,
+        hasFeedbackHooks: true,
+        hasRollbackMetadata: true,
+        score: 92,
+        status: "healthy",
+        observedRuns: 8,
+        successRate: 0.875,
+        averageFeedback: 4.6,
+        historyFiles: ["skills/self-improver.history.json"],
+      },
+    ],
   };
 }
 
@@ -323,5 +350,43 @@ describe("calculateScore", () => {
       makeFinding({ id: "c14", severity: "critical", category: "agents" }),
       makeFinding({ id: "c15", severity: "critical", category: "agents" }),
     ])).score.grade).toBe("F"); // avg = (25+25+25+25+25)/5 = 25
+  });
+
+  it("preserves skill health summaries in the report", () => {
+    const report = calculateScore({
+      ...makeScanResult([]),
+      skillHealth: makeSkillHealthSummary(),
+    });
+
+    expect(report.skillHealth?.averageScore).toBe(92);
+    expect(report.skillHealth?.skills[0].skillName).toBe("self-improver");
+  });
+
+  it("maps skill findings into the agents score bucket", () => {
+    const report = calculateScore(
+      makeScanResult([
+        makeFinding({
+          id: "skills-1",
+          category: "skills",
+          severity: "medium",
+        }),
+      ])
+    );
+
+    expect(report.score.breakdown.agents).toBe(95);
+  });
+
+  it("leaves skill health undefined when scan results omit it", () => {
+    const report = calculateScore(makeScanResult([]));
+    expect(report.skillHealth).toBeUndefined();
+  });
+
+  it("does not penalize security score for skill health metadata alone", () => {
+    const report = calculateScore({
+      ...makeScanResult([]),
+      skillHealth: makeSkillHealthSummary(),
+    });
+
+    expect(report.score.numericScore).toBe(100);
   });
 });

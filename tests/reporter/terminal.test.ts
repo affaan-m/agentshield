@@ -1,6 +1,33 @@
 import { describe, it, expect } from "vitest";
 import { renderTerminalReport } from "../../src/reporter/terminal.js";
-import type { SecurityReport } from "../../src/types.js";
+import type { SecurityReport, SkillHealthSummary } from "../../src/types.js";
+
+function makeSkillHealthSummary(): SkillHealthSummary {
+  return {
+    totalSkills: 1,
+    instrumentedSkills: 1,
+    versionedSkills: 1,
+    rollbackReadySkills: 1,
+    observedSkills: 1,
+    averageScore: 92,
+    skills: [
+      {
+        skillName: "self-improver",
+        file: "skills/self-improver.md",
+        version: "2.0.0",
+        hasObservationHooks: true,
+        hasFeedbackHooks: true,
+        hasRollbackMetadata: true,
+        score: 92,
+        status: "healthy",
+        observedRuns: 8,
+        successRate: 0.875,
+        averageFeedback: 4.6,
+        historyFiles: ["skills/self-improver.history.json"],
+      },
+    ],
+  };
+}
 
 function makeReport(overrides: Partial<SecurityReport> = {}): SecurityReport {
   return {
@@ -194,5 +221,68 @@ describe("renderTerminalReport", () => {
   it("includes footer", () => {
     const output = renderTerminalReport(makeReport());
     expect(output).toContain("AgentShield");
+  });
+
+  it("renders skill health when present", () => {
+    const output = renderTerminalReport(
+      makeReport({
+        skillHealth: makeSkillHealthSummary(),
+      })
+    );
+
+    expect(output).toContain("Skill Health");
+    expect(output).toContain("self-improver");
+    expect(output).toContain("92/100");
+    expect(output).toContain("Average health");
+  });
+
+  it("renders unobserved skill health without score", () => {
+    const output = renderTerminalReport(
+      makeReport({
+        skillHealth: {
+          ...makeSkillHealthSummary(),
+          averageScore: undefined,
+          observedSkills: 0,
+          skills: [
+            {
+              ...makeSkillHealthSummary().skills[0],
+              score: undefined,
+              status: "unobserved",
+              observedRuns: 0,
+              successRate: undefined,
+              averageFeedback: undefined,
+            },
+          ],
+        },
+      })
+    );
+
+    expect(output).toContain("unobserved");
+    expect(output).toContain("With history:      0");
+  });
+
+  it("omits skill health when no skills are present", () => {
+    const output = renderTerminalReport(
+      makeReport({
+        skillHealth: {
+          ...makeSkillHealthSummary(),
+          totalSkills: 0,
+          skills: [],
+        },
+      })
+    );
+
+    expect(output).not.toContain("Skill Health");
+  });
+
+  it("renders success rate details for observed skills", () => {
+    const output = renderTerminalReport(
+      makeReport({
+        skillHealth: makeSkillHealthSummary(),
+      })
+    );
+
+    expect(output).toContain("Runs: 8, success: 88%");
+    expect(output).toContain("feedback: 4.6/5");
   });
 });

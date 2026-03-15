@@ -4,6 +4,7 @@ import { permissionRules } from "./permissions.js";
 import { hookRules } from "./hooks.js";
 import { mcpRules } from "./mcp.js";
 import { agentRules } from "./agents.js";
+import { skillRules } from "./skills.js";
 
 /**
  * Returns all built-in security rules.
@@ -15,6 +16,7 @@ export function getBuiltinRules(): ReadonlyArray<Rule> {
     ...permissionRules,
     ...hookRules,
     ...mcpRules,
+    ...skillRules,
     ...agentRules,
   ];
 }

@@ -55,6 +55,22 @@ export function renderMarkdownReport(report: SecurityReport): string {
   lines.push(`| Auto-fixable | ${s.autoFixable} |`);
   lines.push("");
 
+  if (report.skillHealth && report.skillHealth.totalSkills > 0) {
+    lines.push("## Skill Health");
+    lines.push("");
+    lines.push("| Metric | Value |");
+    lines.push("|--------|-------|");
+    lines.push(`| Skills discovered | ${report.skillHealth.totalSkills} |`);
+    lines.push(`| Instrumented | ${report.skillHealth.instrumentedSkills} |`);
+    lines.push(`| Versioned | ${report.skillHealth.versionedSkills} |`);
+    lines.push(`| Rollback-ready | ${report.skillHealth.rollbackReadySkills} |`);
+    lines.push(`| With history | ${report.skillHealth.observedSkills} |`);
+    if (typeof report.skillHealth.averageScore === "number") {
+      lines.push(`| Average health score | ${report.skillHealth.averageScore}/100 |`);
+    }
+    lines.push("");
+  }
+
   // Score breakdown (dynamically generated from breakdown keys)
   const categoryLabels: Record<string, string> = {
     secrets: "Secrets",

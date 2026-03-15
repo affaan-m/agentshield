@@ -191,6 +191,7 @@ describe("integration", () => {
       expect(result.target).toBeDefined();
       expect(result.target.files.length).toBeGreaterThan(0);
       expect(result.findings.length).toBeGreaterThan(0);
+      expect(result.skillHealth === undefined || result.skillHealth.totalSkills >= 0).toBe(true);
 
       // Every finding has required fields
       for (const finding of result.findings) {
@@ -213,6 +214,7 @@ describe("integration", () => {
       expect(report.score.numericScore).toBeGreaterThanOrEqual(0);
       expect(report.score.numericScore).toBeLessThanOrEqual(100);
       expect(report.summary.totalFindings).toBeGreaterThan(0);
+      expect(report.skillHealth === undefined || report.skillHealth.totalSkills >= 0).toBe(true);
     });
 
     it("renderTerminalReport produces readable output from scan", () => {
