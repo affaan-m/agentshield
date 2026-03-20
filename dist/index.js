@@ -972,6 +972,9 @@ var init_secrets = __esm({
 });
 
 // src/rules/permissions.ts
+import { statSync as statSync2 } from "fs";
+import { resolve, join as join2 } from "path";
+import { homedir } from "os";
 function isHookManifestConfig(file, config) {
   if (!/(^|\/)hooks\/[^/]+\.json$/i.test(file.path)) return false;
   if (!config || typeof config !== "object") return false;
@@ -1071,6 +1074,23 @@ function isExactAllowEntry(entry) {
 }
 function hasOnlyExactAllowEntries(allowEntries) {
   return allowEntries.length > 0 && allowEntries.every((entry) => isExactAllowEntry(entry));
+}
+function resolveClaudeMdPath(relativePath) {
+  if (/^\.claude\/CLAUDE\.md$/i.test(relativePath)) {
+    const homeClaudeMd = join2(homedir(), ".claude", "CLAUDE.md");
+    try {
+      statSync2(homeClaudeMd);
+      return homeClaudeMd;
+    } catch {
+    }
+  }
+  try {
+    const resolved = resolve(relativePath);
+    statSync2(resolved);
+    return resolved;
+  } catch {
+    return null;
+  }
 }
 function findLineNumber2(content, matchIndex) {
   return content.substring(0, matchIndex).split("\n").length;
@@ -1723,6 +1743,48 @@ var init_permissions = __esm({
           }
           return findings;
         }
+      },
+      {
+        id: "permissions-claude-md-world-writable",
+        name: "CLAUDE.md File Permissions Too Open",
+        description: "Checks if CLAUDE.md files have overly permissive filesystem permissions (world-writable or group-writable)",
+        severity: "high",
+        category: "permissions",
+        check(file) {
+          if (file.type !== "claude-md") return [];
+          const normalizedPath = file.path.replace(/\\/g, "/");
+          if (!/CLAUDE\.md$/i.test(normalizedPath)) return [];
+          const absolutePath = resolveClaudeMdPath(normalizedPath);
+          if (!absolutePath) return [];
+          try {
+            const stat3 = statSync2(absolutePath);
+            const mode = stat3.mode;
+            const isGroupWritable = (mode & 16) !== 0;
+            const isOtherWritable = (mode & 2) !== 0;
+            if (!isGroupWritable && !isOtherWritable) return [];
+            const issues = [];
+            if (isOtherWritable) issues.push("world-writable");
+            if (isGroupWritable) issues.push("group-writable");
+            const modeStr = "0o" + (mode & 511).toString(8);
+            return [{
+              id: "permissions-claude-md-world-writable",
+              severity: isOtherWritable ? "high" : "medium",
+              category: "permissions",
+              title: `CLAUDE.md is ${issues.join(" and ")} (${modeStr})`,
+              description: `The file ${normalizedPath} has permissions ${modeStr}, making it ${issues.join(" and ")}. CLAUDE.md files are injected into every Claude Code prompt as system instructions. A local attacker or malicious process could modify this file to inject prompt instructions that exfiltrate data, run arbitrary commands, or alter agent behavior. Restrict permissions to owner-only (chmod 600).`,
+              file: file.path,
+              evidence: `permissions: ${modeStr}`,
+              fix: {
+                description: "Restrict file permissions to owner-only read/write",
+                before: modeStr,
+                after: "0o600",
+                auto: true
+              }
+            }];
+          } catch {
+            return [];
+          }
+        }
       }
     ];
   }
@@ -1881,6 +1943,66 @@ function isCommentOnlyShellMatch(content, index) {
   const line = getLineContentAtIndex(content, index).trimStart();
   return line.startsWith("#");
 }
+function isInsideTestPattern(content, matchIndex) {
+  const prefix = content.slice(0, matchIndex);
+  let lastSingleQuote = -1;
+  let lastDoubleQuote = -1;
+  let inSingle = false;
+  let inDouble = false;
+  for (let i = 0; i < prefix.length; i++) {
+    const ch = prefix[i];
+    if (ch === "'" && !inDouble) {
+      inSingle = !inSingle;
+      if (inSingle) lastSingleQuote = i;
+    } else if (ch === '"' && !inSingle) {
+      inDouble = !inDouble;
+      if (inDouble) lastDoubleQuote = i;
+    }
+  }
+  const quoteStart = Math.max(lastSingleQuote, lastDoubleQuote);
+  if ((inSingle || inDouble) && quoteStart > 0) {
+    const beforeQuote = prefix.slice(0, quoteStart).trimEnd();
+    if (/\b(?:grep|egrep|fgrep)\b(?:\s+-[a-zA-Z]+)*\s*$/i.test(beforeQuote)) {
+      return true;
+    }
+    if (/\[\[?\s+.*(?:==|=|!=|=~)\s*(?:\*?)?$/.test(beforeQuote)) {
+      return true;
+    }
+    if (/\bcase\b/.test(beforeQuote) || /\)\s*$/.test(beforeQuote) === false && /\|\s*$/.test(beforeQuote)) {
+      if (/\bcase\s+/.test(content.slice(0, quoteStart))) {
+        return true;
+      }
+    }
+  }
+  const lineStart = prefix.lastIndexOf("\n") + 1;
+  const linePrefix = prefix.slice(lineStart).trimStart();
+  if (/^\*?[a-zA-Z_-]+\*?\)/.test(linePrefix) || /^\|?\s*\*/.test(linePrefix)) {
+    if (/\bcase\s+/.test(content.slice(0, matchIndex))) {
+      return true;
+    }
+  }
+  if (/\b(?:grep|egrep|fgrep)\b(?:\s+-[a-zA-Z]+)*\s+$/.test(linePrefix)) {
+    return true;
+  }
+  return false;
+}
+function isInsideQuotedString(content, matchIndex) {
+  const prefix = content.slice(0, matchIndex);
+  let inSingle = false;
+  let inDouble = false;
+  for (let i = 0; i < prefix.length; i++) {
+    const ch = prefix[i];
+    if (ch === "'" && !inDouble) {
+      inSingle = !inSingle;
+    } else if (ch === '"' && !inSingle) {
+      inDouble = !inDouble;
+    }
+  }
+  return inSingle || inDouble;
+}
+function isBlockingGuardCommand(content) {
+  return /\bexit\s+2\b/.test(content);
+}
 function findAllHookMatches(file, pattern) {
   const matches = [];
   for (const target of getHookSearchTargets(file)) {
@@ -1888,11 +2010,17 @@ function findAllHookMatches(file, pattern) {
       if (file.type === "hook-script" && isCommentOnlyShellMatch(target.content, match.index ?? 0)) {
         continue;
       }
+      const matchIndex = match.index ?? 0;
+      if (isBlockingGuardCommand(target.content)) {
+        if (isInsideTestPattern(target.content, matchIndex) || isInsideQuotedString(target.content, matchIndex)) {
+          continue;
+        }
+      }
       matches.push({
         match,
-        line: target.baseLine + findLineNumber3(target.content, match.index ?? 0) - 1,
+        line: target.baseLine + findLineNumber3(target.content, matchIndex) - 1,
         content: target.content,
-        commandContext: getCommandContext(target.content, match.index ?? 0)
+        commandContext: getCommandContext(target.content, matchIndex)
       });
     }
   }
@@ -2538,6 +2666,9 @@ var init_hooks = __esm({
             ];
             for (const hook of allHooks) {
               for (const command of extractHookCommands2(hook)) {
+                if (isBlockingGuardCommand(command)) {
+                  continue;
+                }
                 let chainCount = 0;
                 for (const { pattern } of chainPatterns) {
                   const matches = [...command.matchAll(new RegExp(pattern.source, "g"))];
@@ -4912,6 +5043,576 @@ var init_mcp = __esm({
   }
 });
 
+// src/threat-intel/cve-database.ts
+function checkPackageName(packageName, version) {
+  const match = MALICIOUS_PACKAGES.find((pkg) => pkg.name === packageName);
+  if (!match) return void 0;
+  if (match.type === "compromised" && match.affectedVersions && version) {
+    const affectedVersionList = match.affectedVersions.split(",").map((v) => v.trim());
+    if (!affectedVersionList.includes(version)) {
+      return void 0;
+    }
+  }
+  return match;
+}
+function checkServerPackage(command, args) {
+  for (const server of VULNERABLE_SERVERS) {
+    if (command === server.packageName || command.endsWith(`/${server.packageName}`)) {
+      return server;
+    }
+  }
+  for (const arg of args) {
+    if (arg.startsWith("-")) continue;
+    for (const server of VULNERABLE_SERVERS) {
+      if (arg === server.packageName || arg.startsWith(`${server.packageName}@`)) {
+        return server;
+      }
+    }
+  }
+  return void 0;
+}
+var MALICIOUS_PACKAGES, VULNERABLE_SERVERS;
+var init_cve_database = __esm({
+  "src/threat-intel/cve-database.ts"() {
+    "use strict";
+    MALICIOUS_PACKAGES = [
+      // SANDWORM_MODE typosquats targeting MCP SDK
+      {
+        name: "@anthropic-ai/model-context-protocol-sdk",
+        type: "typosquat",
+        description: "Typosquat of the official @modelcontextprotocol/sdk. Part of SANDWORM_MODE supply chain campaign targeting MCP developers.",
+        legitimatePackage: "@modelcontextprotocol/sdk"
+      },
+      {
+        name: "anthropic-mcp-sdk",
+        type: "typosquat",
+        description: "Typosquat targeting developers searching for the Anthropic MCP SDK.",
+        legitimatePackage: "@modelcontextprotocol/sdk"
+      },
+      {
+        name: "mcp-sdk-anthropic",
+        type: "typosquat",
+        description: "Typosquat with reversed naming convention targeting MCP SDK users.",
+        legitimatePackage: "@modelcontextprotocol/sdk"
+      },
+      {
+        name: "@anthropic/mcp-server",
+        type: "typosquat",
+        description: "Typosquat using incorrect scope for Anthropic MCP servers (correct scope is @anthropics or @modelcontextprotocol).",
+        legitimatePackage: "@modelcontextprotocol/sdk"
+      },
+      // Compromised legitimate packages
+      {
+        name: "cline",
+        type: "compromised",
+        description: "Clinejection supply chain attack. Compromised npm token used to publish cline@2.3.0 with malicious postinstall script that installed openclaw. ~4,000 downloads in ~8 hour window.",
+        affectedVersions: "2.3.0"
+      },
+      // Known malicious MCP servers
+      {
+        name: "postmark-mcp",
+        type: "malicious",
+        description: "Malicious MCP server impersonating Postmark email service. Version 1.0.16 secretly BCCs every outgoing email to an attacker-controlled domain.",
+        affectedVersions: "1.0.16"
+      },
+      {
+        name: "openclaw",
+        type: "malicious",
+        description: "Malicious package installed by the compromised cline@2.3.0 postinstall script. Part of the Clinejection supply chain attack."
+      },
+      // AI-specific typosquats from PyPI/npm campaigns
+      {
+        name: "aliyun-ai-labs-snippets-sdk",
+        type: "malicious",
+        description: "Malicious PyPI package delivering infostealer hidden inside PyTorch model files."
+      },
+      {
+        name: "ai-labs-snippets-sdk",
+        type: "malicious",
+        description: "Malicious PyPI package delivering infostealer hidden inside PyTorch model files."
+      },
+      {
+        name: "aliyun-ai-labs-sdk",
+        type: "malicious",
+        description: "Malicious PyPI package delivering infostealer hidden inside PyTorch model files."
+      }
+    ];
+    VULNERABLE_SERVERS = [
+      {
+        packageName: "@anthropics/mcp-server-git",
+        cveIds: ["CVE-2025-68145", "CVE-2025-68143", "CVE-2025-68144"],
+        description: "Anthropic's official MCP git server has path traversal, unrestricted git_init, and argument injection vulnerabilities."
+      },
+      {
+        packageName: "mcp-server-git",
+        cveIds: ["CVE-2025-68145", "CVE-2025-68143", "CVE-2025-68144"],
+        description: "MCP git server (community package) shares vulnerabilities with the official Anthropic version."
+      },
+      {
+        packageName: "mcp-remote",
+        cveIds: ["CVE-2025-6514"],
+        description: "OS command injection via malicious authorization_endpoint. The authorization URL is passed to the system shell without sanitization."
+      }
+    ];
+  }
+});
+
+// src/rules/mcp-cve.ts
+function buildMaliciousFinding(serverName, packageName, match, filePath) {
+  const typeLabel = match.type === "typosquat" ? "typosquat" : match.type === "compromised" ? "compromised package" : "known-malicious package";
+  return {
+    id: `mcp-malicious-pkg-${serverName}`,
+    severity: "critical",
+    category: "mcp",
+    title: `MCP server "${serverName}" uses ${typeLabel}: ${packageName}`,
+    description: `${match.description}${match.legitimatePackage ? ` Did you mean "${match.legitimatePackage}"?` : ""}`,
+    file: filePath,
+    evidence: `package: ${packageName}, type: ${match.type}`,
+    fix: {
+      description: match.legitimatePackage ? `Replace with the legitimate package: ${match.legitimatePackage}` : "Remove this package immediately",
+      before: packageName,
+      after: match.legitimatePackage ?? "# REMOVE \u2014 malicious package",
+      auto: false
+    }
+  };
+}
+var rawCveMcpRules, cveMcpRules;
+var init_mcp_cve = __esm({
+  "src/rules/mcp-cve.ts"() {
+    "use strict";
+    init_cve_database();
+    rawCveMcpRules = [
+      {
+        id: "mcp-known-vulnerable-server",
+        name: "Known Vulnerable MCP Server Package",
+        description: "Cross-references MCP server packages against the CVE database to detect known-vulnerable servers",
+        severity: "critical",
+        category: "mcp",
+        check(file) {
+          if (file.type !== "mcp-json" && file.type !== "settings-json") return [];
+          const findings = [];
+          try {
+            const config = JSON.parse(file.content);
+            const servers = config.mcpServers ?? {};
+            for (const [name, server] of Object.entries(servers)) {
+              const serverConfig = server ?? {};
+              const command = serverConfig.command ?? "";
+              const args = serverConfig.args ?? [];
+              const vulnServer = checkServerPackage(command, args);
+              if (vulnServer) {
+                const cveList = vulnServer.cveIds.join(", ");
+                findings.push({
+                  id: `mcp-known-vuln-${name}`,
+                  severity: "critical",
+                  category: "mcp",
+                  title: `MCP server "${name}" uses known-vulnerable package: ${vulnServer.packageName}`,
+                  description: `${vulnServer.description} Known CVEs: ${cveList}.${vulnServer.fixedIn ? ` Fixed in ${vulnServer.fixedIn}.` : " Check for updates."}`,
+                  file: file.path,
+                  evidence: `package: ${vulnServer.packageName}, CVEs: ${cveList}`,
+                  fix: {
+                    description: "Update to a patched version or replace with a secure alternative",
+                    before: vulnServer.packageName,
+                    after: `${vulnServer.packageName}@latest (verify patch)`,
+                    auto: false
+                  }
+                });
+              }
+            }
+          } catch {
+          }
+          return findings;
+        }
+      },
+      {
+        id: "mcp-malicious-package",
+        name: "Known Malicious Package in MCP Config",
+        description: "Checks MCP server configurations for known-malicious and typosquatted packages",
+        severity: "critical",
+        category: "mcp",
+        check(file) {
+          if (file.type !== "mcp-json" && file.type !== "settings-json") return [];
+          const findings = [];
+          try {
+            const config = JSON.parse(file.content);
+            const servers = config.mcpServers ?? {};
+            for (const [name, server] of Object.entries(servers)) {
+              const serverConfig = server ?? {};
+              const command = serverConfig.command ?? "";
+              const args = serverConfig.args ?? [];
+              const cmdMatch = checkPackageName(command);
+              if (cmdMatch) {
+                findings.push(buildMaliciousFinding(name, command, cmdMatch, file.path));
+                continue;
+              }
+              for (const arg of args) {
+                if (arg.startsWith("-")) continue;
+                const pkgName = arg.includes("@") && !arg.startsWith("@") ? arg.substring(0, arg.indexOf("@")) : arg.startsWith("@") && arg.split("@").length > 2 ? arg.substring(0, arg.lastIndexOf("@")) : arg;
+                const match = checkPackageName(pkgName);
+                if (match) {
+                  findings.push(buildMaliciousFinding(name, pkgName, match, file.path));
+                  break;
+                }
+              }
+            }
+          } catch {
+          }
+          return findings;
+        }
+      }
+    ];
+    cveMcpRules = rawCveMcpRules;
+  }
+});
+
+// src/rules/mcp-tool-poisoning.ts
+var INJECTION_NAME_PATTERNS, EXFILTRATION_URL_PATTERNS, SENSITIVE_PATHS, DESCRIPTION_POISONING_PATTERNS, rawToolPoisoningRules, toolPoisoningRules;
+var init_mcp_tool_poisoning = __esm({
+  "src/rules/mcp-tool-poisoning.ts"() {
+    "use strict";
+    INJECTION_NAME_PATTERNS = [
+      // URLs embedded in names
+      /https?:\/\//i,
+      // Prompt override attempts
+      /\bignore\s+(previous|all|prior)\s+instructions?\b/i,
+      /\bsystem\s*:/i,
+      /\byou\s+are\s+now\b/i,
+      /\bassistant\s*:/i,
+      // Newlines in names (hidden instructions)
+      /[\n\r]/,
+      // Instruction-like compound names (handles both spaces and underscores)
+      /(send|exfiltrate|steal|leak|extract|read|dump|collect)[\s_\-/].*(to|from|all|every)[\s_\-/].*(https?|urls?|servers?|endpoints?|secrets?|keys?|tokens?|passwords?|credentials?|ssh|env)/i,
+      // Common attack verbs combined with targets
+      /read[\s_].*(?:and|then)[\s_].*send/i
+    ];
+    EXFILTRATION_URL_PATTERNS = [
+      {
+        pattern: /\bngrok\.io\b/i,
+        description: "ngrok tunneling service (commonly used for exfiltration)"
+      },
+      {
+        pattern: /\bngrok\.app\b/i,
+        description: "ngrok tunneling service (commonly used for exfiltration)"
+      },
+      {
+        pattern: /\bwebhook\.site\b/i,
+        description: "webhook.site data collection endpoint"
+      },
+      {
+        pattern: /\brequestbin\.com\b/i,
+        description: "RequestBin data collection endpoint"
+      },
+      {
+        pattern: /\brequestcatcher\.com\b/i,
+        description: "RequestCatcher data collection endpoint"
+      },
+      {
+        pattern: /\bpipedream\.net\b/i,
+        description: "Pipedream webhook endpoint"
+      },
+      {
+        pattern: /\bbeeceptor\.com\b/i,
+        description: "Beeceptor mock/intercept endpoint"
+      },
+      {
+        pattern: /\bhookbin\.com\b/i,
+        description: "Hookbin data collection endpoint"
+      },
+      {
+        pattern: /\bburpcollaborator\.net\b/i,
+        description: "Burp Collaborator (offensive security tool)"
+      },
+      {
+        pattern: /\binteractsh\.com\b/i,
+        description: "Interactsh out-of-band interaction server"
+      },
+      {
+        pattern: /\bcollect\?data=|\/exfil|\/steal|\/leak/i,
+        description: "URL path suggesting data exfiltration endpoint"
+      }
+    ];
+    SENSITIVE_PATHS = [
+      {
+        pattern: /^~?\/?\.ssh\b/,
+        description: "SSH keys and configuration"
+      },
+      {
+        pattern: /^~?\/?\.gnupg\b/,
+        description: "GPG keys and configuration"
+      },
+      {
+        pattern: /^~?\/?\.aws\b/,
+        description: "AWS credentials and configuration"
+      },
+      {
+        pattern: /^~?\/?\.kube\b/,
+        description: "Kubernetes configuration and credentials"
+      },
+      {
+        pattern: /^\/etc\b/,
+        description: "System configuration directory"
+      },
+      {
+        pattern: /^\/var\/log\b/,
+        description: "System log files"
+      },
+      {
+        pattern: /^\/Users\/[^/]+$/,
+        description: "User home directory (macOS)"
+      },
+      {
+        pattern: /^\/home\/[^/]+$/,
+        description: "User home directory (Linux)"
+      },
+      {
+        pattern: /^C:\\Users\\[^\\]+$/i,
+        description: "User home directory (Windows)"
+      }
+    ];
+    DESCRIPTION_POISONING_PATTERNS = [
+      // Data harvesting instructions
+      {
+        pattern: /\b(always|must|first|before)\b.{0,80}\b(include|send|read|output|call|fetch|get)\b.{0,80}(?:\.env|\.ssh|id_rsa|\bcredentials?\b|\bsecrets?\b|\btokens?\b|\bpasswords?\b|\bapi[_\s-]?keys?\b)/i,
+        description: "Hidden instruction to harvest sensitive files or credentials"
+      },
+      // Prompt reflection / system prompt leaking
+      {
+        pattern: /\b(output|print|display|return|reveal|show)\b.{0,80}\b(system\s+prompt|previous\s+conversation|full\s+context|all\s+previous|conversation\s+history)\b/i,
+        description: "Instruction to leak system prompt or conversation context"
+      },
+      // URL exfiltration commands in descriptions
+      {
+        pattern: /\b(send|post|transmit|forward|upload)\b.{0,100}\bhttps?:\/\//i,
+        description: "Instruction to exfiltrate data to an external URL"
+      },
+      // Override/ignore instructions
+      {
+        pattern: /\bignore\s+(previous|all|prior|other)\s+(instructions?|rules?|guidelines?)\b/i,
+        description: "Attempt to override the agent's instructions"
+      },
+      // Execute arbitrary commands
+      {
+        pattern: /\b(execute|run|eval)\b.{0,60}\b(command|shell|bash|script|code)\b/i,
+        description: "Instruction to execute arbitrary commands"
+      }
+    ];
+    rawToolPoisoningRules = [
+      {
+        id: "mcp-tool-name-injection",
+        name: "MCP Server Name Contains Injection Attempt",
+        description: "Detects MCP server names that contain instruction-like text, URLs, or prompt injection patterns",
+        severity: "high",
+        category: "mcp",
+        check(file) {
+          if (file.type !== "mcp-json" && file.type !== "settings-json") return [];
+          const findings = [];
+          try {
+            const config = JSON.parse(file.content);
+            const servers = config.mcpServers ?? {};
+            for (const name of Object.keys(servers)) {
+              for (const pattern of INJECTION_NAME_PATTERNS) {
+                if (pattern.test(name)) {
+                  findings.push({
+                    id: `mcp-tool-name-injection-${name.substring(0, 30)}`,
+                    severity: "high",
+                    category: "mcp",
+                    title: `MCP server name contains injection pattern: "${name.substring(0, 60)}"`,
+                    description: `The MCP server name "${name.substring(0, 80)}" contains suspicious patterns that may be an injection attempt. Server names should be simple identifiers, not instructions or URLs.`,
+                    file: file.path,
+                    evidence: name.substring(0, 100),
+                    fix: {
+                      description: "Rename the server to a simple, descriptive identifier",
+                      before: name.substring(0, 40),
+                      after: "safe-server-name",
+                      auto: false
+                    }
+                  });
+                  break;
+                }
+              }
+            }
+          } catch {
+          }
+          return findings;
+        }
+      },
+      {
+        id: "mcp-suspicious-url-args",
+        name: "MCP Server Args Contain Suspicious URLs",
+        description: "Detects MCP server arguments containing URLs associated with data exfiltration or tunneling services",
+        severity: "high",
+        category: "mcp",
+        check(file) {
+          if (file.type !== "mcp-json" && file.type !== "settings-json") return [];
+          const findings = [];
+          try {
+            const config = JSON.parse(file.content);
+            const servers = config.mcpServers ?? {};
+            for (const [name, server] of Object.entries(servers)) {
+              const serverConfig = server ?? {};
+              const args = serverConfig.args ?? [];
+              for (const arg of args) {
+                for (const { pattern, description } of EXFILTRATION_URL_PATTERNS) {
+                  if (pattern.test(arg)) {
+                    findings.push({
+                      id: `mcp-suspicious-url-${name}`,
+                      severity: "high",
+                      category: "mcp",
+                      title: `MCP server "${name}" has suspicious URL in args`,
+                      description: `The argument "${arg.substring(0, 80)}" contains a ${description}. This may indicate a data exfiltration setup where agent outputs or sensitive data are sent to an attacker-controlled endpoint.`,
+                      file: file.path,
+                      evidence: arg.substring(0, 100),
+                      fix: {
+                        description: "Remove the suspicious URL or replace with a trusted endpoint",
+                        before: arg.substring(0, 40),
+                        after: "https://your-trusted-endpoint.com",
+                        auto: false
+                      }
+                    });
+                    break;
+                  }
+                }
+              }
+            }
+          } catch {
+          }
+          return findings;
+        }
+      },
+      {
+        id: "mcp-overly-broad-access",
+        name: "MCP Server Has Overly Broad File Access",
+        description: "Detects MCP servers configured with access to sensitive directories like .ssh, .aws, /etc, or user home directories",
+        severity: "high",
+        category: "mcp",
+        check(file) {
+          if (file.type !== "mcp-json" && file.type !== "settings-json") return [];
+          const findings = [];
+          try {
+            const config = JSON.parse(file.content);
+            const servers = config.mcpServers ?? {};
+            for (const [name, server] of Object.entries(servers)) {
+              const serverConfig = server ?? {};
+              const args = serverConfig.args ?? [];
+              for (const arg of args) {
+                if (arg.startsWith("-")) continue;
+                for (const { pattern, description } of SENSITIVE_PATHS) {
+                  if (pattern.test(arg)) {
+                    findings.push({
+                      id: `mcp-broad-access-${name}-${arg.substring(0, 20)}`,
+                      severity: "high",
+                      category: "mcp",
+                      title: `MCP server "${name}" has access to sensitive path: ${arg}`,
+                      description: `The MCP server "${name}" is configured with access to "${arg}" (${description}). This grants the agent access to sensitive system resources that should not be accessible through MCP servers.`,
+                      file: file.path,
+                      evidence: `args: [..., "${arg}"]`,
+                      fix: {
+                        description: "Restrict to project-specific directories only",
+                        before: arg,
+                        after: "./src",
+                        auto: false
+                      }
+                    });
+                    break;
+                  }
+                }
+              }
+            }
+          } catch {
+          }
+          return findings;
+        }
+      },
+      {
+        id: "mcp-description-poisoning",
+        name: "MCP Server Description Contains Poisoning Pattern",
+        description: "Detects MCP server descriptions that contain hidden instructions, data harvesting commands, prompt reflection, or exfiltration URLs",
+        severity: "critical",
+        category: "mcp",
+        check(file) {
+          if (file.type !== "mcp-json" && file.type !== "settings-json") return [];
+          const findings = [];
+          try {
+            const config = JSON.parse(file.content);
+            const servers = config.mcpServers ?? {};
+            for (const [name, server] of Object.entries(servers)) {
+              const serverConfig = server ?? {};
+              const description = serverConfig.description ?? "";
+              if (!description) continue;
+              for (const poisonPattern of DESCRIPTION_POISONING_PATTERNS) {
+                if (poisonPattern.pattern.test(description)) {
+                  findings.push({
+                    id: `mcp-desc-poisoning-${name}`,
+                    severity: "critical",
+                    category: "mcp",
+                    title: `MCP server "${name}" description contains tool poisoning pattern`,
+                    description: `The description for MCP server "${name}" contains a suspicious pattern: ${poisonPattern.description}. Tool description poisoning is a known attack vector where hidden instructions in descriptions manipulate the AI agent's behavior without the user's knowledge.`,
+                    file: file.path,
+                    evidence: description.substring(0, 200),
+                    fix: {
+                      description: "Review and sanitize the server description, removing any instruction-like text",
+                      before: description.substring(0, 60),
+                      after: "A clear, factual description of the server's purpose",
+                      auto: false
+                    }
+                  });
+                  break;
+                }
+              }
+            }
+          } catch {
+          }
+          return findings;
+        }
+      },
+      {
+        id: "mcp-env-exfiltration-urls",
+        name: "MCP Server Env Contains Exfiltration URLs",
+        description: "Detects MCP server environment variables containing URLs associated with data exfiltration services",
+        severity: "high",
+        category: "mcp",
+        check(file) {
+          if (file.type !== "mcp-json" && file.type !== "settings-json") return [];
+          const findings = [];
+          try {
+            const config = JSON.parse(file.content);
+            const servers = config.mcpServers ?? {};
+            for (const [name, server] of Object.entries(servers)) {
+              const serverConfig = server ?? {};
+              const env = serverConfig.env ?? {};
+              for (const [key, value] of Object.entries(env)) {
+                if (typeof value !== "string") continue;
+                for (const { pattern, description } of EXFILTRATION_URL_PATTERNS) {
+                  if (pattern.test(value)) {
+                    findings.push({
+                      id: `mcp-env-exfil-${name}-${key}`,
+                      severity: "high",
+                      category: "mcp",
+                      title: `MCP server "${name}" env var "${key}" contains suspicious URL`,
+                      description: `The environment variable "${key}" for MCP server "${name}" contains a ${description}. This may be configured to send agent data or secrets to an external collection endpoint.`,
+                      file: file.path,
+                      evidence: `${key}=${value.substring(0, 80)}`,
+                      fix: {
+                        description: "Replace with a trusted endpoint URL",
+                        before: value.substring(0, 40),
+                        after: "https://your-trusted-endpoint.com",
+                        auto: false
+                      }
+                    });
+                    break;
+                  }
+                }
+              }
+            }
+          } catch {
+          }
+          return findings;
+        }
+      }
+    ];
+    toolPoisoningRules = rawToolPoisoningRules;
+  }
+});
+
 // src/rules/agents.ts
 function findLineNumber4(content, matchIndex) {
   return content.substring(0, matchIndex).split("\n").length;
@@ -7167,6 +7868,8 @@ function getBuiltinRules() {
     ...permissionRules,
     ...hookRules,
     ...mcpRules,
+    ...cveMcpRules,
+    ...toolPoisoningRules,
     ...skillRules,
     ...agentRules
   ];
@@ -7178,6 +7881,8 @@ var init_rules = __esm({
     init_permissions();
     init_hooks();
     init_mcp();
+    init_mcp_cve();
+    init_mcp_tool_poisoning();
     init_agents();
     init_skills();
   }
@@ -8746,7 +9451,7 @@ var init_injection = __esm({
 // src/sandbox/executor.ts
 import { spawn } from "child_process";
 import { mkdtemp, readdir, stat as stat2, readFile, rm as rm2 } from "fs/promises";
-import { join as join4 } from "path";
+import { join as join6 } from "path";
 import { tmpdir } from "os";
 function parseHooks(settingsContent) {
   const hooks = [];
@@ -8783,7 +9488,7 @@ function parseHooks(settingsContent) {
 async function executeHookInSandbox(hookCommand, options = {}) {
   const opts = { ...DEFAULT_OPTIONS, ...options };
   const fakeEnv = { ...DEFAULT_FAKE_ENV, ...opts.fakeEnv };
-  const workDir = await mkdtemp(join4(tmpdir(), "agentshield-sandbox-"));
+  const workDir = await mkdtemp(join6(tmpdir(), "agentshield-sandbox-"));
   const sandboxEnv = {
     HOME: workDir,
     TMPDIR: workDir,
@@ -8802,7 +9507,7 @@ async function executeHookInSandbox(hookCommand, options = {}) {
     controller.abort();
   }, opts.timeout);
   try {
-    const result = await new Promise((resolve5) => {
+    const result = await new Promise((resolve8) => {
       const stdoutChunks = [];
       const stderrChunks = [];
       const child = spawn(hookCommand, [], {
@@ -8819,7 +9524,7 @@ async function executeHookInSandbox(hookCommand, options = {}) {
         stderrChunks.push(chunk);
       });
       child.on("close", (code) => {
-        resolve5({
+        resolve8({
           exitCode: code,
           stdout: Buffer.concat(stdoutChunks).toString("utf-8"),
           stderr: Buffer.concat(stderrChunks).toString("utf-8")
@@ -8827,13 +9532,13 @@ async function executeHookInSandbox(hookCommand, options = {}) {
       });
       child.on("error", (err) => {
         if (err.code === "ABORT_ERR" || err.name === "AbortError") {
-          resolve5({
+          resolve8({
             exitCode: null,
             stdout: Buffer.concat(stdoutChunks).toString("utf-8"),
             stderr: Buffer.concat(stderrChunks).toString("utf-8")
           });
         } else {
-          resolve5({
+          resolve8({
             exitCode: null,
             stdout: Buffer.concat(stdoutChunks).toString("utf-8"),
             stderr: Buffer.concat(stderrChunks).toString("utf-8") + `
@@ -8956,7 +9661,7 @@ async function detectFileWrites(workDir, observations) {
   try {
     const entries = await readdir(workDir);
     for (const entry of entries) {
-      const entryPath = join4(workDir, entry);
+      const entryPath = join6(workDir, entry);
       const entryStat = await stat2(entryPath);
       if (entryStat.isFile()) {
         const content = await readFile(entryPath, "utf-8");
@@ -10195,11 +10900,1077 @@ var init_corpus = __esm({
   }
 });
 
+// src/baseline/types.ts
+var DEFAULT_GATE_CONFIG;
+var init_types = __esm({
+  "src/baseline/types.ts"() {
+    "use strict";
+    DEFAULT_GATE_CONFIG = {
+      maxNewFindings: 0,
+      maxScoreDrop: 5,
+      failOnNewCritical: true,
+      failOnNewHigh: true
+    };
+  }
+});
+
+// src/baseline/compare.ts
+import { readFileSync as readFileSync5, writeFileSync as writeFileSync4, existsSync as existsSync7 } from "fs";
+import { dirname as dirname4 } from "path";
+import { mkdirSync as mkdirSync4 } from "fs";
+function fingerprintFinding2(finding) {
+  return `${finding.id}::${finding.file}::${finding.evidence ?? ""}`;
+}
+function saveBaseline(findings, score, outputPath) {
+  const serialized = {
+    version: 1,
+    timestamp: (/* @__PURE__ */ new Date()).toISOString(),
+    score,
+    findings: findings.map((f) => ({
+      id: f.id,
+      severity: f.severity,
+      category: f.category,
+      title: f.title,
+      file: f.file,
+      evidence: f.evidence,
+      fingerprint: fingerprintFinding2(f)
+    }))
+  };
+  const dir = dirname4(outputPath);
+  if (!existsSync7(dir)) {
+    mkdirSync4(dir, { recursive: true });
+  }
+  writeFileSync4(outputPath, JSON.stringify(serialized, null, 2));
+}
+function loadBaseline(baselinePath) {
+  if (!existsSync7(baselinePath)) return null;
+  try {
+    const raw = readFileSync5(baselinePath, "utf-8");
+    const parsed = JSON.parse(raw);
+    if (parsed.version !== 1 || !Array.isArray(parsed.findings)) {
+      return null;
+    }
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+function compareBaseline(baseline, currentFindings, currentScore) {
+  const baselineFingerprints = new Set(
+    baseline.findings.map((f) => f.fingerprint)
+  );
+  const currentFingerprints = new Set(
+    currentFindings.map(fingerprintFinding2)
+  );
+  const newFindings = currentFindings.filter(
+    (f) => !baselineFingerprints.has(fingerprintFinding2(f))
+  );
+  const resolvedFindings = baseline.findings.filter(
+    (f) => !currentFingerprints.has(f.fingerprint)
+  );
+  const unchangedCount = currentFindings.length - newFindings.length;
+  const scoreDelta = currentScore.numericScore - baseline.score.numericScore;
+  const newCriticalCount = newFindings.filter(
+    (f) => f.severity === "critical"
+  ).length;
+  const newHighCount = newFindings.filter(
+    (f) => f.severity === "high"
+  ).length;
+  const isRegression = newFindings.length > 0 || scoreDelta < 0;
+  return {
+    timestamp: (/* @__PURE__ */ new Date()).toISOString(),
+    baselineTimestamp: baseline.timestamp,
+    newFindings,
+    resolvedFindings,
+    unchangedCount,
+    scoreDelta,
+    baselineScore: baseline.score.numericScore,
+    currentScore: currentScore.numericScore,
+    isRegression,
+    newCriticalCount,
+    newHighCount
+  };
+}
+function evaluateGate(comparison, config = DEFAULT_GATE_CONFIG) {
+  const reasons = [];
+  if (config.failOnNewCritical && comparison.newCriticalCount > 0) {
+    reasons.push(
+      `${comparison.newCriticalCount} new critical finding(s) introduced`
+    );
+  }
+  if (config.failOnNewHigh && comparison.newHighCount > 0) {
+    reasons.push(
+      `${comparison.newHighCount} new high finding(s) introduced`
+    );
+  }
+  if (comparison.newFindings.length > config.maxNewFindings) {
+    reasons.push(
+      `${comparison.newFindings.length} new finding(s) exceed threshold of ${config.maxNewFindings}`
+    );
+  }
+  if (comparison.scoreDelta < -config.maxScoreDrop) {
+    reasons.push(
+      `Score dropped by ${Math.abs(comparison.scoreDelta)} points (max allowed: ${config.maxScoreDrop})`
+    );
+  }
+  return {
+    passed: reasons.length === 0,
+    reasons,
+    comparison
+  };
+}
+function renderComparison(comparison) {
+  const lines = [];
+  const divider = "\u2500".repeat(60);
+  lines.push("");
+  lines.push(`  ${divider}`);
+  lines.push("  Baseline Comparison Report");
+  lines.push(`  ${divider}`);
+  lines.push("");
+  const direction = comparison.scoreDelta > 0 ? "+" : "";
+  const label = comparison.scoreDelta > 0 ? "IMPROVED" : comparison.scoreDelta < 0 ? "REGRESSED" : "UNCHANGED";
+  lines.push(
+    `  Score: ${comparison.baselineScore} \u2192 ${comparison.currentScore} (${direction}${comparison.scoreDelta}) [${label}]`
+  );
+  lines.push(
+    `  Baseline from: ${comparison.baselineTimestamp}`
+  );
+  lines.push("");
+  if (comparison.newFindings.length > 0) {
+    lines.push(`  NEW FINDINGS (${comparison.newFindings.length}):`);
+    for (const f of comparison.newFindings) {
+      lines.push(`    [${f.severity.toUpperCase().padEnd(8)}] ${f.title}`);
+      lines.push(`               ${f.file}`);
+    }
+    lines.push("");
+  }
+  if (comparison.resolvedFindings.length > 0) {
+    lines.push(`  RESOLVED FINDINGS (${comparison.resolvedFindings.length}):`);
+    for (const f of comparison.resolvedFindings) {
+      lines.push(`    [RESOLVED] ${f.title}`);
+    }
+    lines.push("");
+  }
+  lines.push(`  Unchanged: ${comparison.unchangedCount} finding(s)`);
+  lines.push(`  ${divider}`);
+  lines.push("");
+  return lines.join("\n");
+}
+function renderGateResult(result) {
+  const lines = [];
+  if (result.passed) {
+    lines.push("  Gate: PASSED \u2014 No regressions detected.");
+  } else {
+    lines.push("  Gate: FAILED \u2014 Security regressions detected:");
+    for (const reason of result.reasons) {
+      lines.push(`    - ${reason}`);
+    }
+  }
+  lines.push("");
+  return lines.join("\n");
+}
+var init_compare = __esm({
+  "src/baseline/compare.ts"() {
+    "use strict";
+    init_types();
+  }
+});
+
+// src/baseline/index.ts
+var baseline_exports = {};
+__export(baseline_exports, {
+  DEFAULT_GATE_CONFIG: () => DEFAULT_GATE_CONFIG,
+  compareBaseline: () => compareBaseline,
+  evaluateGate: () => evaluateGate,
+  fingerprintFinding: () => fingerprintFinding2,
+  loadBaseline: () => loadBaseline,
+  renderComparison: () => renderComparison,
+  renderGateResult: () => renderGateResult,
+  saveBaseline: () => saveBaseline
+});
+var init_baseline = __esm({
+  "src/baseline/index.ts"() {
+    "use strict";
+    init_compare();
+    init_types();
+  }
+});
+
+// src/policy/types.ts
+import { z as z2 } from "zod";
+var OrgPolicySchema;
+var init_types2 = __esm({
+  "src/policy/types.ts"() {
+    "use strict";
+    OrgPolicySchema = z2.object({
+      version: z2.literal(1),
+      name: z2.string().optional(),
+      description: z2.string().optional(),
+      /** Items that MUST appear in the permissions.deny list */
+      required_deny_list: z2.array(z2.string()).default([]),
+      /** MCP servers that are banned from use */
+      banned_mcp_servers: z2.array(z2.string()).default([]),
+      /** Minimum acceptable security score (0-100) */
+      min_score: z2.number().int().min(0).max(100).default(60),
+      /** Maximum allowed severity for any single finding */
+      max_severity: z2.enum(["critical", "high", "medium", "low", "info"]).default("critical"),
+      /** Hook patterns that must be present in settings */
+      required_hooks: z2.array(
+        z2.object({
+          event: z2.enum(["PreToolUse", "PostToolUse", "SessionStart", "Stop"]),
+          pattern: z2.string(),
+          description: z2.string().optional()
+        })
+      ).default([]),
+      /** Tools that must NOT appear in the allow list */
+      banned_tools: z2.array(z2.string()).default([])
+    });
+  }
+});
+
+// src/policy/evaluate.ts
+import { readFileSync as readFileSync6, existsSync as existsSync8 } from "fs";
+function loadPolicy2(policyPath) {
+  if (!existsSync8(policyPath)) {
+    return { success: false, error: `Policy file not found: ${policyPath}` };
+  }
+  try {
+    const raw = readFileSync6(policyPath, "utf-8");
+    const parsed = JSON.parse(raw);
+    return { success: true, policy: OrgPolicySchema.parse(parsed) };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return { success: false, error: message };
+  }
+}
+function evaluatePolicy(policy, findings, score, files) {
+  const violations = [];
+  if (score.numericScore < policy.min_score) {
+    violations.push({
+      rule: "min_score",
+      severity: "high",
+      description: `Security score ${score.numericScore} is below the required minimum of ${policy.min_score}.`,
+      expected: `Score >= ${policy.min_score}`,
+      actual: `Score = ${score.numericScore}`
+    });
+  }
+  const maxSeverityIndex = SEVERITY_ORDER2[policy.max_severity];
+  const exceedingFindings = findings.filter(
+    (f) => SEVERITY_ORDER2[f.severity] < maxSeverityIndex
+  );
+  if (exceedingFindings.length > 0) {
+    violations.push({
+      rule: "max_severity",
+      severity: "high",
+      description: `${exceedingFindings.length} finding(s) exceed the maximum allowed severity of "${policy.max_severity}".`,
+      expected: `No findings above ${policy.max_severity}`,
+      actual: `${exceedingFindings.length} finding(s) above threshold`
+    });
+  }
+  const denyList = extractDenyList(files);
+  for (const required of policy.required_deny_list) {
+    if (!denyList.some((d) => matchesDenyPattern(d, required))) {
+      violations.push({
+        rule: "required_deny_list",
+        severity: "medium",
+        description: `Required deny pattern "${required}" not found in permissions.deny list.`,
+        expected: `"${required}" in deny list`,
+        actual: "Missing from deny list"
+      });
+    }
+  }
+  const mcpServers = extractMcpServerNames(files);
+  for (const banned of policy.banned_mcp_servers) {
+    const found = mcpServers.filter((s) => matchesBanned(s, banned));
+    for (const server of found) {
+      violations.push({
+        rule: "banned_mcp_servers",
+        severity: "high",
+        description: `MCP server "${server}" is banned by organization policy.`,
+        expected: `"${banned}" not in MCP servers`,
+        actual: `"${server}" is configured`
+      });
+    }
+  }
+  const allowedTools = extractAllowList(files);
+  for (const banned of policy.banned_tools) {
+    const found = allowedTools.filter((t) => matchesDenyPattern(t, banned));
+    for (const tool of found) {
+      violations.push({
+        rule: "banned_tools",
+        severity: "high",
+        description: `Tool "${tool}" is banned by organization policy but appears in the allow list.`,
+        expected: `"${banned}" not in allow list`,
+        actual: `"${tool}" is allowed`
+      });
+    }
+  }
+  const configuredHooks = extractHookPatterns(files);
+  for (const required of policy.required_hooks) {
+    const found = configuredHooks.some(
+      (h) => h.event === required.event && h.command.includes(required.pattern)
+    );
+    if (!found) {
+      violations.push({
+        rule: "required_hooks",
+        severity: "medium",
+        description: required.description ?? `Required ${required.event} hook with pattern "${required.pattern}" not found.`,
+        expected: `${required.event} hook containing "${required.pattern}"`,
+        actual: "Not configured"
+      });
+    }
+  }
+  return {
+    policyName: policy.name ?? "Organization Policy",
+    passed: violations.length === 0,
+    violations,
+    score: score.numericScore,
+    minScore: policy.min_score
+  };
+}
+function extractDenyList(files) {
+  const denyItems = [];
+  for (const file of files) {
+    if (file.type !== "settings-json") continue;
+    try {
+      const config = JSON.parse(file.content);
+      const deny = config?.permissions?.deny;
+      if (Array.isArray(deny)) {
+        denyItems.push(...deny.filter((d) => typeof d === "string"));
+      }
+    } catch {
+    }
+  }
+  return denyItems;
+}
+function extractAllowList(files) {
+  const allowItems = [];
+  for (const file of files) {
+    if (file.type !== "settings-json") continue;
+    try {
+      const config = JSON.parse(file.content);
+      const allow = config?.permissions?.allow;
+      if (Array.isArray(allow)) {
+        allowItems.push(...allow.filter((a) => typeof a === "string"));
+      }
+    } catch {
+    }
+  }
+  return allowItems;
+}
+function extractMcpServerNames(files) {
+  const names = [];
+  for (const file of files) {
+    if (file.type !== "mcp-json" && file.type !== "settings-json") continue;
+    try {
+      const config = JSON.parse(file.content);
+      const servers = config?.mcpServers;
+      if (servers && typeof servers === "object") {
+        names.push(...Object.keys(servers));
+      }
+    } catch {
+    }
+  }
+  return names;
+}
+function extractHookPatterns(files) {
+  const hooks = [];
+  for (const file of files) {
+    if (file.type !== "settings-json") continue;
+    try {
+      const config = JSON.parse(file.content);
+      const hookGroups = config?.hooks;
+      if (!hookGroups || typeof hookGroups !== "object") continue;
+      for (const [event, entries] of Object.entries(hookGroups)) {
+        if (!Array.isArray(entries)) continue;
+        for (const entry of entries) {
+          const hook = entry.hook;
+          if (typeof hook === "string") {
+            hooks.push({ event, command: hook });
+          }
+        }
+      }
+    } catch {
+    }
+  }
+  return hooks;
+}
+function matchesDenyPattern(actual, pattern) {
+  if (actual === pattern) return true;
+  if (actual.toLowerCase() === pattern.toLowerCase()) return true;
+  return actual.startsWith(pattern);
+}
+function matchesBanned(serverName, banned) {
+  if (serverName === banned) return true;
+  if (serverName.toLowerCase() === banned.toLowerCase()) return true;
+  if (banned.endsWith("*") && serverName.startsWith(banned.slice(0, -1))) {
+    return true;
+  }
+  return false;
+}
+function renderPolicyEvaluation(evaluation) {
+  const lines = [];
+  const divider = "\u2500".repeat(60);
+  lines.push("");
+  lines.push(`  ${divider}`);
+  lines.push(`  Organization Policy: ${evaluation.policyName}`);
+  lines.push(`  ${divider}`);
+  lines.push("");
+  if (evaluation.passed) {
+    lines.push("  Status: COMPLIANT");
+  } else {
+    lines.push("  Status: NON-COMPLIANT");
+    lines.push(`  Violations: ${evaluation.violations.length}`);
+  }
+  lines.push(`  Score: ${evaluation.score} (minimum: ${evaluation.minScore})`);
+  lines.push("");
+  if (evaluation.violations.length > 0) {
+    lines.push("  POLICY VIOLATIONS:");
+    for (const v of evaluation.violations) {
+      lines.push(`    [${v.severity.toUpperCase().padEnd(8)}] ${v.rule}: ${v.description}`);
+      lines.push(`               Expected: ${v.expected}`);
+      lines.push(`               Actual:   ${v.actual}`);
+    }
+    lines.push("");
+  }
+  lines.push(`  ${divider}`);
+  lines.push("");
+  return lines.join("\n");
+}
+function generateExamplePolicy() {
+  const example = {
+    version: 1,
+    name: "Acme Corp Security Policy",
+    description: "Organization-wide Claude Code security requirements",
+    required_deny_list: ["Bash(rm -rf", "Bash(curl.*|.*sh"],
+    banned_mcp_servers: ["shell", "terminal"],
+    min_score: 75,
+    max_severity: "high",
+    required_hooks: [
+      {
+        event: "PreToolUse",
+        pattern: "agentshield",
+        description: "AgentShield runtime monitor must be installed"
+      }
+    ],
+    banned_tools: ["Bash(*)"]
+  };
+  return JSON.stringify(example, null, 2);
+}
+var SEVERITY_ORDER2;
+var init_evaluate = __esm({
+  "src/policy/evaluate.ts"() {
+    "use strict";
+    init_types2();
+    SEVERITY_ORDER2 = {
+      critical: 0,
+      high: 1,
+      medium: 2,
+      low: 3,
+      info: 4
+    };
+  }
+});
+
+// src/policy/index.ts
+var policy_exports = {};
+__export(policy_exports, {
+  OrgPolicySchema: () => OrgPolicySchema,
+  evaluatePolicy: () => evaluatePolicy,
+  generateExamplePolicy: () => generateExamplePolicy,
+  loadPolicy: () => loadPolicy2,
+  renderPolicyEvaluation: () => renderPolicyEvaluation
+});
+var init_policy = __esm({
+  "src/policy/index.ts"() {
+    "use strict";
+    init_evaluate();
+    init_types2();
+  }
+});
+
+// src/supply-chain/extract.ts
+function extractPackages(files) {
+  const packages = [];
+  const seen = /* @__PURE__ */ new Set();
+  for (const file of files) {
+    if (file.type !== "mcp-json" && file.type !== "settings-json") continue;
+    const extracted = extractFromMcpConfig(file.content);
+    for (const pkg of extracted) {
+      const key = buildPackageDedupeKey(pkg);
+      if (!seen.has(key)) {
+        seen.add(key);
+        packages.push(pkg);
+      }
+    }
+  }
+  return packages;
+}
+function extractFromMcpConfig(content) {
+  try {
+    const config = JSON.parse(content);
+    if (!isRecord(config) || !isRecord(config.mcpServers)) {
+      return [];
+    }
+    const servers = config.mcpServers;
+    const packages = [];
+    for (const [serverName, serverConfig] of Object.entries(servers)) {
+      const server = normalizeServerConfig(serverConfig);
+      if (!server) continue;
+      const extracted = extractFromServerConfig(
+        serverName,
+        server.command,
+        server.args ?? []
+      );
+      packages.push(...extracted);
+    }
+    return packages;
+  } catch {
+    return [];
+  }
+}
+function extractFromServerConfig(serverName, command, args) {
+  const packages = [];
+  if (command === "npx" || command.endsWith("/npx")) {
+    packages.push(...extractFromNpxArgs(serverName, args));
+  }
+  if (command === "node" || command.endsWith("/node")) {
+    for (const arg of args) {
+      if (arg.startsWith("-")) continue;
+      const nodeModuleMatch = arg.match(
+        /node_modules\/(@[^/]+\/[^/]+|[^/]+)/
+      );
+      if (nodeModuleMatch) {
+        packages.push({
+          name: nodeModuleMatch[1],
+          source: "args",
+          serverName
+        });
+      }
+    }
+  }
+  if (!command.includes("/") && !command.startsWith(".")) {
+    const parsed = parsePackageSpec(command);
+    if (parsed && looksLikeNpmPackage(parsed.name)) {
+      packages.push({
+        ...parsed,
+        source: "command",
+        serverName
+      });
+    }
+  }
+  for (const arg of args) {
+    const gitInfo = parseGitUrl(arg);
+    if (gitInfo) {
+      packages.push({
+        name: gitInfo.repo,
+        source: "git",
+        serverName,
+        gitUrl: arg,
+        gitRef: gitInfo.ref
+      });
+    }
+  }
+  return packages;
+}
+function buildPackageDedupeKey(pkg) {
+  return [
+    pkg.source,
+    pkg.name,
+    pkg.version ?? "latest",
+    pkg.gitUrl ?? "",
+    pkg.gitRef ?? ""
+  ].join("|");
+}
+function isRecord(value) {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+function normalizeServerConfig(value) {
+  if (!isRecord(value) || typeof value.command !== "string") {
+    return null;
+  }
+  const args = Array.isArray(value.args) ? value.args.filter((arg) => typeof arg === "string") : [];
+  return {
+    command: value.command,
+    args
+  };
+}
+function extractFromNpxArgs(serverName, args) {
+  const packages = [];
+  let sawExplicitPackageFlag = false;
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i];
+    if (arg === "-p" || arg === "--package") {
+      sawExplicitPackageFlag = true;
+      const spec = args[i + 1];
+      const parsed = spec ? parsePackageSpec(spec) : null;
+      if (parsed) {
+        packages.push({
+          ...parsed,
+          source: "npx",
+          serverName
+        });
+      }
+      i += 1;
+      continue;
+    }
+    if (arg.startsWith("--package=")) {
+      sawExplicitPackageFlag = true;
+      const parsed = parsePackageSpec(arg.slice("--package=".length));
+      if (parsed) {
+        packages.push({
+          ...parsed,
+          source: "npx",
+          serverName
+        });
+      }
+    }
+  }
+  if (packages.length > 0 || sawExplicitPackageFlag) {
+    return packages;
+  }
+  for (const arg of args) {
+    if (arg.startsWith("-")) continue;
+    if (parseGitUrl(arg)) continue;
+    const parsed = parsePackageSpec(arg);
+    if (parsed) {
+      packages.push({
+        ...parsed,
+        source: "npx",
+        serverName
+      });
+      break;
+    }
+  }
+  return packages;
+}
+function parsePackageSpec(spec) {
+  if (!spec || spec.startsWith("-") || spec.startsWith(".") || spec.startsWith("/")) {
+    return null;
+  }
+  if (isUrlLikeSpec(spec)) {
+    return null;
+  }
+  if (spec.includes("/") && !spec.startsWith("@")) {
+    return null;
+  }
+  if (spec.startsWith("@")) {
+    const scopeEnd = spec.indexOf("/");
+    if (scopeEnd === -1) return null;
+    const afterScope = spec.slice(scopeEnd + 1);
+    const versionIndex = afterScope.indexOf("@");
+    if (versionIndex === -1) {
+      return { name: spec };
+    }
+    return {
+      name: spec.slice(0, scopeEnd + 1 + versionIndex),
+      version: afterScope.slice(versionIndex + 1)
+    };
+  }
+  const atIndex = spec.indexOf("@");
+  if (atIndex === -1) {
+    return { name: spec };
+  }
+  return {
+    name: spec.slice(0, atIndex),
+    version: spec.slice(atIndex + 1)
+  };
+}
+function isUrlLikeSpec(spec) {
+  return /^(?:[a-z][a-z0-9+.-]*:|git@)/i.test(spec) || spec.includes("://");
+}
+function looksLikeNpmPackage(name) {
+  if (name.startsWith("@")) return true;
+  if (name.includes("-mcp") || name.includes("mcp-")) return true;
+  if (name.includes("-server") || name.includes("server-")) return true;
+  return false;
+}
+function parseGitUrl(url) {
+  const patterns = [
+    /^(?:git\+)?https?:\/\/github\.com\/([^#@]+?)(?:[#@](.+))?$/i,
+    /^git:\/\/github\.com\/([^#@]+?)(?:[#@](.+))?$/i,
+    /^git\+ssh:\/\/git@github\.com\/([^#@]+?)(?:[#@](.+))?$/i,
+    /^git@github\.com:([^#@]+?)(?:[#@](.+))?$/i,
+    /^github:([^#@]+?)(?:[#@](.+))?$/i
+  ];
+  for (const pattern of patterns) {
+    const match = url.match(pattern);
+    if (!match) continue;
+    return {
+      repo: match[1].replace(/\.git$/, ""),
+      ref: match[2]
+    };
+  }
+  return null;
+}
+var init_extract = __esm({
+  "src/supply-chain/extract.ts"() {
+    "use strict";
+  }
+});
+
+// src/supply-chain/types.ts
+var KNOWN_GOOD_PACKAGES;
+var init_types3 = __esm({
+  "src/supply-chain/types.ts"() {
+    "use strict";
+    KNOWN_GOOD_PACKAGES = [
+      "@modelcontextprotocol/sdk",
+      "@modelcontextprotocol/server-filesystem",
+      "@modelcontextprotocol/server-github",
+      "@modelcontextprotocol/server-postgres",
+      "@modelcontextprotocol/server-brave-search",
+      "@modelcontextprotocol/server-memory",
+      "@modelcontextprotocol/server-puppeteer",
+      "@modelcontextprotocol/server-sequential-thinking",
+      "@modelcontextprotocol/server-everything",
+      "@modelcontextprotocol/server-slack",
+      "@anthropics/mcp-server-git",
+      "firecrawl-mcp",
+      "tavily-mcp",
+      "exa-mcp-server",
+      "@supabase/mcp-server-supabase",
+      "@cloudflare/mcp-server-cloudflare",
+      "@playwright/mcp",
+      "context7-mcp"
+    ];
+  }
+});
+
+// src/supply-chain/verify.ts
+async function verifyPackages(packages, options = {}) {
+  const verifications = [];
+  for (const pkg of packages) {
+    const risks = [];
+    let registry;
+    const malicious = checkPackageName(pkg.name, pkg.version);
+    if (malicious) {
+      risks.push({
+        type: "known-malicious",
+        severity: "critical",
+        description: malicious.description,
+        evidence: `Package: ${malicious.name} (${malicious.type})`
+      });
+    }
+    const vulnerable = checkServerPackage(
+      pkg.name,
+      pkg.version ? [`${pkg.name}@${pkg.version}`] : [pkg.name]
+    );
+    if (vulnerable) {
+      risks.push({
+        type: "known-vulnerable",
+        severity: "high",
+        description: vulnerable.description,
+        evidence: `CVEs: ${vulnerable.cveIds.join(", ")}`
+      });
+    }
+    const typosquatRisk = checkTyposquatting(pkg.name);
+    if (typosquatRisk) {
+      risks.push(typosquatRisk);
+    }
+    if (pkg.source === "git" && !hasPinnedGitCommit(pkg.gitRef)) {
+      risks.push({
+        type: "unpinned-git",
+        severity: "high",
+        description: "Git URL without a pinned commit hash. An attacker who compromises the repo can inject malicious code.",
+        evidence: pkg.gitUrl
+      });
+    }
+    if (options.online && pkg.source !== "git") {
+      registry = await fetchRegistryMeta(pkg.name);
+      if (registry) {
+        risks.push(...assessRegistryRisks(registry));
+      }
+    }
+    const overallSeverity = risks.length > 0 ? risks.reduce(
+      (worst, r) => SEVERITY_ORDER3[r.severity] < SEVERITY_ORDER3[worst.severity] ? r : worst
+    ).severity : "info";
+    verifications.push({
+      package: pkg,
+      registry,
+      risks,
+      overallSeverity
+    });
+  }
+  const riskyPackages = verifications.filter((v) => v.risks.length > 0);
+  return {
+    packages: verifications,
+    totalPackages: verifications.length,
+    riskyPackages: riskyPackages.length,
+    criticalCount: riskyPackages.filter((v) => v.overallSeverity === "critical").length,
+    highCount: riskyPackages.filter((v) => v.overallSeverity === "high").length
+  };
+}
+function checkTyposquatting(packageName) {
+  if (KNOWN_GOOD_PACKAGES.includes(packageName)) return null;
+  for (const goodPkg of KNOWN_GOOD_PACKAGES) {
+    const distance = levenshteinDistance(packageName, goodPkg);
+    const maxLen = Math.max(packageName.length, goodPkg.length);
+    const similarity = 1 - distance / maxLen;
+    if (similarity > 0.8 && distance > 0 && distance <= 3) {
+      return {
+        type: "typosquat",
+        severity: "high",
+        description: `Package name "${packageName}" is suspiciously similar to known-good package "${goodPkg}" (${Math.round(similarity * 100)}% similarity, edit distance: ${distance}).`,
+        evidence: `Similar to: ${goodPkg}`
+      };
+    }
+  }
+  return null;
+}
+function hasPinnedGitCommit(gitRef) {
+  return !!gitRef && GIT_COMMIT_HASH.test(gitRef);
+}
+function levenshteinDistance(a, b) {
+  const m = a.length;
+  const n = b.length;
+  let prev = Array.from({ length: n + 1 }, (_, i) => i);
+  let curr = new Array(n + 1);
+  for (let i = 1; i <= m; i++) {
+    curr[0] = i;
+    for (let j = 1; j <= n; j++) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      curr[j] = Math.min(
+        prev[j] + 1,
+        // deletion
+        curr[j - 1] + 1,
+        // insertion
+        prev[j - 1] + cost
+        // substitution
+      );
+    }
+    [prev, curr] = [curr, prev];
+  }
+  return prev[n];
+}
+async function fetchRegistryMeta(packageName) {
+  try {
+    const registryUrl = `https://registry.npmjs.org/${encodeURIComponent(packageName)}`;
+    const response = await fetch(registryUrl, {
+      signal: AbortSignal.timeout(5e3)
+    });
+    if (!response.ok) return void 0;
+    const data = await response.json();
+    const time = data.time;
+    const maintainers = data.maintainers;
+    const distTags = data["dist-tags"];
+    const latestVersion = distTags?.latest;
+    const versions = data.versions;
+    let hasPostinstall = false;
+    if (latestVersion && versions?.[latestVersion]) {
+      const scripts = versions[latestVersion].scripts;
+      hasPostinstall = !!scripts?.postinstall;
+    }
+    let downloadsLastWeek;
+    try {
+      const dlResponse = await fetch(
+        `https://api.npmjs.org/downloads/point/last-week/${encodeURIComponent(packageName)}`,
+        { signal: AbortSignal.timeout(3e3) }
+      );
+      if (dlResponse.ok) {
+        const dlData = await dlResponse.json();
+        downloadsLastWeek = dlData.downloads;
+      }
+    } catch {
+    }
+    return {
+      name: packageName,
+      publishedAt: time?.created,
+      downloadsLastWeek,
+      maintainerCount: maintainers?.length,
+      hasPostinstall,
+      latestVersion,
+      description: data.description,
+      deprecated: !!data.deprecated
+    };
+  } catch {
+    return void 0;
+  }
+}
+function assessRegistryRisks(meta) {
+  const risks = [];
+  if (meta.deprecated) {
+    risks.push({
+      type: "deprecated",
+      severity: "medium",
+      description: `Package "${meta.name}" is deprecated on npm.`
+    });
+  }
+  if (meta.hasPostinstall) {
+    risks.push({
+      type: "has-postinstall",
+      severity: "medium",
+      description: `Package "${meta.name}" has a postinstall script that runs automatically on install.`
+    });
+  }
+  if (meta.maintainerCount !== void 0 && meta.maintainerCount <= 1) {
+    risks.push({
+      type: "single-maintainer",
+      severity: "low",
+      description: `Package "${meta.name}" has only ${meta.maintainerCount} maintainer(s). Single-maintainer packages are higher risk for account compromise.`
+    });
+  }
+  if (meta.downloadsLastWeek !== void 0 && meta.downloadsLastWeek < 100) {
+    risks.push({
+      type: "low-downloads",
+      severity: "medium",
+      description: `Package "${meta.name}" has very low downloads (${meta.downloadsLastWeek}/week). Low-traffic packages are more likely to be malicious.`
+    });
+  }
+  if (meta.publishedAt) {
+    const publishDate = new Date(meta.publishedAt);
+    const threeMonthsAgo = /* @__PURE__ */ new Date();
+    threeMonthsAgo.setMonth(threeMonthsAgo.getMonth() - 3);
+    if (publishDate > threeMonthsAgo) {
+      risks.push({
+        type: "new-package",
+        severity: "low",
+        description: `Package "${meta.name}" was first published recently (${meta.publishedAt}). New packages have less community vetting.`
+      });
+    }
+  }
+  return risks;
+}
+var SEVERITY_ORDER3, GIT_COMMIT_HASH;
+var init_verify = __esm({
+  "src/supply-chain/verify.ts"() {
+    "use strict";
+    init_types3();
+    init_cve_database();
+    SEVERITY_ORDER3 = {
+      critical: 0,
+      high: 1,
+      medium: 2,
+      low: 3,
+      info: 4
+    };
+    GIT_COMMIT_HASH = /^[0-9a-f]{7,40}$/i;
+  }
+});
+
+// src/supply-chain/render.ts
+function renderSupplyChainReport(report) {
+  const lines = [];
+  const divider = "\u2500".repeat(60);
+  lines.push("");
+  lines.push(`  ${divider}`);
+  lines.push("  Supply Chain Verification Report");
+  lines.push(`  ${divider}`);
+  lines.push("");
+  lines.push(`  Packages analyzed: ${report.totalPackages}`);
+  lines.push(`  Risky packages:    ${report.riskyPackages}`);
+  if (report.criticalCount > 0) {
+    lines.push(`  Critical:          ${report.criticalCount}`);
+  }
+  if (report.highCount > 0) {
+    lines.push(`  High:              ${report.highCount}`);
+  }
+  if (report.packages.length === 0) {
+    lines.push("");
+    lines.push("  No MCP packages detected in configuration.");
+    lines.push("");
+    return lines.join("\n");
+  }
+  const risky = report.packages.filter((p) => p.risks.length > 0);
+  const clean = report.packages.filter((p) => p.risks.length === 0);
+  if (risky.length > 0) {
+    lines.push("");
+    lines.push("  RISKY PACKAGES:");
+    for (const pkg of risky) {
+      lines.push(...renderPackage(pkg));
+    }
+  }
+  if (clean.length > 0) {
+    lines.push("");
+    lines.push("  CLEAN PACKAGES:");
+    for (const pkg of clean) {
+      const version = pkg.package.version ? `@${escapeControlChars(pkg.package.version)}` : "";
+      const name = escapeControlChars(pkg.package.name);
+      const serverName = escapeControlChars(pkg.package.serverName);
+      lines.push(`    [OK] ${name}${version} (${serverName})`);
+    }
+  }
+  lines.push("");
+  lines.push(`  ${divider}`);
+  lines.push("");
+  return lines.join("\n");
+}
+function renderPackage(verification) {
+  const lines = [];
+  const pkg = verification.package;
+  const version = pkg.version ? `@${escapeControlChars(pkg.version)}` : "";
+  const sev = verification.overallSeverity.toUpperCase();
+  const name = escapeControlChars(pkg.name);
+  const serverName = escapeControlChars(pkg.serverName);
+  const source = escapeControlChars(pkg.source);
+  lines.push(`    [${sev}] ${name}${version} (server: ${serverName}, via: ${source})`);
+  for (const risk of verification.risks) {
+    lines.push(`      - [${risk.severity.toUpperCase()}] ${escapeControlChars(risk.description)}`);
+    if (risk.evidence) {
+      lines.push(`        Evidence: ${escapeControlChars(risk.evidence)}`);
+    }
+  }
+  if (verification.registry) {
+    const meta = verification.registry;
+    const details = [];
+    if (meta.downloadsLastWeek !== void 0) {
+      details.push(`${meta.downloadsLastWeek} downloads/week`);
+    }
+    if (meta.maintainerCount !== void 0) {
+      details.push(`${meta.maintainerCount} maintainer(s)`);
+    }
+    if (meta.latestVersion) {
+      details.push(`latest: ${escapeControlChars(meta.latestVersion)}`);
+    }
+    if (details.length > 0) {
+      lines.push(`      Registry: ${details.join(", ")}`);
+    }
+  }
+  return lines;
+}
+function renderSupplyChainJson(report) {
+  return JSON.stringify(report, null, 2);
+}
+function escapeControlChars(value) {
+  return value.replace(CONTROL_CHAR_PATTERN, (char) => {
+    const code = char.charCodeAt(0);
+    return code <= 255 ? `\\x${code.toString(16).padStart(2, "0")}` : `\\u${code.toString(16).padStart(4, "0")}`;
+  });
+}
+var CONTROL_CHAR_PATTERN;
+var init_render = __esm({
+  "src/supply-chain/render.ts"() {
+    "use strict";
+    CONTROL_CHAR_PATTERN = /[\u0000-\u001F\u007F-\u009F]/g;
+  }
+});
+
+// src/supply-chain/index.ts
+var supply_chain_exports = {};
+__export(supply_chain_exports, {
+  KNOWN_GOOD_PACKAGES: () => KNOWN_GOOD_PACKAGES,
+  checkTyposquatting: () => checkTyposquatting,
+  extractPackages: () => extractPackages,
+  levenshteinDistance: () => levenshteinDistance,
+  renderSupplyChainJson: () => renderSupplyChainJson,
+  renderSupplyChainReport: () => renderSupplyChainReport,
+  verifyPackages: () => verifyPackages
+});
+var init_supply_chain = __esm({
+  "src/supply-chain/index.ts"() {
+    "use strict";
+    init_extract();
+    init_verify();
+    init_render();
+    init_types3();
+  }
+});
+
 // src/index.ts
 init_scanner();
 import { Command } from "commander";
-import { resolve as resolve4 } from "path";
-import { existsSync as existsSync3, writeFileSync as writeFileSync3, appendFileSync } from "fs";
+import { resolve as resolve7 } from "path";
+import { existsSync as existsSync9, writeFileSync as writeFileSync5, appendFileSync as appendFileSync2, mkdirSync as mkdirSync5 } from "fs";
 
 // src/reporter/score.ts
 var SCORE_DEDUCTIONS = {
@@ -11861,7 +13632,7 @@ function renderInlineScore(score) {
 
 // src/fixer/index.ts
 import { readFileSync as readFileSync2, writeFileSync } from "fs";
-import { resolve } from "path";
+import { resolve as resolve2 } from "path";
 
 // src/fixer/transforms.ts
 function replaceHardcodedSecret(content, finding) {
@@ -11941,7 +13712,7 @@ function applyFixes(scanResult) {
   const applied = [];
   const skipped = [];
   for (const [relPath, findings] of grouped) {
-    const filePath = resolve(scanResult.target.path, relPath);
+    const filePath = resolve2(scanResult.target.path, relPath);
     let content;
     try {
       content = readFileSync2(filePath, "utf-8");
@@ -12030,7 +13801,7 @@ function renderFixSummary(result) {
 
 // src/init/index.ts
 import { existsSync as existsSync2, mkdirSync, writeFileSync as writeFileSync2 } from "fs";
-import { join as join2, resolve as resolve2 } from "path";
+import { join as join3, resolve as resolve3 } from "path";
 function getDefaultSettings() {
   const settings = {
     permissions: {
@@ -12145,20 +13916,20 @@ function safeWriteFile(filePath, content) {
   };
 }
 function runInit(targetDir) {
-  const baseDir = targetDir ? resolve2(targetDir) : resolve2(process.cwd());
-  const claudeDir = join2(baseDir, ".claude");
+  const baseDir = targetDir ? resolve3(targetDir) : resolve3(process.cwd());
+  const claudeDir = join3(baseDir, ".claude");
   if (!existsSync2(claudeDir)) {
     mkdirSync(claudeDir, { recursive: true });
   }
   const files = [];
   files.push(
-    safeWriteFile(join2(claudeDir, "settings.json"), getDefaultSettings())
+    safeWriteFile(join3(claudeDir, "settings.json"), getDefaultSettings())
   );
   files.push(
-    safeWriteFile(join2(claudeDir, "CLAUDE.md"), getDefaultClaudeMd())
+    safeWriteFile(join3(claudeDir, "CLAUDE.md"), getDefaultClaudeMd())
   );
   files.push(
-    safeWriteFile(join2(claudeDir, "mcp.json"), getDefaultMcpConfig())
+    safeWriteFile(join3(claudeDir, "mcp.json"), getDefaultMcpConfig())
   );
   return {
     directory: claudeDir,
@@ -12242,11 +14013,11 @@ var DEFAULT_SERVER_CONFIG = {
 
 // src/miniclaw/sandbox.ts
 import { mkdir, rm, stat, realpath, access } from "fs/promises";
-import { join as join3, resolve as resolve3, relative as relative2, extname as extname3 } from "path";
+import { join as join4, resolve as resolve4, relative as relative2, extname as extname3 } from "path";
 import { randomUUID } from "crypto";
 async function createSandbox(config = DEFAULT_SANDBOX_CONFIG, allowedTools = [], maxDuration) {
   const sessionId = randomUUID();
-  const sandboxPath = join3(config.rootPath, sessionId);
+  const sandboxPath = join4(config.rootPath, sessionId);
   await mkdir(config.rootPath, { recursive: true, mode: 448 });
   await mkdir(sandboxPath, { mode: 448 });
   const session = {
@@ -12259,8 +14030,8 @@ async function createSandbox(config = DEFAULT_SANDBOX_CONFIG, allowedTools = [],
   return session;
 }
 async function destroySandbox(sandboxPath, rootPath) {
-  const normalizedSandbox = resolve3(sandboxPath);
-  const normalizedRoot = resolve3(rootPath);
+  const normalizedSandbox = resolve4(sandboxPath);
+  const normalizedRoot = resolve4(rootPath);
   if (!normalizedSandbox.startsWith(normalizedRoot + "/")) {
     return {
       success: false,
@@ -12576,7 +14347,7 @@ function checkRateLimit(ip, maxRequests) {
   return true;
 }
 function readBody(req, maxSize) {
-  return new Promise((resolve5, reject) => {
+  return new Promise((resolve8, reject) => {
     const chunks = [];
     let totalSize = 0;
     req.on("data", (chunk) => {
@@ -12589,7 +14360,7 @@ function readBody(req, maxSize) {
       chunks.push(chunk);
     });
     req.on("end", () => {
-      resolve5(Buffer.concat(chunks).toString("utf-8"));
+      resolve8(Buffer.concat(chunks).toString("utf-8"));
     });
     req.on("error", (err) => {
       reject(err);
@@ -12802,6 +14573,449 @@ function startMiniClaw(config) {
   return startServer(fullConfig);
 }
 
+// src/watch/watcher.ts
+init_scanner();
+import { watch, existsSync as existsSync3, readdirSync as readdirSync2, statSync as statSync3 } from "fs";
+import { resolve as resolve5 } from "path";
+
+// src/watch/diff.ts
+function fingerprintFinding(finding) {
+  return `${finding.id}::${finding.file}::${finding.evidence ?? ""}`;
+}
+function createBaseline(findings, score) {
+  const findingIds = new Set(findings.map(fingerprintFinding));
+  return {
+    timestamp: (/* @__PURE__ */ new Date()).toISOString(),
+    score,
+    findings,
+    findingIds
+  };
+}
+function diffBaseline(baseline, currentFindings, currentScore) {
+  const currentIds = new Set(currentFindings.map(fingerprintFinding));
+  const newFindings = currentFindings.filter(
+    (f) => !baseline.findingIds.has(fingerprintFinding(f))
+  );
+  const resolvedFindings = baseline.findings.filter(
+    (f) => !currentIds.has(fingerprintFinding(f))
+  );
+  const scoreDelta = currentScore.numericScore - baseline.score.numericScore;
+  const hasCritical = newFindings.some((f) => f.severity === "critical");
+  const isRegression = newFindings.length > 0 || scoreDelta < 0;
+  return {
+    timestamp: (/* @__PURE__ */ new Date()).toISOString(),
+    newFindings,
+    resolvedFindings,
+    scoreDelta,
+    previousScore: baseline.score.numericScore,
+    currentScore: currentScore.numericScore,
+    isRegression,
+    hasCritical
+  };
+}
+
+// src/watch/alerts.ts
+async function dispatchAlert(drift, mode, webhookUrl) {
+  if (mode === "terminal" || mode === "both") {
+    renderTerminalAlert(drift);
+  }
+  if ((mode === "webhook" || mode === "both") && webhookUrl) {
+    await sendWebhookAlert(drift, webhookUrl);
+  }
+}
+function renderTerminalAlert(drift) {
+  const divider = "\u2500".repeat(60);
+  const timestamp = new Date(drift.timestamp).toLocaleTimeString();
+  console.error(`
+${divider}`);
+  console.error(`  AgentShield Watch \u2014 Drift Detected  [${timestamp}]`);
+  console.error(divider);
+  if (drift.scoreDelta !== 0) {
+    const direction = drift.scoreDelta > 0 ? "+" : "";
+    const label = drift.scoreDelta > 0 ? "IMPROVED" : "REGRESSED";
+    console.error(
+      `  Score: ${drift.previousScore} \u2192 ${drift.currentScore} (${direction}${drift.scoreDelta}) [${label}]`
+    );
+  }
+  if (drift.newFindings.length > 0) {
+    console.error(`
+  NEW findings (${drift.newFindings.length}):`);
+    for (const f of drift.newFindings) {
+      const sev = f.severity.toUpperCase().padEnd(8);
+      console.error(`    [${sev}] ${f.title}`);
+      console.error(`             ${f.file}`);
+    }
+  }
+  if (drift.resolvedFindings.length > 0) {
+    console.error(`
+  RESOLVED findings (${drift.resolvedFindings.length}):`);
+    for (const f of drift.resolvedFindings) {
+      console.error(`    [RESOLVED] ${f.title}`);
+    }
+  }
+  if (drift.hasCritical) {
+    console.error(`
+  *** CRITICAL findings detected ***`);
+  }
+  console.error(`${divider}
+`);
+}
+function formatWebhookPayload(drift) {
+  return JSON.stringify({
+    event: "agentshield.drift",
+    timestamp: drift.timestamp,
+    isRegression: drift.isRegression,
+    hasCritical: drift.hasCritical,
+    score: {
+      previous: drift.previousScore,
+      current: drift.currentScore,
+      delta: drift.scoreDelta
+    },
+    newFindings: drift.newFindings.map((f) => ({
+      id: f.id,
+      severity: f.severity,
+      title: f.title,
+      file: f.file
+    })),
+    resolvedFindings: drift.resolvedFindings.map((f) => ({
+      id: f.id,
+      severity: f.severity,
+      title: f.title,
+      file: f.file
+    }))
+  });
+}
+async function sendWebhookAlert(drift, webhookUrl) {
+  const payload = formatWebhookPayload(drift);
+  try {
+    const response = await fetch(webhookUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: payload,
+      signal: AbortSignal.timeout(5e3)
+    });
+    if (!response.ok) {
+      console.error(
+        `  Webhook alert failed: ${response.status} ${response.statusText}`
+      );
+    }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error(`  Webhook alert failed: ${message}`);
+  }
+}
+
+// src/watch/watcher.ts
+var SEVERITY_ORDER = {
+  critical: 0,
+  high: 1,
+  medium: 2,
+  low: 3,
+  info: 4
+};
+function startWatcher(config) {
+  let baseline = null;
+  let lastDrift = null;
+  let scanCount = 0;
+  let debounceTimer = null;
+  const watchers = [];
+  const initialBaseline = performInitialScan(config);
+  if (initialBaseline) {
+    baseline = initialBaseline;
+    scanCount = 1;
+  }
+  for (const watchPath of config.paths) {
+    const resolvedPath = resolve5(watchPath);
+    if (!existsSync3(resolvedPath)) continue;
+    const isDir = statSync3(resolvedPath).isDirectory();
+    if (!isDir) continue;
+    try {
+      const pathWatchers = createPathWatchers(
+        resolvedPath,
+        () => {
+          if (debounceTimer) {
+            clearTimeout(debounceTimer);
+          }
+          debounceTimer = setTimeout(() => {
+            void handleChange(config, baseline, (result) => {
+              if (result.newBaseline) {
+                baseline = result.newBaseline;
+              }
+              if (result.drift) {
+                lastDrift = result.drift;
+              }
+              scanCount += 1;
+            });
+          }, config.debounceMs);
+        }
+      );
+      watchers.push(...pathWatchers);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error(`  Failed to watch ${resolvedPath}: ${message}`);
+    }
+  }
+  function stop() {
+    if (debounceTimer) {
+      clearTimeout(debounceTimer);
+      debounceTimer = null;
+    }
+    for (const w of watchers) {
+      w.close();
+    }
+    watchers.length = 0;
+  }
+  function getState() {
+    return {
+      isRunning: watchers.length > 0,
+      baseline,
+      lastDrift,
+      scanCount
+    };
+  }
+  return { stop, getState };
+}
+function createPathWatchers(resolvedPath, listener) {
+  try {
+    return [watch(resolvedPath, { recursive: true }, listener)];
+  } catch (error) {
+    if (!isRecursiveWatchUnsupported(error)) {
+      throw error;
+    }
+  }
+  const fallbackWatchers = [];
+  try {
+    for (const directory of collectWatchDirectories(resolvedPath)) {
+      fallbackWatchers.push(watch(directory, listener));
+    }
+    return fallbackWatchers;
+  } catch (error) {
+    for (const watcher of fallbackWatchers) {
+      watcher.close();
+    }
+    throw error;
+  }
+}
+function collectWatchDirectories(rootPath) {
+  const directories = [rootPath];
+  const queue = [rootPath];
+  while (queue.length > 0) {
+    const currentPath = queue.shift();
+    if (!currentPath) {
+      continue;
+    }
+    for (const entry of readdirSync2(currentPath, { withFileTypes: true })) {
+      if (!entry.isDirectory()) {
+        continue;
+      }
+      const childPath = resolve5(currentPath, entry.name);
+      directories.push(childPath);
+      queue.push(childPath);
+    }
+  }
+  return directories;
+}
+function isRecursiveWatchUnsupported(error) {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+  const nodeError = error;
+  return nodeError.code === "ERR_FEATURE_UNAVAILABLE_ON_PLATFORM" || nodeError.code === "ERR_INVALID_ARG_VALUE" && error.message.toLowerCase().includes("recursive");
+}
+function performInitialScan(config) {
+  try {
+    const targetPath = config.paths[0];
+    if (!targetPath || !existsSync3(targetPath)) return null;
+    const result = scan(targetPath);
+    const minIndex = SEVERITY_ORDER[config.minSeverity];
+    const filteredFindings = result.findings.filter(
+      (f) => SEVERITY_ORDER[f.severity] <= minIndex
+    );
+    const report = calculateScore({ ...result, findings: filteredFindings });
+    return createBaseline(filteredFindings, report.score);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error(`  Initial scan failed: ${message}`);
+    return null;
+  }
+}
+async function handleChange(config, currentBaseline, onResult) {
+  try {
+    const targetPath = config.paths[0];
+    if (!targetPath || !existsSync3(targetPath)) return;
+    const result = scan(targetPath);
+    const minIndex = SEVERITY_ORDER[config.minSeverity];
+    const filteredFindings = result.findings.filter(
+      (f) => SEVERITY_ORDER[f.severity] <= minIndex
+    );
+    const report = calculateScore({ ...result, findings: filteredFindings });
+    const newBaseline = createBaseline(filteredFindings, report.score);
+    if (currentBaseline) {
+      const drift = diffBaseline(currentBaseline, filteredFindings, report.score);
+      if (drift.newFindings.length > 0 || drift.resolvedFindings.length > 0) {
+        await dispatchAlert(drift, config.alertMode, config.webhookUrl);
+        onResult({ newBaseline, drift });
+      } else {
+        onResult({ newBaseline, drift: null });
+      }
+    } else {
+      onResult({ newBaseline, drift: null });
+    }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error(`  Re-scan failed: ${message}`);
+  }
+}
+
+// src/runtime/policy.ts
+import { readFileSync as readFileSync3, existsSync as existsSync4 } from "fs";
+import { resolve as resolve6 } from "path";
+
+// src/runtime/types.ts
+import { z } from "zod";
+var RuntimePolicySchema = z.object({
+  version: z.literal(1),
+  deny: z.array(
+    z.object({
+      tool: z.string(),
+      pattern: z.string().optional(),
+      reason: z.string().optional()
+    })
+  ).default([]),
+  rateLimit: z.object({
+    maxPerMinute: z.number().int().min(1).default(60),
+    tools: z.array(z.string()).default([])
+  }).optional(),
+  log: z.object({
+    enabled: z.boolean().default(true),
+    path: z.string().default(".agentshield/runtime.ndjson")
+  }).optional()
+});
+
+// src/runtime/policy.ts
+function generateDefaultPolicy() {
+  const policy = {
+    version: 1,
+    deny: [
+      {
+        tool: "Bash",
+        pattern: "rm -rf /",
+        reason: "Prevents destructive filesystem operations"
+      },
+      {
+        tool: "Bash",
+        pattern: "curl.*\\|.*sh",
+        reason: "Blocks piping remote scripts to shell"
+      }
+    ],
+    rateLimit: {
+      maxPerMinute: 30,
+      tools: ["Bash", "Write"]
+    },
+    log: {
+      enabled: true,
+      path: ".agentshield/runtime.ndjson"
+    }
+  };
+  return JSON.stringify(policy, null, 2);
+}
+
+// src/runtime/evaluator.ts
+import { appendFileSync, existsSync as existsSync5, mkdirSync as mkdirSync2 } from "fs";
+import { dirname as dirname2 } from "path";
+
+// src/runtime/install.ts
+import { readFileSync as readFileSync4, writeFileSync as writeFileSync3, existsSync as existsSync6, mkdirSync as mkdirSync3 } from "fs";
+import { join as join5, dirname as dirname3 } from "path";
+var HOOK_COMMAND = `node -e "const fs=require('fs'),p=require('path');const s=Date.now();const t=process.env.TOOL_NAME||'unknown';const i=process.env.TOOL_INPUT||'';const pp=p.resolve('.agentshield/runtime-policy.json');if(!fs.existsSync(pp)){process.exit(0)}const pol=JSON.parse(fs.readFileSync(pp,'utf-8'));for(const r of pol.deny||[]){if(r.tool==='*'||r.tool===t||t.startsWith(r.tool.replace('*',''))){if(!r.pattern||new RegExp(r.pattern,'i').test(i)){const lp=p.resolve((pol.log||{}).path||'.agentshield/runtime.ndjson');const d=p.dirname(lp);if(!fs.existsSync(d))fs.mkdirSync(d,{recursive:true});fs.appendFileSync(lp,JSON.stringify({timestamp:new Date().toISOString(),tool:t,decision:'block',reason:r.reason,durationMs:Date.now()-s})+'\\n');process.stderr.write('AgentShield: BLOCKED '+t+' \u2014 '+(r.reason||'denied by policy')+'\\n');process.exit(2)}}}const lp2=p.resolve((pol.log||{}).path||'.agentshield/runtime.ndjson');const d2=p.dirname(lp2);if(!fs.existsSync(d2))fs.mkdirSync(d2,{recursive:true});fs.appendFileSync(lp2,JSON.stringify({timestamp:new Date().toISOString(),tool:t,decision:'allow',durationMs:Date.now()-s})+'\\n');process.exit(0)"`;
+var HOOK_ENTRY = {
+  matcher: "",
+  hook: HOOK_COMMAND
+};
+function installRuntime(targetPath) {
+  const settingsPath = resolveSettingsPath(targetPath);
+  const policyDir = join5(targetPath, ".agentshield");
+  const policyPath = join5(policyDir, "runtime-policy.json");
+  if (!existsSync6(policyDir)) {
+    mkdirSync3(policyDir, { recursive: true });
+  }
+  let policyCreated = false;
+  if (!existsSync6(policyPath)) {
+    writeFileSync3(policyPath, generateDefaultPolicy());
+    policyCreated = true;
+  }
+  let settings = {};
+  if (existsSync6(settingsPath)) {
+    try {
+      settings = JSON.parse(readFileSync4(settingsPath, "utf-8"));
+    } catch {
+      settings = {};
+    }
+  }
+  const hooks = settings.hooks ?? {};
+  const preToolUse = hooks.PreToolUse ?? [];
+  const alreadyInstalled = preToolUse.some(
+    (h) => typeof h.hook === "string" && h.hook.includes("agentshield/runtime-policy")
+  );
+  if (alreadyInstalled) {
+    return {
+      hookInstalled: false,
+      policyCreated,
+      settingsPath,
+      policyPath,
+      message: "AgentShield runtime hook is already installed."
+    };
+  }
+  const updatedPreToolUse = [...preToolUse, HOOK_ENTRY];
+  const updatedHooks = { ...hooks, PreToolUse: updatedPreToolUse };
+  const updatedSettings = { ...settings, hooks: updatedHooks };
+  const dir = dirname3(settingsPath);
+  if (!existsSync6(dir)) {
+    mkdirSync3(dir, { recursive: true });
+  }
+  writeFileSync3(settingsPath, JSON.stringify(updatedSettings, null, 2));
+  return {
+    hookInstalled: true,
+    policyCreated,
+    settingsPath,
+    policyPath,
+    message: "AgentShield runtime hook installed successfully."
+  };
+}
+function uninstallRuntime(targetPath) {
+  const settingsPath = resolveSettingsPath(targetPath);
+  if (!existsSync6(settingsPath)) {
+    return { removed: false, message: "No settings.json found." };
+  }
+  try {
+    const settings = JSON.parse(readFileSync4(settingsPath, "utf-8"));
+    const hooks = settings.hooks;
+    if (!hooks?.PreToolUse) {
+      return { removed: false, message: "No PreToolUse hooks found." };
+    }
+    const preToolUse = hooks.PreToolUse;
+    const filtered = preToolUse.filter(
+      (h) => !(typeof h.hook === "string" && h.hook.includes("agentshield/runtime-policy"))
+    );
+    if (filtered.length === preToolUse.length) {
+      return { removed: false, message: "AgentShield runtime hook not found." };
+    }
+    const updatedHooks = { ...hooks, PreToolUse: filtered };
+    const updatedSettings = { ...settings, hooks: updatedHooks };
+    writeFileSync3(settingsPath, JSON.stringify(updatedSettings, null, 2));
+    return { removed: true, message: "AgentShield runtime hook removed." };
+  } catch {
+    return { removed: false, message: "Failed to parse settings.json." };
+  }
+}
+function resolveSettingsPath(targetPath) {
+  const claudeSettings = join5(targetPath, ".claude", "settings.json");
+  if (existsSync6(claudeSettings)) return claudeSettings;
+  const directSettings = join5(targetPath, "settings.json");
+  if (existsSync6(directSettings)) return directSettings;
+  return claudeSettings;
+}
+
 // src/index.ts
 async function runInjectionTests2(targetPath) {
   try {
@@ -12911,21 +15125,21 @@ function createScanLogger(logPath, logFormat) {
       };
       entries.push(fullEntry);
       if (logPath && logFormat === "ndjson") {
-        appendFileSync(logPath, JSON.stringify(fullEntry) + "\n");
+        appendFileSync2(logPath, JSON.stringify(fullEntry) + "\n");
       }
     },
     flush() {
       if (logPath && logFormat === "json") {
-        writeFileSync3(logPath, JSON.stringify(entries, null, 2));
+        writeFileSync5(logPath, JSON.stringify(entries, null, 2));
       }
     }
   };
 }
 var program = new Command();
-program.name("agentshield").description("Security auditor for AI agent configurations").version("1.5.0");
-program.command("scan").description("Scan a Claude Code configuration directory for security issues").option("-p, --path <path>", "Path to scan (default: ~/.claude or current dir)").option("-f, --format <format>", "Output format: terminal, json, markdown, html", "terminal").option("--fix", "Auto-apply safe fixes", false).option("--opus", "Enable Opus 4.6 multi-agent deep analysis", false).option("--stream", "Stream Opus analysis in real-time", false).option("--injection", "Run active prompt injection testing against the config", false).option("--sandbox", "Execute hooks in sandbox and observe behavior", false).option("--taint", "Run taint analysis (data flow tracking)", false).option("--deep", "Run ALL analysis (injection + sandbox + taint + opus)", false).option("--log <path>", "Write structured scan log to file").option("--log-format <format>", "Log format: ndjson (default) or json", "ndjson").option("--corpus", "Run scanner validation against built-in attack corpus", false).option("--min-severity <severity>", "Minimum severity to report: critical, high, medium, low, info", "info").option("-v, --verbose", "Show detailed output", false).action(async (options) => {
+program.name("agentshield").description("Security auditor for AI agent configurations").version("1.8.0");
+program.command("scan").description("Scan a Claude Code configuration directory for security issues").option("-p, --path <path>", "Path to scan (default: ~/.claude or current dir)").option("-f, --format <format>", "Output format: terminal, json, markdown, html", "terminal").option("--fix", "Auto-apply safe fixes", false).option("--opus", "Enable Opus 4.6 multi-agent deep analysis", false).option("--stream", "Stream Opus analysis in real-time", false).option("--injection", "Run active prompt injection testing against the config", false).option("--sandbox", "Execute hooks in sandbox and observe behavior", false).option("--taint", "Run taint analysis (data flow tracking)", false).option("--deep", "Run ALL analysis (injection + sandbox + taint + opus)", false).option("--log <path>", "Write structured scan log to file").option("--log-format <format>", "Log format: ndjson (default) or json", "ndjson").option("--corpus", "Run scanner validation against built-in attack corpus", false).option("--baseline <path>", "Compare against a baseline file and report regressions").option("--save-baseline <path>", "Save current scan results as a baseline file").option("--gate", "Fail if new critical/high findings or score drops (use with --baseline)", false).option("--supply-chain", "Verify MCP npm packages against known-bad list and typosquatting", false).option("--supply-chain-online", "Also query npm registry for metadata (requires network)", false).option("--policy <path>", "Validate against an organization policy file").option("--min-severity <severity>", "Minimum severity to report: critical, high, medium, low, info", "info").option("-v, --verbose", "Show detailed output", false).action(async (options) => {
   const targetPath = resolveTargetPath(options.path);
-  if (!existsSync3(targetPath)) {
+  if (!existsSync9(targetPath)) {
     console.error(`Error: Path does not exist: ${targetPath}`);
     process.exit(1);
   }
@@ -12964,6 +15178,77 @@ program.command("scan").description("Scan a Claude Code configuration directory 
       break;
     default:
       console.log(renderTerminalReport(report));
+  }
+  if (options.saveBaseline) {
+    const { saveBaseline: saveBaseline2 } = await Promise.resolve().then(() => (init_baseline(), baseline_exports));
+    saveBaseline2(filteredResult.findings, report.score, options.saveBaseline);
+    console.log(`
+  Baseline saved to: ${options.saveBaseline}
+`);
+    logger.log({ level: "info", phase: "baseline", message: `Baseline saved to ${options.saveBaseline}` });
+  }
+  if (options.baseline) {
+    const { loadBaseline: loadBaseline2, compareBaseline: compareBaseline2, evaluateGate: evaluateGate2, renderComparison: renderComparison2, renderGateResult: renderGateResult2 } = await Promise.resolve().then(() => (init_baseline(), baseline_exports));
+    const baseline = loadBaseline2(options.baseline);
+    if (!baseline) {
+      console.error(`
+  Error: Could not load baseline from ${options.baseline}
+`);
+    } else {
+      const comparison = compareBaseline2(baseline, filteredResult.findings, report.score);
+      console.log(renderComparison2(comparison));
+      logger.log({
+        level: comparison.isRegression ? "warn" : "info",
+        phase: "baseline",
+        message: `Baseline comparison: ${comparison.newFindings.length} new, ${comparison.resolvedFindings.length} resolved, score delta ${comparison.scoreDelta}`
+      });
+      if (options.gate) {
+        const gateResult = evaluateGate2(comparison);
+        console.log(renderGateResult2(gateResult));
+        if (!gateResult.passed) {
+          logger.log({ level: "error", phase: "gate", message: `Gate FAILED: ${gateResult.reasons.join("; ")}` });
+          process.exit(3);
+        }
+      }
+    }
+  }
+  if (options.policy) {
+    logger.log({ level: "info", phase: "policy", message: "Validating against organization policy" });
+    try {
+      const { loadPolicy: loadOrgPolicy, evaluatePolicy: evaluatePolicy2, renderPolicyEvaluation: renderPolicyEvaluation2 } = await Promise.resolve().then(() => (init_policy(), policy_exports));
+      const policyResult = loadOrgPolicy(resolve7(options.policy));
+      if (!policyResult.success) {
+        console.error(`
+  Error: ${policyResult.error}
+`);
+        logger.log({
+          level: "error",
+          phase: "policy",
+          message: `Failed to load policy: ${policyResult.error}`
+        });
+        process.exit(4);
+      }
+      const evaluation = evaluatePolicy2(
+        policyResult.policy,
+        filteredResult.findings,
+        report.score,
+        result.target.files
+      );
+      console.log(renderPolicyEvaluation2(evaluation));
+      logger.log({
+        level: evaluation.passed ? "info" : "warn",
+        phase: "policy",
+        message: `Policy "${evaluation.policyName}": ${evaluation.passed ? "COMPLIANT" : `NON-COMPLIANT (${evaluation.violations.length} violations)`}`
+      });
+      if (!evaluation.passed) {
+        process.exit(4);
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error(`  Policy evaluation failed: ${message}`);
+      logger.log({ level: "error", phase: "policy", message: `Failed: ${message}` });
+      process.exit(4);
+    }
   }
   if (options.fix) {
     logger.log({ level: "info", phase: "fix", message: "Applying auto-fixes" });
@@ -13057,6 +15342,28 @@ Opus analysis failed: ${message}`);
       });
     }
   }
+  if (options.supplyChain || options.supplyChainOnline) {
+    logger.log({ level: "info", phase: "supply-chain", message: "Running supply chain verification" });
+    try {
+      const { extractPackages: extractPackages2, verifyPackages: verifyPackages2, renderSupplyChainReport: renderSupplyChainReport2 } = await Promise.resolve().then(() => (init_supply_chain(), supply_chain_exports));
+      const packages = extractPackages2(result.target.files);
+      const scReport = await verifyPackages2(packages, {
+        online: options.supplyChainOnline
+      });
+      if (options.format === "terminal") {
+        console.log(renderSupplyChainReport2(scReport));
+      }
+      logger.log({
+        level: scReport.criticalCount > 0 ? "error" : scReport.highCount > 0 ? "warn" : "info",
+        phase: "supply-chain",
+        message: `Supply chain: ${scReport.riskyPackages}/${scReport.totalPackages} risky packages`
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error(`  Supply chain verification failed: ${message}`);
+      logger.log({ level: "error", phase: "supply-chain", message: `Failed: ${message}` });
+    }
+  }
   if (options.deep) {
     const { renderDeepScanSummary: renderDeepScanSummary2 } = await Promise.resolve().then(() => (init_terminal(), terminal_exports));
     const deepResult = {
@@ -13086,6 +15393,132 @@ Opus analysis failed: ${message}`);
 program.command("init").description("Generate a secure baseline Claude Code configuration").option("-p, --path <path>", "Target directory (default: current directory)").action((options) => {
   const initResult = runInit(options.path);
   console.log(renderInitSummary(initResult));
+});
+program.command("watch").description("Continuously monitor config directories for security regressions").option("-p, --path <path>", "Path to watch (default: ~/.claude or current dir)").option("--debounce <ms>", "Debounce interval in milliseconds", "500").option("--alert <mode>", "Alert mode: terminal, webhook, both", "terminal").option("--webhook <url>", "Webhook URL for alerts").option("--min-severity <severity>", "Minimum severity to track: critical, high, medium, low, info", "info").option("--block", "Exit non-zero if critical findings detected (for CI integration)", false).action((options) => {
+  const targetPath = resolveTargetPath(options.path);
+  if (!existsSync9(targetPath)) {
+    console.error(`Error: Path does not exist: ${targetPath}`);
+    process.exit(1);
+  }
+  const debounceMs = parseInt(options.debounce, 10);
+  if (isNaN(debounceMs) || debounceMs < 100) {
+    console.error("Error: Debounce must be at least 100ms.");
+    process.exit(1);
+  }
+  const alertMode = options.alert;
+  if (!["terminal", "webhook", "both"].includes(alertMode)) {
+    console.error("Error: Alert mode must be: terminal, webhook, or both.");
+    process.exit(1);
+  }
+  if ((alertMode === "webhook" || alertMode === "both") && !options.webhook) {
+    console.error("Error: --webhook URL required when alert mode is 'webhook' or 'both'.");
+    process.exit(1);
+  }
+  const validSeverities = ["critical", "high", "medium", "low", "info"];
+  if (!validSeverities.includes(options.minSeverity)) {
+    console.error(`Error: --min-severity must be one of: ${validSeverities.join(", ")}`);
+    process.exit(1);
+  }
+  console.log(`
+  AgentShield Watch Mode
+`);
+  console.log(`  Watching:       ${targetPath}`);
+  console.log(`  Debounce:       ${debounceMs}ms`);
+  console.log(`  Alert mode:     ${alertMode}`);
+  console.log(`  Min severity:   ${options.minSeverity}`);
+  if (options.webhook) {
+    console.log(`  Webhook:        ${options.webhook}`);
+  }
+  console.log(`
+  Performing initial scan to establish baseline...`);
+  const homeClaude = resolve7(
+    process.env.HOME ?? process.env.USERPROFILE ?? ".",
+    ".claude"
+  );
+  const watchPaths = [targetPath];
+  if (existsSync9(homeClaude) && homeClaude !== targetPath) {
+    watchPaths.push(homeClaude);
+    console.log(`  Also watching:  ${homeClaude}`);
+  }
+  const { stop, getState } = startWatcher({
+    paths: watchPaths,
+    debounceMs,
+    alertMode,
+    webhookUrl: options.webhook,
+    minSeverity: options.minSeverity,
+    blockOnCritical: options.block
+  });
+  const state = getState();
+  if (state.baseline) {
+    console.log(`  Baseline score: ${state.baseline.score.numericScore} (${state.baseline.score.grade})`);
+    console.log(`  Findings:       ${state.baseline.findings.length}`);
+  }
+  console.log(`
+  Watching for changes... (Press Ctrl+C to stop)
+`);
+  const handleSignal = () => {
+    console.log("\n  Stopping watch...\n");
+    stop();
+    process.exit(0);
+  };
+  process.on("SIGINT", handleSignal);
+  process.on("SIGTERM", handleSignal);
+  if (options.block && state.baseline) {
+    const hasCritical = state.baseline.findings.some(
+      (f) => f.severity === "critical"
+    );
+    if (hasCritical) {
+      console.error("  BLOCKED: Critical findings detected in initial scan.");
+      stop();
+      process.exit(2);
+    }
+  }
+});
+var runtime = program.command("runtime").description("Runtime monitoring \u2014 PreToolUse hook for policy enforcement");
+runtime.command("install").description("Install the AgentShield PreToolUse hook into settings.json").option("-p, --path <path>", "Target directory (default: current directory)", ".").action((options) => {
+  const result = installRuntime(resolve7(options.path));
+  console.log(`
+  AgentShield Runtime Monitor
+`);
+  console.log(`  ${result.message}`);
+  if (result.hookInstalled) {
+    console.log(`  Settings: ${result.settingsPath}`);
+  }
+  if (result.policyCreated) {
+    console.log(`  Policy:   ${result.policyPath}`);
+    console.log(`
+  Edit the policy file to configure deny rules.`);
+  }
+  console.log();
+});
+runtime.command("uninstall").description("Remove the AgentShield PreToolUse hook from settings.json").option("-p, --path <path>", "Target directory (default: current directory)", ".").action((options) => {
+  const result = uninstallRuntime(resolve7(options.path));
+  console.log(`
+  AgentShield Runtime Monitor
+`);
+  console.log(`  ${result.message}
+`);
+});
+var policyCmd = program.command("policy").description("Organization-wide security policy management");
+policyCmd.command("init").description("Generate an example organization policy file").option("-o, --output <path>", "Output path", ".agentshield/policy.json").action(async (options) => {
+  const { generateExamplePolicy: generateExamplePolicy2 } = await Promise.resolve().then(() => (init_policy(), policy_exports));
+  const outputPath = resolve7(options.output);
+  if (existsSync9(outputPath)) {
+    console.error(`
+  Error: Policy file already exists at ${outputPath}
+`);
+    process.exit(1);
+  }
+  const dir = resolve7(outputPath, "..");
+  if (!existsSync9(dir)) {
+    mkdirSync5(dir, { recursive: true });
+  }
+  writeFileSync5(outputPath, generateExamplePolicy2());
+  console.log(`
+  Example policy written to: ${outputPath}`);
+  console.log(`  Edit the file to match your organization's requirements.`);
+  console.log(`  Then run: agentshield scan --policy ${options.output}
+`);
 });
 var miniclaw = program.command("miniclaw").description("MiniClaw \u2014 minimal secure sandboxed AI agent runtime");
 miniclaw.command("start").description("Start the MiniClaw server").option("-p, --port <port>", "Port to listen on", "3847").option("-H, --hostname <hostname>", "Hostname to bind to", "localhost").option("--network <policy>", "Network policy: none, localhost, allowlist", "none").option("--rate-limit <limit>", "Max requests per minute per IP", "10").option("--sandbox-root <path>", "Root path for sandbox directories", "/tmp/miniclaw-sandboxes").option("--max-duration <ms>", "Max session duration in milliseconds", "300000").action((options) => {
@@ -13178,17 +15611,17 @@ miniclaw.command("start").description("Start the MiniClaw server").option("-p, -
 program.parse();
 function resolveTargetPath(pathArg) {
   if (pathArg) {
-    return resolve4(pathArg);
+    return resolve7(pathArg);
   }
-  const localClaude = resolve4(process.cwd(), ".claude");
-  if (existsSync3(localClaude)) {
+  const localClaude = resolve7(process.cwd(), ".claude");
+  if (existsSync9(localClaude)) {
     return localClaude;
   }
-  const homeClaude = resolve4(
+  const homeClaude = resolve7(
     process.env.HOME ?? process.env.USERPROFILE ?? ".",
     ".claude"
   );
-  if (existsSync3(homeClaude)) {
+  if (existsSync9(homeClaude)) {
     return homeClaude;
   }
   return process.cwd();

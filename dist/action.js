@@ -1,6 +1,212 @@
+var __defProp = Object.defineProperty;
+var __getOwnPropNames = Object.getOwnPropertyNames;
+var __esm = (fn, res) => function __init() {
+  return fn && (res = (0, fn[__getOwnPropNames(fn)[0]])(fn = 0)), res;
+};
+var __export = (target, all) => {
+  for (var name in all)
+    __defProp(target, name, { get: all[name], enumerable: true });
+};
+
+// src/baseline/types.ts
+var DEFAULT_GATE_CONFIG;
+var init_types = __esm({
+  "src/baseline/types.ts"() {
+    "use strict";
+    DEFAULT_GATE_CONFIG = {
+      maxNewFindings: 0,
+      maxScoreDrop: 5,
+      failOnNewCritical: true,
+      failOnNewHigh: true
+    };
+  }
+});
+
+// src/baseline/compare.ts
+import { readFileSync as readFileSync2, writeFileSync, existsSync as existsSync2 } from "fs";
+import { dirname as dirname2 } from "path";
+import { mkdirSync } from "fs";
+function fingerprintFinding(finding) {
+  return `${finding.id}::${finding.file}::${finding.evidence ?? ""}`;
+}
+function saveBaseline(findings, score, outputPath) {
+  const serialized = {
+    version: 1,
+    timestamp: (/* @__PURE__ */ new Date()).toISOString(),
+    score,
+    findings: findings.map((f) => ({
+      id: f.id,
+      severity: f.severity,
+      category: f.category,
+      title: f.title,
+      file: f.file,
+      evidence: f.evidence,
+      fingerprint: fingerprintFinding(f)
+    }))
+  };
+  const dir = dirname2(outputPath);
+  if (!existsSync2(dir)) {
+    mkdirSync(dir, { recursive: true });
+  }
+  writeFileSync(outputPath, JSON.stringify(serialized, null, 2));
+}
+function loadBaseline(baselinePath) {
+  if (!existsSync2(baselinePath)) return null;
+  try {
+    const raw = readFileSync2(baselinePath, "utf-8");
+    const parsed = JSON.parse(raw);
+    if (parsed.version !== 1 || !Array.isArray(parsed.findings)) {
+      return null;
+    }
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+function compareBaseline(baseline, currentFindings, currentScore) {
+  const baselineFingerprints = new Set(
+    baseline.findings.map((f) => f.fingerprint)
+  );
+  const currentFingerprints = new Set(
+    currentFindings.map(fingerprintFinding)
+  );
+  const newFindings = currentFindings.filter(
+    (f) => !baselineFingerprints.has(fingerprintFinding(f))
+  );
+  const resolvedFindings = baseline.findings.filter(
+    (f) => !currentFingerprints.has(f.fingerprint)
+  );
+  const unchangedCount = currentFindings.length - newFindings.length;
+  const scoreDelta = currentScore.numericScore - baseline.score.numericScore;
+  const newCriticalCount = newFindings.filter(
+    (f) => f.severity === "critical"
+  ).length;
+  const newHighCount = newFindings.filter(
+    (f) => f.severity === "high"
+  ).length;
+  const isRegression = newFindings.length > 0 || scoreDelta < 0;
+  return {
+    timestamp: (/* @__PURE__ */ new Date()).toISOString(),
+    baselineTimestamp: baseline.timestamp,
+    newFindings,
+    resolvedFindings,
+    unchangedCount,
+    scoreDelta,
+    baselineScore: baseline.score.numericScore,
+    currentScore: currentScore.numericScore,
+    isRegression,
+    newCriticalCount,
+    newHighCount
+  };
+}
+function evaluateGate(comparison, config = DEFAULT_GATE_CONFIG) {
+  const reasons = [];
+  if (config.failOnNewCritical && comparison.newCriticalCount > 0) {
+    reasons.push(
+      `${comparison.newCriticalCount} new critical finding(s) introduced`
+    );
+  }
+  if (config.failOnNewHigh && comparison.newHighCount > 0) {
+    reasons.push(
+      `${comparison.newHighCount} new high finding(s) introduced`
+    );
+  }
+  if (comparison.newFindings.length > config.maxNewFindings) {
+    reasons.push(
+      `${comparison.newFindings.length} new finding(s) exceed threshold of ${config.maxNewFindings}`
+    );
+  }
+  if (comparison.scoreDelta < -config.maxScoreDrop) {
+    reasons.push(
+      `Score dropped by ${Math.abs(comparison.scoreDelta)} points (max allowed: ${config.maxScoreDrop})`
+    );
+  }
+  return {
+    passed: reasons.length === 0,
+    reasons,
+    comparison
+  };
+}
+function renderComparison(comparison) {
+  const lines = [];
+  const divider = "\u2500".repeat(60);
+  lines.push("");
+  lines.push(`  ${divider}`);
+  lines.push("  Baseline Comparison Report");
+  lines.push(`  ${divider}`);
+  lines.push("");
+  const direction = comparison.scoreDelta > 0 ? "+" : "";
+  const label = comparison.scoreDelta > 0 ? "IMPROVED" : comparison.scoreDelta < 0 ? "REGRESSED" : "UNCHANGED";
+  lines.push(
+    `  Score: ${comparison.baselineScore} \u2192 ${comparison.currentScore} (${direction}${comparison.scoreDelta}) [${label}]`
+  );
+  lines.push(
+    `  Baseline from: ${comparison.baselineTimestamp}`
+  );
+  lines.push("");
+  if (comparison.newFindings.length > 0) {
+    lines.push(`  NEW FINDINGS (${comparison.newFindings.length}):`);
+    for (const f of comparison.newFindings) {
+      lines.push(`    [${f.severity.toUpperCase().padEnd(8)}] ${f.title}`);
+      lines.push(`               ${f.file}`);
+    }
+    lines.push("");
+  }
+  if (comparison.resolvedFindings.length > 0) {
+    lines.push(`  RESOLVED FINDINGS (${comparison.resolvedFindings.length}):`);
+    for (const f of comparison.resolvedFindings) {
+      lines.push(`    [RESOLVED] ${f.title}`);
+    }
+    lines.push("");
+  }
+  lines.push(`  Unchanged: ${comparison.unchangedCount} finding(s)`);
+  lines.push(`  ${divider}`);
+  lines.push("");
+  return lines.join("\n");
+}
+function renderGateResult(result) {
+  const lines = [];
+  if (result.passed) {
+    lines.push("  Gate: PASSED \u2014 No regressions detected.");
+  } else {
+    lines.push("  Gate: FAILED \u2014 Security regressions detected:");
+    for (const reason of result.reasons) {
+      lines.push(`    - ${reason}`);
+    }
+  }
+  lines.push("");
+  return lines.join("\n");
+}
+var init_compare = __esm({
+  "src/baseline/compare.ts"() {
+    "use strict";
+    init_types();
+  }
+});
+
+// src/baseline/index.ts
+var baseline_exports = {};
+__export(baseline_exports, {
+  DEFAULT_GATE_CONFIG: () => DEFAULT_GATE_CONFIG,
+  compareBaseline: () => compareBaseline,
+  evaluateGate: () => evaluateGate,
+  fingerprintFinding: () => fingerprintFinding,
+  loadBaseline: () => loadBaseline,
+  renderComparison: () => renderComparison,
+  renderGateResult: () => renderGateResult,
+  saveBaseline: () => saveBaseline
+});
+var init_baseline = __esm({
+  "src/baseline/index.ts"() {
+    "use strict";
+    init_compare();
+    init_types();
+  }
+});
+
 // src/action.ts
-import { resolve } from "path";
-import { existsSync as existsSync2 } from "fs";
+import { resolve as resolve2 } from "path";
+import { existsSync as existsSync3 } from "fs";
 import { appendFileSync } from "fs";
 
 // src/scanner/discovery.ts
@@ -948,6 +1154,9 @@ var secretRules = [
 ];
 
 // src/rules/permissions.ts
+import { statSync as statSync2 } from "fs";
+import { resolve, join as join2 } from "path";
+import { homedir } from "os";
 function isHookManifestConfig(file, config) {
   if (!/(^|\/)hooks\/[^/]+\.json$/i.test(file.path)) return false;
   if (!config || typeof config !== "object") return false;
@@ -1692,8 +1901,67 @@ var permissionRules = [
       }
       return findings;
     }
+  },
+  {
+    id: "permissions-claude-md-world-writable",
+    name: "CLAUDE.md File Permissions Too Open",
+    description: "Checks if CLAUDE.md files have overly permissive filesystem permissions (world-writable or group-writable)",
+    severity: "high",
+    category: "permissions",
+    check(file) {
+      if (file.type !== "claude-md") return [];
+      const normalizedPath = file.path.replace(/\\/g, "/");
+      if (!/CLAUDE\.md$/i.test(normalizedPath)) return [];
+      const absolutePath = resolveClaudeMdPath(normalizedPath);
+      if (!absolutePath) return [];
+      try {
+        const stat = statSync2(absolutePath);
+        const mode = stat.mode;
+        const isGroupWritable = (mode & 16) !== 0;
+        const isOtherWritable = (mode & 2) !== 0;
+        if (!isGroupWritable && !isOtherWritable) return [];
+        const issues = [];
+        if (isOtherWritable) issues.push("world-writable");
+        if (isGroupWritable) issues.push("group-writable");
+        const modeStr = "0o" + (mode & 511).toString(8);
+        return [{
+          id: "permissions-claude-md-world-writable",
+          severity: isOtherWritable ? "high" : "medium",
+          category: "permissions",
+          title: `CLAUDE.md is ${issues.join(" and ")} (${modeStr})`,
+          description: `The file ${normalizedPath} has permissions ${modeStr}, making it ${issues.join(" and ")}. CLAUDE.md files are injected into every Claude Code prompt as system instructions. A local attacker or malicious process could modify this file to inject prompt instructions that exfiltrate data, run arbitrary commands, or alter agent behavior. Restrict permissions to owner-only (chmod 600).`,
+          file: file.path,
+          evidence: `permissions: ${modeStr}`,
+          fix: {
+            description: "Restrict file permissions to owner-only read/write",
+            before: modeStr,
+            after: "0o600",
+            auto: true
+          }
+        }];
+      } catch {
+        return [];
+      }
+    }
   }
 ];
+function resolveClaudeMdPath(relativePath) {
+  if (/^\.claude\/CLAUDE\.md$/i.test(relativePath)) {
+    const homeClaudeMd = join2(homedir(), ".claude", "CLAUDE.md");
+    try {
+      statSync2(homeClaudeMd);
+      return homeClaudeMd;
+    } catch {
+    }
+  }
+  try {
+    const resolved = resolve(relativePath);
+    statSync2(resolved);
+    return resolved;
+  } catch {
+    return null;
+  }
+}
 function findLineNumber2(content, matchIndex) {
   return content.substring(0, matchIndex).split("\n").length;
 }
@@ -1899,6 +2167,66 @@ function isCommentOnlyShellMatch(content, index) {
   const line = getLineContentAtIndex(content, index).trimStart();
   return line.startsWith("#");
 }
+function isInsideTestPattern(content, matchIndex) {
+  const prefix = content.slice(0, matchIndex);
+  let lastSingleQuote = -1;
+  let lastDoubleQuote = -1;
+  let inSingle = false;
+  let inDouble = false;
+  for (let i = 0; i < prefix.length; i++) {
+    const ch = prefix[i];
+    if (ch === "'" && !inDouble) {
+      inSingle = !inSingle;
+      if (inSingle) lastSingleQuote = i;
+    } else if (ch === '"' && !inSingle) {
+      inDouble = !inDouble;
+      if (inDouble) lastDoubleQuote = i;
+    }
+  }
+  const quoteStart = Math.max(lastSingleQuote, lastDoubleQuote);
+  if ((inSingle || inDouble) && quoteStart > 0) {
+    const beforeQuote = prefix.slice(0, quoteStart).trimEnd();
+    if (/\b(?:grep|egrep|fgrep)\b(?:\s+-[a-zA-Z]+)*\s*$/i.test(beforeQuote)) {
+      return true;
+    }
+    if (/\[\[?\s+.*(?:==|=|!=|=~)\s*(?:\*?)?$/.test(beforeQuote)) {
+      return true;
+    }
+    if (/\bcase\b/.test(beforeQuote) || /\)\s*$/.test(beforeQuote) === false && /\|\s*$/.test(beforeQuote)) {
+      if (/\bcase\s+/.test(content.slice(0, quoteStart))) {
+        return true;
+      }
+    }
+  }
+  const lineStart = prefix.lastIndexOf("\n") + 1;
+  const linePrefix = prefix.slice(lineStart).trimStart();
+  if (/^\*?[a-zA-Z_-]+\*?\)/.test(linePrefix) || /^\|?\s*\*/.test(linePrefix)) {
+    if (/\bcase\s+/.test(content.slice(0, matchIndex))) {
+      return true;
+    }
+  }
+  if (/\b(?:grep|egrep|fgrep)\b(?:\s+-[a-zA-Z]+)*\s+$/.test(linePrefix)) {
+    return true;
+  }
+  return false;
+}
+function isInsideQuotedString(content, matchIndex) {
+  const prefix = content.slice(0, matchIndex);
+  let inSingle = false;
+  let inDouble = false;
+  for (let i = 0; i < prefix.length; i++) {
+    const ch = prefix[i];
+    if (ch === "'" && !inDouble) {
+      inSingle = !inSingle;
+    } else if (ch === '"' && !inSingle) {
+      inDouble = !inDouble;
+    }
+  }
+  return inSingle || inDouble;
+}
+function isBlockingGuardCommand(content) {
+  return /\bexit\s+2\b/.test(content);
+}
 function findAllHookMatches(file, pattern) {
   const matches = [];
   for (const target of getHookSearchTargets(file)) {
@@ -1906,11 +2234,17 @@ function findAllHookMatches(file, pattern) {
       if (file.type === "hook-script" && isCommentOnlyShellMatch(target.content, match.index ?? 0)) {
         continue;
       }
+      const matchIndex = match.index ?? 0;
+      if (isBlockingGuardCommand(target.content)) {
+        if (isInsideTestPattern(target.content, matchIndex) || isInsideQuotedString(target.content, matchIndex)) {
+          continue;
+        }
+      }
       matches.push({
         match,
-        line: target.baseLine + findLineNumber3(target.content, match.index ?? 0) - 1,
+        line: target.baseLine + findLineNumber3(target.content, matchIndex) - 1,
         content: target.content,
-        commandContext: getCommandContext(target.content, match.index ?? 0)
+        commandContext: getCommandContext(target.content, matchIndex)
       });
     }
   }
@@ -2504,6 +2838,9 @@ var hookRules = [
         ];
         for (const hook of allHooks) {
           for (const command of extractHookCommands2(hook)) {
+            if (isBlockingGuardCommand(command)) {
+              continue;
+            }
             let chainCount = 0;
             for (const { pattern } of chainPatterns) {
               const matches = [...command.matchAll(new RegExp(pattern.source, "g"))];
@@ -4870,6 +5207,557 @@ var mcpRules = rawMcpRules.map((rule) => ({
   }
 }));
 
+// src/threat-intel/cve-database.ts
+var MALICIOUS_PACKAGES = [
+  // SANDWORM_MODE typosquats targeting MCP SDK
+  {
+    name: "@anthropic-ai/model-context-protocol-sdk",
+    type: "typosquat",
+    description: "Typosquat of the official @modelcontextprotocol/sdk. Part of SANDWORM_MODE supply chain campaign targeting MCP developers.",
+    legitimatePackage: "@modelcontextprotocol/sdk"
+  },
+  {
+    name: "anthropic-mcp-sdk",
+    type: "typosquat",
+    description: "Typosquat targeting developers searching for the Anthropic MCP SDK.",
+    legitimatePackage: "@modelcontextprotocol/sdk"
+  },
+  {
+    name: "mcp-sdk-anthropic",
+    type: "typosquat",
+    description: "Typosquat with reversed naming convention targeting MCP SDK users.",
+    legitimatePackage: "@modelcontextprotocol/sdk"
+  },
+  {
+    name: "@anthropic/mcp-server",
+    type: "typosquat",
+    description: "Typosquat using incorrect scope for Anthropic MCP servers (correct scope is @anthropics or @modelcontextprotocol).",
+    legitimatePackage: "@modelcontextprotocol/sdk"
+  },
+  // Compromised legitimate packages
+  {
+    name: "cline",
+    type: "compromised",
+    description: "Clinejection supply chain attack. Compromised npm token used to publish cline@2.3.0 with malicious postinstall script that installed openclaw. ~4,000 downloads in ~8 hour window.",
+    affectedVersions: "2.3.0"
+  },
+  // Known malicious MCP servers
+  {
+    name: "postmark-mcp",
+    type: "malicious",
+    description: "Malicious MCP server impersonating Postmark email service. Version 1.0.16 secretly BCCs every outgoing email to an attacker-controlled domain.",
+    affectedVersions: "1.0.16"
+  },
+  {
+    name: "openclaw",
+    type: "malicious",
+    description: "Malicious package installed by the compromised cline@2.3.0 postinstall script. Part of the Clinejection supply chain attack."
+  },
+  // AI-specific typosquats from PyPI/npm campaigns
+  {
+    name: "aliyun-ai-labs-snippets-sdk",
+    type: "malicious",
+    description: "Malicious PyPI package delivering infostealer hidden inside PyTorch model files."
+  },
+  {
+    name: "ai-labs-snippets-sdk",
+    type: "malicious",
+    description: "Malicious PyPI package delivering infostealer hidden inside PyTorch model files."
+  },
+  {
+    name: "aliyun-ai-labs-sdk",
+    type: "malicious",
+    description: "Malicious PyPI package delivering infostealer hidden inside PyTorch model files."
+  }
+];
+var VULNERABLE_SERVERS = [
+  {
+    packageName: "@anthropics/mcp-server-git",
+    cveIds: ["CVE-2025-68145", "CVE-2025-68143", "CVE-2025-68144"],
+    description: "Anthropic's official MCP git server has path traversal, unrestricted git_init, and argument injection vulnerabilities."
+  },
+  {
+    packageName: "mcp-server-git",
+    cveIds: ["CVE-2025-68145", "CVE-2025-68143", "CVE-2025-68144"],
+    description: "MCP git server (community package) shares vulnerabilities with the official Anthropic version."
+  },
+  {
+    packageName: "mcp-remote",
+    cveIds: ["CVE-2025-6514"],
+    description: "OS command injection via malicious authorization_endpoint. The authorization URL is passed to the system shell without sanitization."
+  }
+];
+function checkPackageName(packageName, version) {
+  const match = MALICIOUS_PACKAGES.find((pkg) => pkg.name === packageName);
+  if (!match) return void 0;
+  if (match.type === "compromised" && match.affectedVersions && version) {
+    const affectedVersionList = match.affectedVersions.split(",").map((v) => v.trim());
+    if (!affectedVersionList.includes(version)) {
+      return void 0;
+    }
+  }
+  return match;
+}
+function checkServerPackage(command, args) {
+  for (const server of VULNERABLE_SERVERS) {
+    if (command === server.packageName || command.endsWith(`/${server.packageName}`)) {
+      return server;
+    }
+  }
+  for (const arg of args) {
+    if (arg.startsWith("-")) continue;
+    for (const server of VULNERABLE_SERVERS) {
+      if (arg === server.packageName || arg.startsWith(`${server.packageName}@`)) {
+        return server;
+      }
+    }
+  }
+  return void 0;
+}
+
+// src/rules/mcp-cve.ts
+var rawCveMcpRules = [
+  {
+    id: "mcp-known-vulnerable-server",
+    name: "Known Vulnerable MCP Server Package",
+    description: "Cross-references MCP server packages against the CVE database to detect known-vulnerable servers",
+    severity: "critical",
+    category: "mcp",
+    check(file) {
+      if (file.type !== "mcp-json" && file.type !== "settings-json") return [];
+      const findings = [];
+      try {
+        const config = JSON.parse(file.content);
+        const servers = config.mcpServers ?? {};
+        for (const [name, server] of Object.entries(servers)) {
+          const serverConfig = server ?? {};
+          const command = serverConfig.command ?? "";
+          const args = serverConfig.args ?? [];
+          const vulnServer = checkServerPackage(command, args);
+          if (vulnServer) {
+            const cveList = vulnServer.cveIds.join(", ");
+            findings.push({
+              id: `mcp-known-vuln-${name}`,
+              severity: "critical",
+              category: "mcp",
+              title: `MCP server "${name}" uses known-vulnerable package: ${vulnServer.packageName}`,
+              description: `${vulnServer.description} Known CVEs: ${cveList}.${vulnServer.fixedIn ? ` Fixed in ${vulnServer.fixedIn}.` : " Check for updates."}`,
+              file: file.path,
+              evidence: `package: ${vulnServer.packageName}, CVEs: ${cveList}`,
+              fix: {
+                description: "Update to a patched version or replace with a secure alternative",
+                before: vulnServer.packageName,
+                after: `${vulnServer.packageName}@latest (verify patch)`,
+                auto: false
+              }
+            });
+          }
+        }
+      } catch {
+      }
+      return findings;
+    }
+  },
+  {
+    id: "mcp-malicious-package",
+    name: "Known Malicious Package in MCP Config",
+    description: "Checks MCP server configurations for known-malicious and typosquatted packages",
+    severity: "critical",
+    category: "mcp",
+    check(file) {
+      if (file.type !== "mcp-json" && file.type !== "settings-json") return [];
+      const findings = [];
+      try {
+        const config = JSON.parse(file.content);
+        const servers = config.mcpServers ?? {};
+        for (const [name, server] of Object.entries(servers)) {
+          const serverConfig = server ?? {};
+          const command = serverConfig.command ?? "";
+          const args = serverConfig.args ?? [];
+          const cmdMatch = checkPackageName(command);
+          if (cmdMatch) {
+            findings.push(buildMaliciousFinding(name, command, cmdMatch, file.path));
+            continue;
+          }
+          for (const arg of args) {
+            if (arg.startsWith("-")) continue;
+            const pkgName = arg.includes("@") && !arg.startsWith("@") ? arg.substring(0, arg.indexOf("@")) : arg.startsWith("@") && arg.split("@").length > 2 ? arg.substring(0, arg.lastIndexOf("@")) : arg;
+            const match = checkPackageName(pkgName);
+            if (match) {
+              findings.push(buildMaliciousFinding(name, pkgName, match, file.path));
+              break;
+            }
+          }
+        }
+      } catch {
+      }
+      return findings;
+    }
+  }
+];
+function buildMaliciousFinding(serverName, packageName, match, filePath) {
+  const typeLabel = match.type === "typosquat" ? "typosquat" : match.type === "compromised" ? "compromised package" : "known-malicious package";
+  return {
+    id: `mcp-malicious-pkg-${serverName}`,
+    severity: "critical",
+    category: "mcp",
+    title: `MCP server "${serverName}" uses ${typeLabel}: ${packageName}`,
+    description: `${match.description}${match.legitimatePackage ? ` Did you mean "${match.legitimatePackage}"?` : ""}`,
+    file: filePath,
+    evidence: `package: ${packageName}, type: ${match.type}`,
+    fix: {
+      description: match.legitimatePackage ? `Replace with the legitimate package: ${match.legitimatePackage}` : "Remove this package immediately",
+      before: packageName,
+      after: match.legitimatePackage ?? "# REMOVE \u2014 malicious package",
+      auto: false
+    }
+  };
+}
+var cveMcpRules = rawCveMcpRules;
+
+// src/rules/mcp-tool-poisoning.ts
+var INJECTION_NAME_PATTERNS = [
+  // URLs embedded in names
+  /https?:\/\//i,
+  // Prompt override attempts
+  /\bignore\s+(previous|all|prior)\s+instructions?\b/i,
+  /\bsystem\s*:/i,
+  /\byou\s+are\s+now\b/i,
+  /\bassistant\s*:/i,
+  // Newlines in names (hidden instructions)
+  /[\n\r]/,
+  // Instruction-like compound names (handles both spaces and underscores)
+  /(send|exfiltrate|steal|leak|extract|read|dump|collect)[\s_\-/].*(to|from|all|every)[\s_\-/].*(https?|urls?|servers?|endpoints?|secrets?|keys?|tokens?|passwords?|credentials?|ssh|env)/i,
+  // Common attack verbs combined with targets
+  /read[\s_].*(?:and|then)[\s_].*send/i
+];
+var EXFILTRATION_URL_PATTERNS = [
+  {
+    pattern: /\bngrok\.io\b/i,
+    description: "ngrok tunneling service (commonly used for exfiltration)"
+  },
+  {
+    pattern: /\bngrok\.app\b/i,
+    description: "ngrok tunneling service (commonly used for exfiltration)"
+  },
+  {
+    pattern: /\bwebhook\.site\b/i,
+    description: "webhook.site data collection endpoint"
+  },
+  {
+    pattern: /\brequestbin\.com\b/i,
+    description: "RequestBin data collection endpoint"
+  },
+  {
+    pattern: /\brequestcatcher\.com\b/i,
+    description: "RequestCatcher data collection endpoint"
+  },
+  {
+    pattern: /\bpipedream\.net\b/i,
+    description: "Pipedream webhook endpoint"
+  },
+  {
+    pattern: /\bbeeceptor\.com\b/i,
+    description: "Beeceptor mock/intercept endpoint"
+  },
+  {
+    pattern: /\bhookbin\.com\b/i,
+    description: "Hookbin data collection endpoint"
+  },
+  {
+    pattern: /\bburpcollaborator\.net\b/i,
+    description: "Burp Collaborator (offensive security tool)"
+  },
+  {
+    pattern: /\binteractsh\.com\b/i,
+    description: "Interactsh out-of-band interaction server"
+  },
+  {
+    pattern: /\bcollect\?data=|\/exfil|\/steal|\/leak/i,
+    description: "URL path suggesting data exfiltration endpoint"
+  }
+];
+var SENSITIVE_PATHS = [
+  {
+    pattern: /^~?\/?\.ssh\b/,
+    description: "SSH keys and configuration"
+  },
+  {
+    pattern: /^~?\/?\.gnupg\b/,
+    description: "GPG keys and configuration"
+  },
+  {
+    pattern: /^~?\/?\.aws\b/,
+    description: "AWS credentials and configuration"
+  },
+  {
+    pattern: /^~?\/?\.kube\b/,
+    description: "Kubernetes configuration and credentials"
+  },
+  {
+    pattern: /^\/etc\b/,
+    description: "System configuration directory"
+  },
+  {
+    pattern: /^\/var\/log\b/,
+    description: "System log files"
+  },
+  {
+    pattern: /^\/Users\/[^/]+$/,
+    description: "User home directory (macOS)"
+  },
+  {
+    pattern: /^\/home\/[^/]+$/,
+    description: "User home directory (Linux)"
+  },
+  {
+    pattern: /^C:\\Users\\[^\\]+$/i,
+    description: "User home directory (Windows)"
+  }
+];
+var DESCRIPTION_POISONING_PATTERNS = [
+  // Data harvesting instructions
+  {
+    pattern: /\b(always|must|first|before)\b.{0,80}\b(include|send|read|output|call|fetch|get)\b.{0,80}(?:\.env|\.ssh|id_rsa|\bcredentials?\b|\bsecrets?\b|\btokens?\b|\bpasswords?\b|\bapi[_\s-]?keys?\b)/i,
+    description: "Hidden instruction to harvest sensitive files or credentials"
+  },
+  // Prompt reflection / system prompt leaking
+  {
+    pattern: /\b(output|print|display|return|reveal|show)\b.{0,80}\b(system\s+prompt|previous\s+conversation|full\s+context|all\s+previous|conversation\s+history)\b/i,
+    description: "Instruction to leak system prompt or conversation context"
+  },
+  // URL exfiltration commands in descriptions
+  {
+    pattern: /\b(send|post|transmit|forward|upload)\b.{0,100}\bhttps?:\/\//i,
+    description: "Instruction to exfiltrate data to an external URL"
+  },
+  // Override/ignore instructions
+  {
+    pattern: /\bignore\s+(previous|all|prior|other)\s+(instructions?|rules?|guidelines?)\b/i,
+    description: "Attempt to override the agent's instructions"
+  },
+  // Execute arbitrary commands
+  {
+    pattern: /\b(execute|run|eval)\b.{0,60}\b(command|shell|bash|script|code)\b/i,
+    description: "Instruction to execute arbitrary commands"
+  }
+];
+var rawToolPoisoningRules = [
+  {
+    id: "mcp-tool-name-injection",
+    name: "MCP Server Name Contains Injection Attempt",
+    description: "Detects MCP server names that contain instruction-like text, URLs, or prompt injection patterns",
+    severity: "high",
+    category: "mcp",
+    check(file) {
+      if (file.type !== "mcp-json" && file.type !== "settings-json") return [];
+      const findings = [];
+      try {
+        const config = JSON.parse(file.content);
+        const servers = config.mcpServers ?? {};
+        for (const name of Object.keys(servers)) {
+          for (const pattern of INJECTION_NAME_PATTERNS) {
+            if (pattern.test(name)) {
+              findings.push({
+                id: `mcp-tool-name-injection-${name.substring(0, 30)}`,
+                severity: "high",
+                category: "mcp",
+                title: `MCP server name contains injection pattern: "${name.substring(0, 60)}"`,
+                description: `The MCP server name "${name.substring(0, 80)}" contains suspicious patterns that may be an injection attempt. Server names should be simple identifiers, not instructions or URLs.`,
+                file: file.path,
+                evidence: name.substring(0, 100),
+                fix: {
+                  description: "Rename the server to a simple, descriptive identifier",
+                  before: name.substring(0, 40),
+                  after: "safe-server-name",
+                  auto: false
+                }
+              });
+              break;
+            }
+          }
+        }
+      } catch {
+      }
+      return findings;
+    }
+  },
+  {
+    id: "mcp-suspicious-url-args",
+    name: "MCP Server Args Contain Suspicious URLs",
+    description: "Detects MCP server arguments containing URLs associated with data exfiltration or tunneling services",
+    severity: "high",
+    category: "mcp",
+    check(file) {
+      if (file.type !== "mcp-json" && file.type !== "settings-json") return [];
+      const findings = [];
+      try {
+        const config = JSON.parse(file.content);
+        const servers = config.mcpServers ?? {};
+        for (const [name, server] of Object.entries(servers)) {
+          const serverConfig = server ?? {};
+          const args = serverConfig.args ?? [];
+          for (const arg of args) {
+            for (const { pattern, description } of EXFILTRATION_URL_PATTERNS) {
+              if (pattern.test(arg)) {
+                findings.push({
+                  id: `mcp-suspicious-url-${name}`,
+                  severity: "high",
+                  category: "mcp",
+                  title: `MCP server "${name}" has suspicious URL in args`,
+                  description: `The argument "${arg.substring(0, 80)}" contains a ${description}. This may indicate a data exfiltration setup where agent outputs or sensitive data are sent to an attacker-controlled endpoint.`,
+                  file: file.path,
+                  evidence: arg.substring(0, 100),
+                  fix: {
+                    description: "Remove the suspicious URL or replace with a trusted endpoint",
+                    before: arg.substring(0, 40),
+                    after: "https://your-trusted-endpoint.com",
+                    auto: false
+                  }
+                });
+                break;
+              }
+            }
+          }
+        }
+      } catch {
+      }
+      return findings;
+    }
+  },
+  {
+    id: "mcp-overly-broad-access",
+    name: "MCP Server Has Overly Broad File Access",
+    description: "Detects MCP servers configured with access to sensitive directories like .ssh, .aws, /etc, or user home directories",
+    severity: "high",
+    category: "mcp",
+    check(file) {
+      if (file.type !== "mcp-json" && file.type !== "settings-json") return [];
+      const findings = [];
+      try {
+        const config = JSON.parse(file.content);
+        const servers = config.mcpServers ?? {};
+        for (const [name, server] of Object.entries(servers)) {
+          const serverConfig = server ?? {};
+          const args = serverConfig.args ?? [];
+          for (const arg of args) {
+            if (arg.startsWith("-")) continue;
+            for (const { pattern, description } of SENSITIVE_PATHS) {
+              if (pattern.test(arg)) {
+                findings.push({
+                  id: `mcp-broad-access-${name}-${arg.substring(0, 20)}`,
+                  severity: "high",
+                  category: "mcp",
+                  title: `MCP server "${name}" has access to sensitive path: ${arg}`,
+                  description: `The MCP server "${name}" is configured with access to "${arg}" (${description}). This grants the agent access to sensitive system resources that should not be accessible through MCP servers.`,
+                  file: file.path,
+                  evidence: `args: [..., "${arg}"]`,
+                  fix: {
+                    description: "Restrict to project-specific directories only",
+                    before: arg,
+                    after: "./src",
+                    auto: false
+                  }
+                });
+                break;
+              }
+            }
+          }
+        }
+      } catch {
+      }
+      return findings;
+    }
+  },
+  {
+    id: "mcp-description-poisoning",
+    name: "MCP Server Description Contains Poisoning Pattern",
+    description: "Detects MCP server descriptions that contain hidden instructions, data harvesting commands, prompt reflection, or exfiltration URLs",
+    severity: "critical",
+    category: "mcp",
+    check(file) {
+      if (file.type !== "mcp-json" && file.type !== "settings-json") return [];
+      const findings = [];
+      try {
+        const config = JSON.parse(file.content);
+        const servers = config.mcpServers ?? {};
+        for (const [name, server] of Object.entries(servers)) {
+          const serverConfig = server ?? {};
+          const description = serverConfig.description ?? "";
+          if (!description) continue;
+          for (const poisonPattern of DESCRIPTION_POISONING_PATTERNS) {
+            if (poisonPattern.pattern.test(description)) {
+              findings.push({
+                id: `mcp-desc-poisoning-${name}`,
+                severity: "critical",
+                category: "mcp",
+                title: `MCP server "${name}" description contains tool poisoning pattern`,
+                description: `The description for MCP server "${name}" contains a suspicious pattern: ${poisonPattern.description}. Tool description poisoning is a known attack vector where hidden instructions in descriptions manipulate the AI agent's behavior without the user's knowledge.`,
+                file: file.path,
+                evidence: description.substring(0, 200),
+                fix: {
+                  description: "Review and sanitize the server description, removing any instruction-like text",
+                  before: description.substring(0, 60),
+                  after: "A clear, factual description of the server's purpose",
+                  auto: false
+                }
+              });
+              break;
+            }
+          }
+        }
+      } catch {
+      }
+      return findings;
+    }
+  },
+  {
+    id: "mcp-env-exfiltration-urls",
+    name: "MCP Server Env Contains Exfiltration URLs",
+    description: "Detects MCP server environment variables containing URLs associated with data exfiltration services",
+    severity: "high",
+    category: "mcp",
+    check(file) {
+      if (file.type !== "mcp-json" && file.type !== "settings-json") return [];
+      const findings = [];
+      try {
+        const config = JSON.parse(file.content);
+        const servers = config.mcpServers ?? {};
+        for (const [name, server] of Object.entries(servers)) {
+          const serverConfig = server ?? {};
+          const env = serverConfig.env ?? {};
+          for (const [key, value] of Object.entries(env)) {
+            if (typeof value !== "string") continue;
+            for (const { pattern, description } of EXFILTRATION_URL_PATTERNS) {
+              if (pattern.test(value)) {
+                findings.push({
+                  id: `mcp-env-exfil-${name}-${key}`,
+                  severity: "high",
+                  category: "mcp",
+                  title: `MCP server "${name}" env var "${key}" contains suspicious URL`,
+                  description: `The environment variable "${key}" for MCP server "${name}" contains a ${description}. This may be configured to send agent data or secrets to an external collection endpoint.`,
+                  file: file.path,
+                  evidence: `${key}=${value.substring(0, 80)}`,
+                  fix: {
+                    description: "Replace with a trusted endpoint URL",
+                    before: value.substring(0, 40),
+                    after: "https://your-trusted-endpoint.com",
+                    auto: false
+                  }
+                });
+                break;
+              }
+            }
+          }
+        }
+      } catch {
+      }
+      return findings;
+    }
+  }
+];
+var toolPoisoningRules = rawToolPoisoningRules;
+
 // src/rules/agents.ts
 function findLineNumber4(content, matchIndex) {
   return content.substring(0, matchIndex).split("\n").length;
@@ -7102,6 +7990,8 @@ function getBuiltinRules() {
     ...permissionRules,
     ...hookRules,
     ...mcpRules,
+    ...cveMcpRules,
+    ...toolPoisoningRules,
     ...skillRules,
     ...agentRules
   ];
@@ -7492,9 +8382,11 @@ async function run() {
   const minSeverity = getInput("min-severity", "medium");
   const failOnFindings = getInput("fail-on-findings", "true") === "true";
   const format = getInput("format", "terminal");
+  const baselinePath = getInput("baseline", "");
+  const saveBaselinePath = getInput("save-baseline", "");
   const workspace = process.env.GITHUB_WORKSPACE ?? process.cwd();
-  const targetPath = resolve(workspace, inputPath);
-  if (!existsSync2(targetPath)) {
+  const targetPath = resolve2(workspace, inputPath);
+  if (!existsSync3(targetPath)) {
     console.log(`::error::AgentShield: Path does not exist: ${targetPath}`);
     process.exitCode = 1;
     return;
@@ -7524,6 +8416,39 @@ async function run() {
   console.log(`  Medium: ${report.summary.medium}`);
   console.log(`  Low: ${report.summary.low}`);
   console.log(`  Info: ${report.summary.info}`);
+  if (saveBaselinePath) {
+    const { saveBaseline: saveBaseline2 } = await Promise.resolve().then(() => (init_baseline(), baseline_exports));
+    const savePath = resolve2(workspace, saveBaselinePath);
+    saveBaseline2(filteredResult.findings, report.score, savePath);
+    setOutput("baseline-path", savePath);
+    console.log(`Baseline saved to: ${savePath}`);
+  }
+  if (baselinePath) {
+    const { loadBaseline: loadBaseline2, compareBaseline: compareBaseline2, evaluateGate: evaluateGate2 } = await Promise.resolve().then(() => (init_baseline(), baseline_exports));
+    const baseline = loadBaseline2(resolve2(workspace, baselinePath));
+    if (baseline) {
+      const comparison = compareBaseline2(baseline, filteredResult.findings, report.score);
+      setOutput("new-findings", String(comparison.newFindings.length));
+      setOutput("resolved-findings", String(comparison.resolvedFindings.length));
+      setOutput("score-delta", String(comparison.scoreDelta));
+      if (comparison.newFindings.length > 0) {
+        console.log("");
+        console.log(`Baseline comparison: ${comparison.newFindings.length} new, ${comparison.resolvedFindings.length} resolved`);
+        emitAnnotations(comparison.newFindings);
+      }
+      const gateResult = evaluateGate2(comparison);
+      if (!gateResult.passed) {
+        console.log("");
+        console.log(`::error::AgentShield gate FAILED: ${gateResult.reasons.join("; ")}`);
+        process.exitCode = 1;
+        return;
+      } else {
+        console.log("Baseline gate: PASSED");
+      }
+    } else {
+      console.log(`::warning::Could not load baseline from ${baselinePath}. Skipping comparison.`);
+    }
+  }
   if (failOnFindings && filteredResult.findings.length > 0) {
     console.log("");
     console.log(

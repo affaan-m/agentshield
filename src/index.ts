@@ -195,7 +195,7 @@ const program = new Command();
 program
   .name("agentshield")
   .description("Security auditor for AI agent configurations")
-  .version("1.5.0");
+  .version("1.8.0");
 
 program
   .command("scan")

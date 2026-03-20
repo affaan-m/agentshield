@@ -9,7 +9,7 @@ hook injection, MCP server risks, and agent prompt injection vectors.
 
 [![npm version](https://img.shields.io/npm/v/ecc-agentshield)](https://www.npmjs.com/package/ecc-agentshield)
 [![npm downloads](https://img.shields.io/npm/dm/ecc-agentshield)](https://www.npmjs.com/package/ecc-agentshield)
-[![tests](https://img.shields.io/badge/tests-1280%20passed-brightgreen)]()
+[![tests](https://img.shields.io/badge/tests-1618%20passed-brightgreen)]()
 [![coverage](https://img.shields.io/badge/coverage-98%25-brightgreen)]()
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
@@ -30,6 +30,15 @@ The AI agent ecosystem is growing faster than its security tooling. In January 2
 Developers install community skills, connect MCP servers, and configure hooks without any automated way to audit the security of their setup. AgentShield scans your `.claude/` directory and flags vulnerabilities before they become exploits.
 
 Built at the [Claude Code Hackathon](https://cerebralvalley.ai/e/claude-code-hackathon) (Cerebral Valley x Anthropic, Feb 2026). Part of the [Everything Claude Code](https://github.com/affaan-m/everything-claude-code) ecosystem (42K+ stars).
+
+## New in v1.8.0
+
+- **CVE intelligence** — Built-in malicious-package and compromised-version matching for known MCP ecosystem incidents.
+- **Supply-chain verification** — `--supply-chain` extracts MCP npm packages and flags typosquats, known-bad packages, and risky registry metadata.
+- **Watch mode** — `agentshield watch` continuously monitors config paths for regressions and can alert to terminal or webhooks.
+- **Runtime monitoring** — `agentshield runtime install` wires a PreToolUse enforcement hook into Claude Code settings.
+- **PR gate / baselines** — `--save-baseline`, `--baseline`, and `--gate` let you fail CI on new high-risk findings or score drops.
+- **Organization policy** — `--policy` and `agentshield policy init` enforce repo- or org-level security requirements alongside the scanner.
 
 ## Quick Start
 
@@ -92,6 +101,24 @@ agentshield scan --opus --stream
 
 # Generate a secure baseline config
 agentshield init
+
+# Save and gate against a security baseline
+agentshield scan --save-baseline .agentshield/baseline.json
+agentshield scan --baseline .agentshield/baseline.json --gate
+
+# Verify MCP package supply chain
+agentshield scan --supply-chain
+agentshield scan --supply-chain --supply-chain-online
+
+# Enforce an organization policy
+agentshield policy init
+agentshield scan --policy .agentshield/policy.json
+
+# Continuously watch for config regressions
+agentshield watch --path ~/.claude --alert terminal
+
+# Install runtime monitoring hooks
+agentshield runtime install
 ```
 
 ## What It Catches
@@ -259,10 +286,28 @@ agentshield scan [options]         Scan configuration directory
   --fix                            Auto-apply safe fixes
   --opus                           Enable Opus 4.6 multi-agent analysis
   --stream                         Stream Opus analysis in real-time
+  --baseline <path>                Compare findings against a saved baseline
+  --save-baseline <path>           Save the current findings as a baseline
+  --gate                           Fail on new high/critical findings or score drops
+  --supply-chain                   Verify MCP package supply chain risk
+  --supply-chain-online            Also query npm registry metadata
+  --policy <path>                  Validate findings against an org policy
   --min-severity <severity>        Filter: critical, high, medium, low, info
   -v, --verbose                    Show detailed output
 
 agentshield init                   Generate secure baseline config
+
+agentshield watch [options]        Monitor config directories for regressions
+  -p, --path <path>                Path to watch (default: ~/.claude or cwd)
+  --debounce <ms>                  Debounce interval in milliseconds
+  --alert <mode>                   terminal, webhook, or both
+  --webhook <url>                  Webhook target when alerting remotely
+  --block                          Exit non-zero on critical findings
+
+agentshield runtime install        Install PreToolUse runtime monitoring
+agentshield runtime uninstall      Remove PreToolUse runtime monitoring
+
+agentshield policy init            Generate an example org policy file
 
 agentshield miniclaw start [opts]  Launch MiniClaw secure agent server
   -p, --port <port>                Port (default: 3847)
@@ -383,7 +428,7 @@ MiniClaw has **zero external runtime dependencies** — Node.js built-ins only (
 ```bash
 npm install          # Install dependencies
 npm run dev          # Development mode
-npm test             # Run tests (912 tests)
+npm test             # Run tests (1618 passing, 17 skipped)
 npm run test:coverage # Coverage report
 npm run typecheck    # Type check
 npm run build        # Build
