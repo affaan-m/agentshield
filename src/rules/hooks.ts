@@ -302,6 +302,122 @@ function isCommentOnlyShellMatch(content: string, index: number): boolean {
   return line.startsWith("#");
 }
 
+/**
+ * Checks whether the matched keyword at `matchIndex` sits inside a grep, test,
+ * case, or similar pattern argument — meaning the hook is *testing for* the
+ * keyword rather than *using* it.
+ *
+ * Examples that should return true:
+ *   grep -q 'sudo' ...
+ *   echo "$cmd" | grep 'rm -rf'
+ *   if [[ "$command" == *crontab* ]]; then
+ *   case "$tool" in *ssh-keygen*) ...
+ */
+function isInsideTestPattern(content: string, matchIndex: number): boolean {
+  // Look backwards from matchIndex for enclosing quotes and a test/grep/case context
+  const prefix = content.slice(0, matchIndex);
+
+  // Find the innermost enclosing single or double quote
+  let lastSingleQuote = -1;
+  let lastDoubleQuote = -1;
+  let inSingle = false;
+  let inDouble = false;
+
+  for (let i = 0; i < prefix.length; i++) {
+    const ch = prefix[i];
+    if (ch === "'" && !inDouble) {
+      inSingle = !inSingle;
+      if (inSingle) lastSingleQuote = i;
+    } else if (ch === '"' && !inSingle) {
+      inDouble = !inDouble;
+      if (inDouble) lastDoubleQuote = i;
+    }
+  }
+
+  // We are inside a quoted string — check what precedes the opening quote
+  const quoteStart = Math.max(lastSingleQuote, lastDoubleQuote);
+  if ((inSingle || inDouble) && quoteStart > 0) {
+    const beforeQuote = prefix.slice(0, quoteStart).trimEnd();
+
+    // grep/egrep/fgrep pattern argument
+    if (/\b(?:grep|egrep|fgrep)\b(?:\s+-[a-zA-Z]+)*\s*$/i.test(beforeQuote)) {
+      return true;
+    }
+
+    // test/[[ comparisons:  [[ "$x" == *keyword* ]]  or  [ "$x" = "keyword" ]
+    if (/\[\[?\s+.*(?:==|=|!=|=~)\s*(?:\*?)?$/.test(beforeQuote)) {
+      return true;
+    }
+
+    // case pattern:  case ... in  or  *)  or  pattern)
+    if (/\bcase\b/.test(beforeQuote) || /\)\s*$/.test(beforeQuote) === false && /\|\s*$/.test(beforeQuote)) {
+      // More robust: check if we are inside a case block
+      if (/\bcase\s+/.test(content.slice(0, quoteStart))) {
+        return true;
+      }
+    }
+  }
+
+  // Also catch unquoted glob patterns in case/[[ like:  *sudo*)
+  // Look for case-style pattern context
+  const lineStart = prefix.lastIndexOf("\n") + 1;
+  const linePrefix = prefix.slice(lineStart).trimStart();
+
+  // case pattern:  *keyword*)  or  keyword)
+  if (/^\*?[a-zA-Z_-]+\*?\)/.test(linePrefix) || /^\|?\s*\*/.test(linePrefix)) {
+    // Check if a case block is active
+    if (/\bcase\s+/.test(content.slice(0, matchIndex))) {
+      return true;
+    }
+  }
+
+  // grep without quotes:  grep sudo  or  grep -q sudo
+  if (/\b(?:grep|egrep|fgrep)\b(?:\s+-[a-zA-Z]+)*\s+$/.test(linePrefix)) {
+    return true;
+  }
+
+  return false;
+}
+
+/**
+ * Checks whether the matched keyword at `matchIndex` sits inside a quoted
+ * string (single or double). This is used in combination with
+ * isBlockingGuardCommand to suppress matches in error messages like
+ * `echo 'Blocked: sudo' >&2`.
+ */
+function isInsideQuotedString(content: string, matchIndex: number): boolean {
+  const prefix = content.slice(0, matchIndex);
+
+  let inSingle = false;
+  let inDouble = false;
+
+  for (let i = 0; i < prefix.length; i++) {
+    const ch = prefix[i];
+    if (ch === "'" && !inDouble) {
+      inSingle = !inSingle;
+    } else if (ch === '"' && !inSingle) {
+      inDouble = !inDouble;
+    }
+  }
+
+  return inSingle || inDouble;
+}
+
+/**
+ * Checks whether the hook command is a blocking guard pattern — a PreToolUse
+ * hook that uses `exit 2` (Claude Code's "reject" exit code) to block
+ * dangerous operations. These are defensive hooks, not threats.
+ *
+ * Examples:
+ *   if echo "$command" | grep -q 'sudo'; then exit 2; fi
+ *   grep -q 'rm -rf' && exit 2
+ *   [[ "$tool" == *crontab* ]] && echo "Blocked" >&2 && exit 2
+ */
+function isBlockingGuardCommand(content: string): boolean {
+  // Must contain exit 2 (Claude Code reject code)
+  return /\bexit\s+2\b/.test(content);
+}
+
 function findAllHookMatches(file: ConfigFile, pattern: RegExp): Array<HookMatch> {
   const matches: HookMatch[] = [];
 
@@ -311,11 +427,24 @@ function findAllHookMatches(file: ConfigFile, pattern: RegExp): Array<HookMatch>
         continue;
       }
 
+      const matchIndex = match.index ?? 0;
+
+      // Skip matches in blocking guard commands (PreToolUse hooks with exit 2).
+      // In a guard command, keywords appear either inside test patterns
+      // (grep -q 'sudo') or inside quoted error messages (echo 'Blocked: sudo').
+      // Both are defensive, not offensive.
+      if (isBlockingGuardCommand(target.content)) {
+        if (isInsideTestPattern(target.content, matchIndex) ||
+            isInsideQuotedString(target.content, matchIndex)) {
+          continue;
+        }
+      }
+
       matches.push({
         match,
-        line: target.baseLine + findLineNumber(target.content, match.index ?? 0) - 1,
+        line: target.baseLine + findLineNumber(target.content, matchIndex) - 1,
         content: target.content,
-        commandContext: getCommandContext(target.content, match.index ?? 0),
+        commandContext: getCommandContext(target.content, matchIndex),
       });
     }
   }
@@ -1012,6 +1141,13 @@ export const hookRules: ReadonlyArray<Rule> = [
 
         for (const hook of allHooks) {
           for (const command of extractHookCommands(hook)) {
+            // Exempt blocking guard commands (if ... grep ... exit 2; fi)
+            // These are defensive PreToolUse hooks that use chaining to
+            // test-and-reject dangerous operations.
+            if (isBlockingGuardCommand(command)) {
+              continue;
+            }
+
             // Only flag if there are 3+ chained commands (2 is common/normal)
             let chainCount = 0;
             for (const { pattern } of chainPatterns) {
