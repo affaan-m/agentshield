@@ -28,7 +28,7 @@ Activate this skill when:
 
 ## Commit Conventions
 
-Follow these commit message conventions based on 177 analyzed commits.
+Follow these commit message conventions based on 192 analyzed commits.
 
 ### Commit Style: Conventional Commits
 
@@ -49,7 +49,7 @@ Follow these commit message conventions based on 177 analyzed commits.
 *Commit message example*
 
 ```text
-feat: add agentshield ECC bundle (.claude/commands/add-or-update-team-config.md)
+feat: add agentshield ECC bundle (.claude/commands/feature-development-workflow.md)
 ```
 
 *Commit message example*
@@ -79,7 +79,7 @@ docs: add funding config and distribution channels to README
 *Commit message example*
 
 ```text
-feat: add agentshield ECC bundle (.claude/commands/add-or-update-feature-development-workflow.md)
+feat: add agentshield ECC bundle (.claude/commands/add-or-update-command-workflow.md)
 ```
 
 *Commit message example*
@@ -242,161 +242,73 @@ feat: add agentshield ECC bundle (.claude/commands/feature-development.md)
 feat: add agentshield ECC bundle (.claude/enterprise/controls.md)
 ```
 
-### Add Or Update Command Workflow
+### Add Or Update Ecc Bundle Component
 
-Adds or updates a command workflow documentation for agentshield ECC bundle.
+Add or update a component of the agentshield ECC bundle, such as commands, team config, research playbooks, guardrails, or skills.
 
 **Frequency**: ~6 times per month
 
 **Steps**:
-1. Create or update a markdown file in .claude/commands/ with the workflow details.
-2. Commit the file with a message referencing the workflow.
+1. Create or update the relevant markdown or JSON file in the appropriate .claude or .agents directory.
+2. Commit the file with a message indicating the addition or update of the ECC bundle component.
 
 **Files typically involved**:
 - `.claude/commands/*.md`
-
-**Example commit sequence**:
-```
-Create or update a markdown file in .claude/commands/ with the workflow details.
-Commit the file with a message referencing the workflow.
-```
-
-### Feature Development Workflow
-
-Documents or implements feature development workflows, including test-driven development and feature implementation.
-
-**Frequency**: ~4 times per month
-
-**Steps**:
-1. Create or update a markdown file in .claude/commands/ describing the feature development process.
-2. Optionally, create related files for test-driven development or feature/rule implementation.
-3. Commit the changes.
-
-**Files typically involved**:
-- `.claude/commands/feature-development.md`
-- `.claude/commands/test-driven-development.md`
-- `.claude/commands/feature-or-rule-implementation-with-tests.md`
-
-**Example commit sequence**:
-```
-Create or update a markdown file in .claude/commands/ describing the feature development process.
-Optionally, create related files for test-driven development or feature/rule implementation.
-Commit the changes.
-```
-
-### Team Config Update
-
-Adds or updates the agentshield team configuration.
-
-**Frequency**: ~5 times per month
-
-**Steps**:
-1. Create or update .claude/team/agentshield-team-config.json.
-2. Commit the updated configuration file.
-
-**Files typically involved**:
 - `.claude/team/agentshield-team-config.json`
-
-**Example commit sequence**:
-```
-Create or update .claude/team/agentshield-team-config.json.
-Commit the updated configuration file.
-```
-
-### Research Playbook Update
-
-Adds or updates the research playbook for agentshield.
-
-**Frequency**: ~4 times per month
-
-**Steps**:
-1. Create or update .claude/research/agentshield-research-playbook.md.
-2. Commit the changes.
-
-**Files typically involved**:
 - `.claude/research/agentshield-research-playbook.md`
-
-**Example commit sequence**:
-```
-Create or update .claude/research/agentshield-research-playbook.md.
-Commit the changes.
-```
-
-### Guardrails Rule Update
-
-Adds or updates security guardrails or rules for agentshield.
-
-**Frequency**: ~4 times per month
-
-**Steps**:
-1. Create or update .claude/rules/agentshield-guardrails.md.
-2. Commit the changes.
-
-**Files typically involved**:
 - `.claude/rules/agentshield-guardrails.md`
-
-**Example commit sequence**:
-```
-Create or update .claude/rules/agentshield-guardrails.md.
-Commit the changes.
-```
-
-### Ecc Tools Update
-
-Adds or updates ECC tools configuration for agentshield.
-
-**Frequency**: ~4 times per month
-
-**Steps**:
-1. Create or update .claude/ecc-tools.json.
-2. Commit the changes.
-
-**Files typically involved**:
-- `.claude/ecc-tools.json`
-
-**Example commit sequence**:
-```
-Create or update .claude/ecc-tools.json.
-Commit the changes.
-```
-
-### Skill Documentation Update
-
-Adds or updates SKILL documentation for agentshield in both .agents and .claude directories.
-
-**Frequency**: ~4 times per month
-
-**Steps**:
-1. Create or update .agents/skills/agentshield/SKILL.md and/or .claude/skills/agentshield/SKILL.md.
-2. Commit the changes.
-
-**Files typically involved**:
-- `.agents/skills/agentshield/SKILL.md`
 - `.claude/skills/agentshield/SKILL.md`
-
-**Example commit sequence**:
-```
-Create or update .agents/skills/agentshield/SKILL.md and/or .claude/skills/agentshield/SKILL.md.
-Commit the changes.
-```
-
-### Identity Update
-
-Adds or updates the identity configuration for agentshield.
-
-**Frequency**: ~4 times per month
-
-**Steps**:
-1. Create or update .claude/identity.json.
-2. Commit the changes.
-
-**Files typically involved**:
+- `.agents/skills/agentshield/SKILL.md`
+- `.claude/ecc-tools.json`
 - `.claude/identity.json`
 
 **Example commit sequence**:
 ```
-Create or update .claude/identity.json.
-Commit the changes.
+Create or update the relevant markdown or JSON file in the appropriate .claude or .agents directory.
+Commit the file with a message indicating the addition or update of the ECC bundle component.
+```
+
+### Add Or Update Codex Agent Config
+
+Add or update agent configuration files for Codex agents (docs-researcher, reviewer, explorer).
+
+**Frequency**: ~3 times per month
+
+**Steps**:
+1. Create or update the relevant .toml file in the .codex/agents directory.
+2. Commit the file with a message indicating the addition or update.
+
+**Files typically involved**:
+- `.codex/agents/docs-researcher.toml`
+- `.codex/agents/reviewer.toml`
+- `.codex/agents/explorer.toml`
+
+**Example commit sequence**:
+```
+Create or update the relevant .toml file in the .codex/agents directory.
+Commit the file with a message indicating the addition or update.
+```
+
+### Add Or Update Feature Development Workflow
+
+Add or update documentation for feature development workflows and related command workflows.
+
+**Frequency**: ~3 times per month
+
+**Steps**:
+1. Create or update workflow documentation markdown files in .claude/commands.
+2. Commit the file with a message referencing the workflow or command.
+
+**Files typically involved**:
+- `.claude/commands/feature-development-workflow.md`
+- `.claude/commands/add-or-update-command-workflow.md`
+- `.claude/commands/add-or-update-feature-development-workflow.md`
+- `.claude/commands/feature-development.md`
+
+**Example commit sequence**:
+```
+Create or update workflow documentation markdown files in .claude/commands.
+Commit the file with a message referencing the workflow or command.
 ```
 
 
