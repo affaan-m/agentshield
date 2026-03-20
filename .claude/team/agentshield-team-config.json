@@ -8,8 +8,8 @@
   ],
   "commandFiles": [
     ".claude/commands/feature-development.md",
-    ".claude/commands/add-or-update-team-config.md",
-    ".claude/commands/add-or-update-ecc-bundle-component.md"
+    ".claude/commands/add-or-update-ecc-bundle-component.md",
+    ".claude/commands/add-or-update-team-config.md"
   ],
-  "updatedAt": "2026-03-20T07:32:34.917Z"
+  "updatedAt": "2026-03-20T07:33:16.927Z"
 }
