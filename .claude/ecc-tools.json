@@ -2,7 +2,7 @@
   "version": "1.3",
   "schemaVersion": "1.0",
   "generatedBy": "ecc-tools",
-  "generatedAt": "2026-03-20T07:29:54.746Z",
+  "generatedAt": "2026-03-20T07:30:35.622Z",
   "repo": "https://github.com/affaan-m/agentshield",
   "profiles": {
     "requested": "full",
@@ -149,8 +149,8 @@
     ".claude/team/agentshield-team-config.json",
     ".claude/enterprise/controls.md",
     ".claude/commands/feature-development.md",
-    ".claude/commands/add-or-update-feature-development-workflow.md",
-    ".claude/commands/add-or-update-team-config.md"
+    ".claude/commands/add-or-update-command-workflow.md",
+    ".claude/commands/feature-development-workflow.md"
   ],
   "packageFiles": {
     "runtime-core": [
@@ -179,8 +179,8 @@
     ],
     "workflow-pack": [
       ".claude/commands/feature-development.md",
-      ".claude/commands/add-or-update-feature-development-workflow.md",
-      ".claude/commands/add-or-update-team-config.md"
+      ".claude/commands/add-or-update-command-workflow.md",
+      ".claude/commands/feature-development-workflow.md"
     ]
   },
   "moduleFiles": {
@@ -210,8 +210,8 @@
     ],
     "workflow-pack": [
       ".claude/commands/feature-development.md",
-      ".claude/commands/add-or-update-feature-development-workflow.md",
-      ".claude/commands/add-or-update-team-config.md"
+      ".claude/commands/add-or-update-command-workflow.md",
+      ".claude/commands/feature-development-workflow.md"
     ]
   },
   "files": [
@@ -292,13 +292,13 @@
     },
     {
       "moduleId": "workflow-pack",
-      "path": ".claude/commands/add-or-update-feature-development-workflow.md",
-      "description": "Workflow command scaffold for add-or-update-feature-development-workflow."
+      "path": ".claude/commands/add-or-update-command-workflow.md",
+      "description": "Workflow command scaffold for add-or-update-command-workflow."
     },
     {
       "moduleId": "workflow-pack",
-      "path": ".claude/commands/add-or-update-team-config.md",
-      "description": "Workflow command scaffold for add-or-update-team-config."
+      "path": ".claude/commands/feature-development-workflow.md",
+      "description": "Workflow command scaffold for feature-development-workflow."
     }
   ],
   "workflows": [
@@ -307,12 +307,12 @@
       "path": ".claude/commands/feature-development.md"
     },
     {
-      "command": "add-or-update-feature-development-workflow",
-      "path": ".claude/commands/add-or-update-feature-development-workflow.md"
+      "command": "add-or-update-command-workflow",
+      "path": ".claude/commands/add-or-update-command-workflow.md"
     },
     {
-      "command": "add-or-update-team-config",
-      "path": ".claude/commands/add-or-update-team-config.md"
+      "command": "feature-development-workflow",
+      "path": ".claude/commands/feature-development-workflow.md"
     }
   ],
   "adapters": {
@@ -321,8 +321,8 @@
       "identityPath": ".claude/identity.json",
       "commandPaths": [
         ".claude/commands/feature-development.md",
-        ".claude/commands/add-or-update-feature-development-workflow.md",
-        ".claude/commands/add-or-update-team-config.md"
+        ".claude/commands/add-or-update-command-workflow.md",
+        ".claude/commands/feature-development-workflow.md"
       ]
     },
     "codex": {
