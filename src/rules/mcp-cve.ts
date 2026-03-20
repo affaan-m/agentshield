@@ -2,7 +2,6 @@ import type { ConfigFile, Finding, Rule } from "../types.js";
 import {
   checkServerPackage,
   checkPackageName,
-  type VulnerableServer,
   type MaliciousPackage,
 } from "../threat-intel/cve-database.js";
 
@@ -10,25 +9,6 @@ import {
  * MCP rules that cross-reference scanned configurations against
  * the CVE database and known-malicious package list.
  */
-
-function extractPackagesFromServer(
-  serverConfig: Record<string, unknown>
-): ReadonlyArray<string> {
-  const command = (serverConfig.command ?? "") as string;
-  const args = (serverConfig.args ?? []) as string[];
-  const packages: string[] = [];
-
-  // For npx, the package is in args (skip flags)
-  if (command === "npx" || command === "bunx" || command === "pnpm" || command === "yarn") {
-    for (const arg of args) {
-      if (arg.startsWith("-")) continue;
-      packages.push(arg.split("@").length > 2 ? arg.substring(0, arg.lastIndexOf("@")) : arg);
-      break; // First non-flag arg is the package
-    }
-  }
-
-  return packages;
-}
 
 const rawCveMcpRules: ReadonlyArray<Rule> = [
   {
