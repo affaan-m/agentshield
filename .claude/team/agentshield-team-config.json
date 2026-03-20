@@ -8,8 +8,8 @@
   ],
   "commandFiles": [
     ".claude/commands/feature-development.md",
-    ".claude/commands/ecc-bundle-component-addition.md",
-    ".claude/commands/feature-or-rule-implementation-with-tests.md"
+    ".claude/commands/add-or-update-ecc-bundle-component.md",
+    ".claude/commands/add-or-update-command-workflow.md"
   ],
-  "updatedAt": "2026-03-20T07:28:37.195Z"
+  "updatedAt": "2026-03-20T07:29:17.376Z"
 }
