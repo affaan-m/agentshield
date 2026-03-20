@@ -211,6 +211,8 @@ program
   .option("--log <path>", "Write structured scan log to file")
   .option("--log-format <format>", "Log format: ndjson (default) or json", "ndjson")
   .option("--corpus", "Run scanner validation against built-in attack corpus", false)
+  .option("--supply-chain", "Verify MCP npm packages against known-bad list and typosquatting", false)
+  .option("--supply-chain-online", "Also query npm registry for metadata (requires network)", false)
   .option("--min-severity <severity>", "Minimum severity to report: critical, high, medium, low, info", "info")
   .option("-v, --verbose", "Show detailed output", false)
   .action(async (options) => {
@@ -371,6 +373,29 @@ program
           phase: "corpus",
           message: `Corpus: ${corpusResult.detected}/${corpusResult.totalAttacks} detected (${(corpusResult.detectionRate * 100).toFixed(1)}%)`,
         });
+      }
+    }
+
+    // ── Phase 8: Supply chain verification ─────────────────
+    if (options.supplyChain || options.supplyChainOnline) {
+      logger.log({ level: "info", phase: "supply-chain", message: "Running supply chain verification" });
+      try {
+        const { extractPackages, verifyPackages, renderSupplyChainReport } =
+          await import("./supply-chain/index.js");
+        const packages = extractPackages(result.target.files);
+        const scReport = await verifyPackages(packages, {
+          online: options.supplyChainOnline,
+        });
+        console.log(renderSupplyChainReport(scReport));
+        logger.log({
+          level: scReport.criticalCount > 0 ? "error" : scReport.highCount > 0 ? "warn" : "info",
+          phase: "supply-chain",
+          message: `Supply chain: ${scReport.riskyPackages}/${scReport.totalPackages} risky packages`,
+        });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        console.error(`  Supply chain verification failed: ${message}`);
+        logger.log({ level: "error", phase: "supply-chain", message: `Failed: ${message}` });
       }
     }
 
