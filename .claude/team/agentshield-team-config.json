@@ -8,8 +8,8 @@
   ],
   "commandFiles": [
     ".claude/commands/feature-development.md",
-    ".claude/commands/add-or-update-command-workflow.md",
-    ".claude/commands/feature-development-workflow.md"
+    ".claude/commands/add-or-update-ecc-bundle-component.md",
+    ".claude/commands/add-or-update-codex-agent-config.md"
   ],
-  "updatedAt": "2026-03-20T07:30:35.622Z"
+  "updatedAt": "2026-03-20T07:31:18.139Z"
 }
