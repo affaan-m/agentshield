@@ -217,6 +217,7 @@ program
   .option("--gate", "Fail if new critical/high findings or score drops (use with --baseline)", false)
   .option("--supply-chain", "Verify MCP npm packages against known-bad list and typosquatting", false)
   .option("--supply-chain-online", "Also query npm registry for metadata (requires network)", false)
+  .option("--policy <path>", "Validate against an organization policy file")
   .option("--min-severity <severity>", "Minimum severity to report: critical, high, medium, low, info", "info")
   .option("-v, --verbose", "Show detailed output", false)
   .action(async (options) => {
@@ -306,6 +307,34 @@ program
             process.exit(3);
           }
         }
+      }
+    }
+
+    // ── Phase 1c: Organization policy validation ──────────
+    if (options.policy) {
+      logger.log({ level: "info", phase: "policy", message: "Validating against organization policy" });
+      try {
+        const { loadPolicy: loadOrgPolicy, evaluatePolicy, renderPolicyEvaluation } =
+          await import("./policy/index.js");
+        const policy = loadOrgPolicy(resolve(options.policy));
+        if (!policy) {
+          console.error(`\n  Error: Could not load policy from ${options.policy}\n`);
+        } else {
+          const evaluation = evaluatePolicy(policy, filteredResult.findings, report.score, result.target.files);
+          console.log(renderPolicyEvaluation(evaluation));
+          logger.log({
+            level: evaluation.passed ? "info" : "warn",
+            phase: "policy",
+            message: `Policy "${evaluation.policyName}": ${evaluation.passed ? "COMPLIANT" : `NON-COMPLIANT (${evaluation.violations.length} violations)`}`,
+          });
+          if (!evaluation.passed) {
+            process.exit(4);
+          }
+        }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        console.error(`  Policy evaluation failed: ${message}`);
+        logger.log({ level: "error", phase: "policy", message: `Failed: ${message}` });
       }
     }
 
@@ -616,6 +645,37 @@ runtime
 
     console.log(`\n  AgentShield Runtime Monitor\n`);
     console.log(`  ${result.message}\n`);
+  });
+
+// ─── Policy Commands ─────────────────────────────────────
+
+const policyCmd = program
+  .command("policy")
+  .description("Organization-wide security policy management");
+
+policyCmd
+  .command("init")
+  .description("Generate an example organization policy file")
+  .option("-o, --output <path>", "Output path", ".agentshield/policy.json")
+  .action(async (options) => {
+    const { generateExamplePolicy } = await import("./policy/index.js");
+    const outputPath = resolve(options.output);
+
+    if (existsSync(outputPath)) {
+      console.error(`\n  Error: Policy file already exists at ${outputPath}\n`);
+      process.exit(1);
+    }
+
+    const dir = resolve(outputPath, "..");
+    if (!existsSync(dir)) {
+      const { mkdirSync } = await import("node:fs");
+      mkdirSync(dir, { recursive: true });
+    }
+
+    writeFileSync(outputPath, generateExamplePolicy());
+    console.log(`\n  Example policy written to: ${outputPath}`);
+    console.log(`  Edit the file to match your organization's requirements.`);
+    console.log(`  Then run: agentshield scan --policy ${options.output}\n`);
   });
 
 // ─── MiniClaw Commands ───────────────────────────────────
