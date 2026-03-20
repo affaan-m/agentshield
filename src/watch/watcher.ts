@@ -1,11 +1,17 @@
-import { watch, existsSync, readdirSync, statSync, type FSWatcher } from "node:fs";
-import { join, resolve } from "node:path";
+import { watch, existsSync, readdirSync, statSync } from "node:fs";
+import { resolve } from "node:path";
 import { scan } from "../scanner/index.js";
 import { calculateScore } from "../reporter/score.js";
 import type { Severity } from "../types.js";
 import type { WatchConfig, WatcherState, ScanBaseline, DriftResult } from "./types.js";
 import { createBaseline, diffBaseline } from "./diff.js";
 import { dispatchAlert } from "./alerts.js";
+
+type WatchHandle = ReturnType<typeof watch>;
+type WatchListener = (
+  eventType: string,
+  filename: string | Buffer | null
+) => void;
 
 const SEVERITY_ORDER: Record<Severity, number> = {
   critical: 0,
@@ -14,8 +20,6 @@ const SEVERITY_ORDER: Record<Severity, number> = {
   low: 3,
   info: 4,
 };
-
-const RECURSIVE_WATCH_UNSUPPORTED = "ERR_FEATURE_UNAVAILABLE_ON_PLATFORM";
 
 /**
  * Start watching the given paths for config changes.
@@ -29,7 +33,7 @@ export function startWatcher(config: WatchConfig): {
   let lastDrift: DriftResult | null = null;
   let scanCount = 0;
   let debounceTimer: ReturnType<typeof setTimeout> | null = null;
-  const watchers: FSWatcher[] = [];
+  const watchers: WatchHandle[] = [];
 
   // Perform initial scan to establish baseline
   const initialBaseline = performInitialScan(config);
@@ -47,28 +51,27 @@ export function startWatcher(config: WatchConfig): {
     if (!isDir) continue;
 
     try {
-      watchers.push(
-        ...createWatchers(
-          resolvedPath,
-          (_eventType: string, _filename: string | Buffer | null) => {
-            // Debounce: wait for config.debounceMs of silence before rescanning
-            if (debounceTimer) {
-              clearTimeout(debounceTimer);
-            }
-            debounceTimer = setTimeout(() => {
-              void handleChange(config, baseline, (result) => {
-                if (result.newBaseline) {
-                  baseline = result.newBaseline;
-                }
-                if (result.drift) {
-                  lastDrift = result.drift;
-                }
-                scanCount += 1;
-              });
-            }, config.debounceMs);
+      const pathWatchers = createPathWatchers(
+        resolvedPath,
+        () => {
+          // Debounce: wait for config.debounceMs of silence before rescanning
+          if (debounceTimer) {
+            clearTimeout(debounceTimer);
           }
-        )
+          debounceTimer = setTimeout(() => {
+            void handleChange(config, baseline, (result) => {
+              if (result.newBaseline) {
+                baseline = result.newBaseline;
+              }
+              if (result.drift) {
+                lastDrift = result.drift;
+              }
+              scanCount += 1;
+            });
+          }, config.debounceMs);
+        }
       );
+      watchers.push(...pathWatchers);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       console.error(`  Failed to watch ${resolvedPath}: ${message}`);
@@ -98,47 +101,51 @@ export function startWatcher(config: WatchConfig): {
   return { stop, getState };
 }
 
-function createWatchers(
-  rootPath: string,
-  onChange: (eventType: string, filename: string | Buffer | null) => void
-): FSWatcher[] {
+function createPathWatchers(
+  resolvedPath: string,
+  listener: WatchListener
+): ReadonlyArray<WatchHandle> {
   try {
-    return [watch(rootPath, { recursive: true }, onChange)];
+    return [watch(resolvedPath, { recursive: true }, listener)];
   } catch (error) {
     if (!isRecursiveWatchUnsupported(error)) {
       throw error;
     }
-    return createDirectoryWatchers(rootPath, onChange);
   }
-}
 
-function createDirectoryWatchers(
-  rootPath: string,
-  onChange: (eventType: string, filename: string | Buffer | null) => void
-): FSWatcher[] {
-  const createdWatchers: FSWatcher[] = [];
+  const fallbackWatchers: WatchHandle[] = [];
 
   try {
-    for (const directory of collectDirectories(rootPath)) {
-      createdWatchers.push(watch(directory, onChange));
+    for (const directory of collectWatchDirectories(resolvedPath)) {
+      fallbackWatchers.push(watch(directory, listener));
     }
-    return createdWatchers;
+    return fallbackWatchers;
   } catch (error) {
-    for (const watcher of createdWatchers) {
+    for (const watcher of fallbackWatchers) {
       watcher.close();
     }
     throw error;
   }
 }
 
-function collectDirectories(rootPath: string): string[] {
+function collectWatchDirectories(rootPath: string): ReadonlyArray<string> {
   const directories = [rootPath];
+  const queue = [rootPath];
 
-  for (let index = 0; index < directories.length; index += 1) {
-    for (const entry of readdirSync(directories[index], { withFileTypes: true })) {
-      if (entry.isDirectory()) {
-        directories.push(join(directories[index], entry.name));
+  while (queue.length > 0) {
+    const currentPath = queue.shift();
+    if (!currentPath) {
+      continue;
+    }
+
+    for (const entry of readdirSync(currentPath, { withFileTypes: true })) {
+      if (!entry.isDirectory()) {
+        continue;
       }
+
+      const childPath = resolve(currentPath, entry.name);
+      directories.push(childPath);
+      queue.push(childPath);
     }
   }
 
@@ -146,12 +153,16 @@ function collectDirectories(rootPath: string): string[] {
 }
 
 function isRecursiveWatchUnsupported(error: unknown): boolean {
-  if (!error || typeof error !== "object") {
+  if (!(error instanceof Error)) {
     return false;
   }
 
-  const code = "code" in error ? String((error as { code?: unknown }).code ?? "") : "";
-  return code === RECURSIVE_WATCH_UNSUPPORTED;
+  const nodeError = error as NodeJS.ErrnoException;
+  return (
+    nodeError.code === "ERR_FEATURE_UNAVAILABLE_ON_PLATFORM" ||
+    (nodeError.code === "ERR_INVALID_ARG_VALUE" &&
+      error.message.toLowerCase().includes("recursive"))
+  );
 }
 
 /**
