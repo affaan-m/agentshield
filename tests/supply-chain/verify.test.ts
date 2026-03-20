@@ -131,20 +131,36 @@ describe("verifyPackages", () => {
     expect(pkg.risks.some((r) => r.type === "unpinned-git")).toBe(true);
   });
 
-  it("allows pinned git URLs", async () => {
+  it("allows git URLs pinned to commit hashes", async () => {
     const packages = [
       makePackage({
         name: "org/custom-server",
         source: "git",
         serverName: "custom",
-        gitUrl: "https://github.com/org/custom-server#abc123",
-        gitRef: "abc123",
+        gitUrl: "https://github.com/org/custom-server#0123456789abcdef0123456789abcdef01234567",
+        gitRef: "0123456789abcdef0123456789abcdef01234567",
       }),
     ];
     const report = await verifyPackages(packages);
 
     const pkg = report.packages[0];
     expect(pkg.risks.some((r) => r.type === "unpinned-git")).toBe(false);
+  });
+
+  it("flags branch refs as unpinned git URLs", async () => {
+    const packages = [
+      makePackage({
+        name: "org/custom-server",
+        source: "git",
+        serverName: "custom",
+        gitUrl: "https://github.com/org/custom-server#main",
+        gitRef: "main",
+      }),
+    ];
+    const report = await verifyPackages(packages);
+
+    const pkg = report.packages[0];
+    expect(pkg.risks.some((r) => r.type === "unpinned-git")).toBe(true);
   });
 
   it("handles empty package list", async () => {

@@ -6,6 +6,7 @@ import type { Severity } from "../types.js";
 const SEVERITY_ORDER: Record<Severity, number> = {
   critical: 0, high: 1, medium: 2, low: 3, info: 4,
 };
+const GIT_COMMIT_HASH = /^[0-9a-f]{7,40}$/i;
 
 /**
  * Verify a list of extracted packages against known-bad lists and optionally the npm registry.
@@ -52,7 +53,7 @@ export async function verifyPackages(
     }
 
     // 4. Check for unpinned git URLs
-    if (pkg.source === "git" && !pkg.gitRef) {
+    if (pkg.source === "git" && !hasPinnedGitCommit(pkg.gitRef)) {
       risks.push({
         type: "unpinned-git",
         severity: "high",
@@ -118,6 +119,10 @@ export function checkTyposquatting(packageName: string): PackageRisk | null {
   }
 
   return null;
+}
+
+function hasPinnedGitCommit(gitRef: string | undefined): boolean {
+  return !!gitRef && GIT_COMMIT_HASH.test(gitRef);
 }
 
 /**

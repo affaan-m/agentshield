@@ -16,7 +16,7 @@ export function extractPackages(
 
     const extracted = extractFromMcpConfig(file.content);
     for (const pkg of extracted) {
-      const key = `${pkg.name}@${pkg.version ?? "latest"}`;
+      const key = buildPackageDedupeKey(pkg);
       if (!seen.has(key)) {
         seen.add(key);
         packages.push(pkg);
@@ -67,6 +67,7 @@ function extractFromServerConfig(
   if (command === "npx" || command.endsWith("/npx")) {
     for (const arg of args) {
       if (arg.startsWith("-")) continue;
+      if (parseGitUrl(arg)) continue;
       const parsed = parsePackageSpec(arg);
       if (parsed) {
         packages.push({
@@ -124,6 +125,16 @@ function extractFromServerConfig(
   }
 
   return packages;
+}
+
+function buildPackageDedupeKey(pkg: ExtractedPackage): string {
+  return [
+    pkg.source,
+    pkg.name,
+    pkg.version ?? "latest",
+    pkg.gitUrl ?? "",
+    pkg.gitRef ?? "",
+  ].join("|");
 }
 
 /**

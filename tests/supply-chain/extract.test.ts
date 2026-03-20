@@ -69,6 +69,19 @@ describe("extractPackages", () => {
     expect(gitPkg.gitRef).toBe("v1.0.0");
   });
 
+  it("skips git URLs when extracting npx package specs", () => {
+    const file = makeMcpConfig({
+      custom: {
+        command: "npx",
+        args: ["https://github.com/org/mcp-custom-server#v1.0.0"],
+      },
+    });
+    const packages = extractPackages([file]);
+
+    expect(packages).toHaveLength(1);
+    expect(packages[0].source).toBe("git");
+  });
+
   it("detects unpinned git URLs", () => {
     const file = makeMcpConfig({
       custom: {
@@ -93,6 +106,24 @@ describe("extractPackages", () => {
     const packages = extractPackages([file1, file2]);
 
     expect(packages).toHaveLength(1);
+  });
+
+  it("keeps git packages with different refs as separate entries", () => {
+    const file = makeMcpConfig({
+      unpinned: { command: "npx", args: ["https://github.com/org/mcp-server"] },
+      pinned: {
+        command: "npx",
+        args: ["https://github.com/org/mcp-server#0123456789abcdef0123456789abcdef01234567"],
+      },
+    });
+    const packages = extractPackages([file]);
+
+    const gitPackages = packages.filter((pkg) => pkg.source === "git");
+    expect(gitPackages).toHaveLength(2);
+    expect(gitPackages.map((pkg) => pkg.gitRef)).toEqual([
+      undefined,
+      "0123456789abcdef0123456789abcdef01234567",
+    ]);
   });
 
   it("handles multiple servers in one config", () => {
