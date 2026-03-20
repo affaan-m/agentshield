@@ -39,6 +39,14 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Build action
+        run: npm run build
 
       - name: Run AgentShield on vulnerable examples
         id: scan
@@ -79,6 +87,14 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Build action
+        run: npm run build
 
       - name: Create clean temp directory
         run: mkdir -p /tmp/clean-scan
@@ -107,6 +123,14 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Build action
+        run: npm run build
 
       - name: Scan with critical-only filter
         id: critical-only
@@ -140,6 +164,14 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Build action
+        run: npm run build
 
       - name: Run scan expecting failure (should fail if findings exist)
         id: should-fail
