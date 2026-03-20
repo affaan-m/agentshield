@@ -15,7 +15,6 @@ Standard feature implementation workflow
 ## Common Files
 
 - `.claude/commands/*`
-- `**/*.test.*`
 
 ## Suggested Sequence
 
