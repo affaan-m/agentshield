@@ -10,15 +10,11 @@ Use this workflow when working on **add-or-update-command-workflow** in `agentsh
 
 ## Goal
 
-Adds or updates a command workflow markdown file describing a development or security process.
+Adds or updates a command workflow documentation for agentshield ECC bundle.
 
 ## Common Files
 
-- `.claude/commands/feature-development.md`
-- `.claude/commands/test-driven-development.md`
-- `.claude/commands/add-or-update-security-rule.md`
-- `.claude/commands/add-new-security-rule.md`
-- `.claude/commands/feature-or-rule-implementation-with-tests.md`
+- `.claude/commands/*.md`
 
 ## Suggested Sequence
 
@@ -29,7 +25,7 @@ Adds or updates a command workflow markdown file describing a development or sec
 
 ## Typical Commit Signals
 
-- Create or update a markdown file in .claude/commands/ (e.g., feature-development.md, test-driven-development.md, add-or-update-security-rule.md).
+- Create or update a markdown file in .claude/commands/ with the workflow details.
 - Commit the file with a message referencing the workflow.
 
 ## Notes
