@@ -25,7 +25,7 @@
     "test:batch:analysis": "vitest run tests/integration.test.ts tests/injection.test.ts tests/action.test.ts",
     "test:batch:miniclaw-a": "vitest run tests/miniclaw/index.test.ts tests/miniclaw/server.test.ts",
     "test:batch:miniclaw-b": "vitest run tests/miniclaw/cli.test.ts tests/miniclaw/sandbox.test.ts",
-    "test:batch:misc": "vitest run tests/corpus.test.ts tests/logger.test.ts tests/init/init.test.ts tests/taint/taint.test.ts tests/opus/*.test.ts tests/fixer/*.test.ts tests/types.test.ts tests/skills/*.test.ts tests/miniclaw/router.test.ts tests/miniclaw/tools.test.ts tests/miniclaw/types.test.ts tests/sandbox/sandbox.test.ts tests/threat-intel/*.test.ts tests/watch/*.test.ts tests/runtime/*.test.ts tests/baseline/*.test.ts tests/supply-chain/*.test.ts",
+    "test:batch:misc": "vitest run tests/corpus.test.ts tests/logger.test.ts tests/init/init.test.ts tests/taint/taint.test.ts tests/opus/*.test.ts tests/fixer/*.test.ts tests/types.test.ts tests/skills/*.test.ts tests/miniclaw/router.test.ts tests/miniclaw/tools.test.ts tests/miniclaw/types.test.ts tests/sandbox/sandbox.test.ts tests/threat-intel/*.test.ts tests/watch/*.test.ts tests/runtime/*.test.ts tests/baseline/*.test.ts tests/supply-chain/*.test.ts tests/policy/*.test.ts",
     "test:coverage": "vitest --coverage",
     "lint": "eslint src/",
     "typecheck": "tsc --noEmit",
