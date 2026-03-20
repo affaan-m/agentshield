@@ -552,7 +552,6 @@ runtime
     console.log(`\n  AgentShield Runtime Monitor\n`);
     console.log(`  ${result.message}\n`);
   });
-  });
 
 // ─── MiniClaw Commands ───────────────────────────────────
 
