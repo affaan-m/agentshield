@@ -12,6 +12,8 @@ import { runOpusPipeline, renderOpusAnalysis } from "./opus/index.js";
 import { applyFixes, renderFixSummary } from "./fixer/index.js";
 import { runInit, renderInitSummary } from "./init/index.js";
 import { startMiniClaw } from "./miniclaw/index.js";
+import { startWatcher } from "./watch/index.js";
+import type { AlertMode } from "./watch/types.js";
 import type {
   InjectionSuiteResult,
   SandboxResult,
@@ -410,6 +412,108 @@ program
   .action((options) => {
     const initResult = runInit(options.path);
     console.log(renderInitSummary(initResult));
+  });
+
+// ─── Watch Command ───────────────────────────────────────
+
+program
+  .command("watch")
+  .description("Continuously monitor config directories for security regressions")
+  .option("-p, --path <path>", "Path to watch (default: ~/.claude or current dir)")
+  .option("--debounce <ms>", "Debounce interval in milliseconds", "500")
+  .option("--alert <mode>", "Alert mode: terminal, webhook, both", "terminal")
+  .option("--webhook <url>", "Webhook URL for alerts")
+  .option("--min-severity <severity>", "Minimum severity to track: critical, high, medium, low, info", "info")
+  .option("--block", "Exit non-zero if critical findings detected (for CI integration)", false)
+  .action((options) => {
+    const targetPath = resolveTargetPath(options.path);
+
+    if (!existsSync(targetPath)) {
+      console.error(`Error: Path does not exist: ${targetPath}`);
+      process.exit(1);
+    }
+
+    const debounceMs = parseInt(options.debounce, 10);
+    if (isNaN(debounceMs) || debounceMs < 100) {
+      console.error("Error: Debounce must be at least 100ms.");
+      process.exit(1);
+    }
+
+    const alertMode = options.alert as AlertMode;
+    if (!["terminal", "webhook", "both"].includes(alertMode)) {
+      console.error("Error: Alert mode must be: terminal, webhook, or both.");
+      process.exit(1);
+    }
+
+    if ((alertMode === "webhook" || alertMode === "both") && !options.webhook) {
+      console.error("Error: --webhook URL required when alert mode is 'webhook' or 'both'.");
+      process.exit(1);
+    }
+
+    const validSeverities = ["critical", "high", "medium", "low", "info"];
+    if (!validSeverities.includes(options.minSeverity)) {
+      console.error(`Error: --min-severity must be one of: ${validSeverities.join(", ")}`);
+      process.exit(1);
+    }
+
+    console.log(`\n  AgentShield Watch Mode\n`);
+    console.log(`  Watching:       ${targetPath}`);
+    console.log(`  Debounce:       ${debounceMs}ms`);
+    console.log(`  Alert mode:     ${alertMode}`);
+    console.log(`  Min severity:   ${options.minSeverity}`);
+    if (options.webhook) {
+      console.log(`  Webhook:        ${options.webhook}`);
+    }
+    console.log(`\n  Performing initial scan to establish baseline...`);
+
+    const homeClaude = resolve(
+      process.env.HOME ?? process.env.USERPROFILE ?? ".",
+      ".claude"
+    );
+
+    const watchPaths = [targetPath];
+    if (existsSync(homeClaude) && homeClaude !== targetPath) {
+      watchPaths.push(homeClaude);
+      console.log(`  Also watching:  ${homeClaude}`);
+    }
+
+    const { stop, getState } = startWatcher({
+      paths: watchPaths,
+      debounceMs,
+      alertMode,
+      webhookUrl: options.webhook,
+      minSeverity: options.minSeverity,
+      blockOnCritical: options.block,
+    });
+
+    const state = getState();
+    if (state.baseline) {
+      console.log(`  Baseline score: ${state.baseline.score.numericScore} (${state.baseline.score.grade})`);
+      console.log(`  Findings:       ${state.baseline.findings.length}`);
+    }
+
+    console.log(`\n  Watching for changes... (Press Ctrl+C to stop)\n`);
+
+    const handleSignal = (): void => {
+      console.log("\n  Stopping watch...\n");
+      stop();
+      process.exit(0);
+    };
+
+    process.on("SIGINT", handleSignal);
+    process.on("SIGTERM", handleSignal);
+
+    // If --block and initial scan has critical findings, exit immediately
+    if (options.block && state.baseline) {
+      const hasCritical = state.baseline.findings.some(
+        (f) => f.severity === "critical"
+      );
+      if (hasCritical) {
+        console.error("  BLOCKED: Critical findings detected in initial scan.");
+        stop();
+        process.exit(2);
+      }
+    }
   });
 
 // ─── MiniClaw Commands ───────────────────────────────────
