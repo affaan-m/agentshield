@@ -1,6 +1,17 @@
 import { z } from "zod";
 import type { Severity } from "../types.js";
 
+type Primitive = string | number | boolean | bigint | symbol | null | undefined;
+
+type DeepReadonly<T> =
+  T extends Primitive | ((...args: never[]) => unknown)
+    ? T
+    : T extends readonly (infer U)[]
+      ? ReadonlyArray<DeepReadonly<U>>
+      : T extends object
+        ? { readonly [K in keyof T]: DeepReadonly<T[K]> }
+        : T;
+
 // ─── Organization Policy Schema ─────────────────────────────
 
 export const OrgPolicySchema = z.object({
@@ -33,7 +44,7 @@ export const OrgPolicySchema = z.object({
   banned_tools: z.array(z.string()).default([]),
 });
 
-export type OrgPolicy = z.infer<typeof OrgPolicySchema>;
+export type OrgPolicy = DeepReadonly<z.infer<typeof OrgPolicySchema>>;
 
 // ─── Policy Violation ───────────────────────────────────────
 

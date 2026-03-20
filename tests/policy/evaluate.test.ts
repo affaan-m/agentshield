@@ -41,7 +41,16 @@ function makeFinding(overrides: Partial<Finding> = {}): Finding {
 
 function makeScore(numericScore: number): SecurityScore {
   return {
-    grade: numericScore >= 90 ? "A" : numericScore >= 75 ? "B" : "C",
+    grade:
+      numericScore >= 90
+        ? "A"
+        : numericScore >= 75
+          ? "B"
+          : numericScore >= 60
+            ? "C"
+            : numericScore >= 40
+              ? "D"
+              : "F",
     numericScore,
     breakdown: { secrets: 0, permissions: 0, hooks: 0, mcp: 0, agents: 0 },
   };
@@ -87,27 +96,41 @@ describe("loadPolicy", () => {
       min_score: 80,
     }));
 
-    const policy = loadPolicy(path);
-    expect(policy).not.toBeNull();
-    expect(policy!.min_score).toBe(80);
+    const result = loadPolicy(path);
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.policy.min_score).toBe(80);
+    }
   });
 
-  it("returns null for non-existent file", () => {
-    expect(loadPolicy("/tmp/nonexistent-policy-test-12345.json")).toBeNull();
+  it("returns an error for non-existent file", () => {
+    const result = loadPolicy("/tmp/nonexistent-policy-test-12345.json");
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error).toContain("Policy file not found");
+    }
   });
 
-  it("returns null for invalid JSON", () => {
+  it("returns an error for invalid JSON", () => {
     setup();
     const path = join(FIXTURES_DIR, "bad.json");
     writeFileSync(path, "not json");
-    expect(loadPolicy(path)).toBeNull();
+    const result = loadPolicy(path);
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error).toMatch(/json|unexpected/i);
+    }
   });
 
-  it("returns null for wrong version", () => {
+  it("returns an error for wrong version", () => {
     setup();
     const path = join(FIXTURES_DIR, "v2.json");
     writeFileSync(path, JSON.stringify({ version: 2 }));
-    expect(loadPolicy(path)).toBeNull();
+    const result = loadPolicy(path);
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.length).toBeGreaterThan(0);
+    }
   });
 });
 
