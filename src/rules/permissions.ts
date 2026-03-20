@@ -1,3 +1,6 @@
+import { statSync } from "node:fs";
+import { resolve, join } from "node:path";
+import { homedir } from "node:os";
 import type { ConfigFile, Finding, Rule } from "../types.js";
 
 function isHookManifestConfig(file: ConfigFile, config: unknown): boolean {
@@ -926,7 +929,97 @@ export const permissionRules: ReadonlyArray<Rule> = [
       return findings;
     },
   },
+  {
+    id: "permissions-claude-md-world-writable",
+    name: "CLAUDE.md File Permissions Too Open",
+    description: "Checks if CLAUDE.md files have overly permissive filesystem permissions (world-writable or group-writable)",
+    severity: "high",
+    category: "permissions",
+    check(file: ConfigFile): ReadonlyArray<Finding> {
+      if (file.type !== "claude-md") return [];
+
+      // Only check CLAUDE.md files that are likely to be the user's global
+      // config or project-level config — both are prompt injection surfaces.
+      const normalizedPath = file.path.replace(/\\/g, "/");
+      if (!/CLAUDE\.md$/i.test(normalizedPath)) return [];
+
+      // Resolve the file path to an absolute path for stat
+      const absolutePath = resolveClaudeMdPath(normalizedPath);
+      if (!absolutePath) return [];
+
+      try {
+        const stat = statSync(absolutePath);
+        const mode = stat.mode;
+
+        // Check permission bits:
+        // group-writable:  0o020 (bit 4)
+        // other-writable:  0o002 (bit 1)
+        const isGroupWritable = (mode & 0o020) !== 0;
+        const isOtherWritable = (mode & 0o002) !== 0;
+
+        if (!isGroupWritable && !isOtherWritable) return [];
+
+        const issues: string[] = [];
+        if (isOtherWritable) issues.push("world-writable");
+        if (isGroupWritable) issues.push("group-writable");
+
+        const modeStr = "0o" + (mode & 0o777).toString(8);
+
+        return [{
+          id: "permissions-claude-md-world-writable",
+          severity: isOtherWritable ? "high" : "medium",
+          category: "permissions",
+          title: `CLAUDE.md is ${issues.join(" and ")} (${modeStr})`,
+          description:
+            `The file ${normalizedPath} has permissions ${modeStr}, making it ${issues.join(" and ")}. ` +
+            "CLAUDE.md files are injected into every Claude Code prompt as system instructions. " +
+            "A local attacker or malicious process could modify this file to inject prompt instructions " +
+            "that exfiltrate data, run arbitrary commands, or alter agent behavior. " +
+            "Restrict permissions to owner-only (chmod 600).",
+          file: file.path,
+          evidence: `permissions: ${modeStr}`,
+          fix: {
+            description: "Restrict file permissions to owner-only read/write",
+            before: modeStr,
+            after: "0o600",
+            auto: true,
+          },
+        }];
+      } catch {
+        // File may not exist on disk (e.g. running tests with synthetic files)
+        return [];
+      }
+    },
+  },
 ];
+
+/**
+ * Resolve a CLAUDE.md relative path to an absolute path for stat.
+ * Handles paths like `.claude/CLAUDE.md`, `CLAUDE.md`, and
+ * home-relative paths.
+ */
+function resolveClaudeMdPath(relativePath: string): string | null {
+  // If it looks like a home-directory config path
+  if (/^\.claude\/CLAUDE\.md$/i.test(relativePath)) {
+    // Could be under home dir or project dir — try home first
+    const homeClaudeMd = join(homedir(), ".claude", "CLAUDE.md");
+    try {
+      statSync(homeClaudeMd);
+      return homeClaudeMd;
+    } catch {
+      // Not under home, try as relative
+    }
+  }
+
+  // Try as-is (relative to cwd)
+  try {
+    const resolved = resolve(relativePath);
+    statSync(resolved);
+    return resolved;
+  } catch {
+    return null;
+  }
+}
 
 function findLineNumber(content: string, matchIndex: number): number {
   return content.substring(0, matchIndex).split("\n").length;

@@ -1,6 +1,9 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { permissionRules } from "../../src/rules/permissions.js";
 import type { ConfigFile } from "../../src/types.js";
+import { writeFileSync, mkdirSync, unlinkSync, chmodSync, existsSync } from "node:fs";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
 
 function makeSettings(content: string): ConfigFile {
   return { path: "settings.json", type: "settings-json", content };
@@ -792,6 +795,129 @@ describe("permissionRules", () => {
       const findings = runAllPermRules(file);
       const networkFindings = findings.filter((f) => f.id.includes("unrestricted-network"));
       expect(networkFindings).toHaveLength(0);
+    });
+  });
+
+  describe("CLAUDE.md filesystem permissions", () => {
+    const testDir = join(tmpdir(), `agentshield-perm-test-${Date.now()}`);
+    const testClaudeMd = join(testDir, "CLAUDE.md");
+
+    beforeEach(() => {
+      mkdirSync(testDir, { recursive: true });
+      writeFileSync(testClaudeMd, "# Test CLAUDE.md\nSome content");
+    });
+
+    afterEach(() => {
+      try {
+        if (existsSync(testClaudeMd)) unlinkSync(testClaudeMd);
+      } catch {
+        // ignore cleanup errors
+      }
+    });
+
+    it("flags world-writable CLAUDE.md (0o666)", () => {
+      chmodSync(testClaudeMd, 0o666);
+      const file: ConfigFile = {
+        path: testClaudeMd,
+        type: "claude-md",
+        content: "# Test",
+      };
+      const findings = runAllPermRules(file);
+      const permFinding = findings.find((f) => f.id === "permissions-claude-md-world-writable");
+      expect(permFinding).toBeDefined();
+      expect(permFinding?.severity).toBe("high");
+      expect(permFinding?.title).toContain("world-writable");
+      expect(permFinding?.fix?.auto).toBe(true);
+      expect(permFinding?.fix?.after).toBe("0o600");
+    });
+
+    it("flags group-writable CLAUDE.md (0o660)", () => {
+      chmodSync(testClaudeMd, 0o660);
+      const file: ConfigFile = {
+        path: testClaudeMd,
+        type: "claude-md",
+        content: "# Test",
+      };
+      const findings = runAllPermRules(file);
+      const permFinding = findings.find((f) => f.id === "permissions-claude-md-world-writable");
+      expect(permFinding).toBeDefined();
+      expect(permFinding?.severity).toBe("medium");
+      expect(permFinding?.title).toContain("group-writable");
+    });
+
+    it("flags both world-writable and group-writable CLAUDE.md (0o676)", () => {
+      chmodSync(testClaudeMd, 0o676);
+      const file: ConfigFile = {
+        path: testClaudeMd,
+        type: "claude-md",
+        content: "# Test",
+      };
+      const findings = runAllPermRules(file);
+      const permFinding = findings.find((f) => f.id === "permissions-claude-md-world-writable");
+      expect(permFinding).toBeDefined();
+      expect(permFinding?.severity).toBe("high");
+      expect(permFinding?.title).toContain("world-writable");
+      expect(permFinding?.title).toContain("group-writable");
+    });
+
+    it("does not flag owner-only CLAUDE.md (0o600)", () => {
+      chmodSync(testClaudeMd, 0o600);
+      const file: ConfigFile = {
+        path: testClaudeMd,
+        type: "claude-md",
+        content: "# Test",
+      };
+      const findings = runAllPermRules(file);
+      const permFinding = findings.find((f) => f.id === "permissions-claude-md-world-writable");
+      expect(permFinding).toBeUndefined();
+    });
+
+    it("does not flag normal read-only permissions (0o644)", () => {
+      chmodSync(testClaudeMd, 0o644);
+      const file: ConfigFile = {
+        path: testClaudeMd,
+        type: "claude-md",
+        content: "# Test",
+      };
+      const findings = runAllPermRules(file);
+      const permFinding = findings.find((f) => f.id === "permissions-claude-md-world-writable");
+      expect(permFinding).toBeUndefined();
+    });
+
+    it("does not flag non-claude-md file types", () => {
+      chmodSync(testClaudeMd, 0o666);
+      const file: ConfigFile = {
+        path: testClaudeMd,
+        type: "settings-json",
+        content: "{}",
+      };
+      const findings = runAllPermRules(file);
+      const permFinding = findings.find((f) => f.id === "permissions-claude-md-world-writable");
+      expect(permFinding).toBeUndefined();
+    });
+
+    it("handles nonexistent files gracefully", () => {
+      const file: ConfigFile = {
+        path: "/tmp/nonexistent-agentshield-test/CLAUDE.md",
+        type: "claude-md",
+        content: "# Test",
+      };
+      const findings = runAllPermRules(file);
+      const permFinding = findings.find((f) => f.id === "permissions-claude-md-world-writable");
+      expect(permFinding).toBeUndefined();
+    });
+
+    it("provides actionable fix recommendation", () => {
+      chmodSync(testClaudeMd, 0o666);
+      const file: ConfigFile = {
+        path: testClaudeMd,
+        type: "claude-md",
+        content: "# Test",
+      };
+      const findings = runAllPermRules(file);
+      const permFinding = findings.find((f) => f.id === "permissions-claude-md-world-writable");
+      expect(permFinding?.description).toContain("chmod 600");
+      expect(permFinding?.description).toContain("inject prompt instructions");
     });
   });
 });
