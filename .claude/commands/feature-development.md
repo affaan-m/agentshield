@@ -14,9 +14,9 @@ Standard feature implementation workflow
 
 ## Common Files
 
-- `src/rules/*`
-- `tests/rules/*`
-- `src/*`
+- `src/injection/*`
+- `src/opus/*`
+- `src/reporter/*`
 - `**/*.test.*`
 
 ## Suggested Sequence
