@@ -2,7 +2,7 @@
   "version": "1.3",
   "schemaVersion": "1.0",
   "generatedBy": "ecc-tools",
-  "generatedAt": "2026-03-20T07:27:41.057Z",
+  "generatedAt": "2026-03-20T07:28:37.195Z",
   "repo": "https://github.com/affaan-m/agentshield",
   "profiles": {
     "requested": "full",
@@ -149,8 +149,8 @@
     ".claude/team/agentshield-team-config.json",
     ".claude/enterprise/controls.md",
     ".claude/commands/feature-development.md",
-    ".claude/commands/test-driven-development.md",
-    ".claude/commands/add-or-update-security-rule.md"
+    ".claude/commands/ecc-bundle-component-addition.md",
+    ".claude/commands/feature-or-rule-implementation-with-tests.md"
   ],
   "packageFiles": {
     "runtime-core": [
@@ -179,8 +179,8 @@
     ],
     "workflow-pack": [
       ".claude/commands/feature-development.md",
-      ".claude/commands/test-driven-development.md",
-      ".claude/commands/add-or-update-security-rule.md"
+      ".claude/commands/ecc-bundle-component-addition.md",
+      ".claude/commands/feature-or-rule-implementation-with-tests.md"
     ]
   },
   "moduleFiles": {
@@ -210,8 +210,8 @@
     ],
     "workflow-pack": [
       ".claude/commands/feature-development.md",
-      ".claude/commands/test-driven-development.md",
-      ".claude/commands/add-or-update-security-rule.md"
+      ".claude/commands/ecc-bundle-component-addition.md",
+      ".claude/commands/feature-or-rule-implementation-with-tests.md"
     ]
   },
   "files": [
@@ -292,13 +292,13 @@
     },
     {
       "moduleId": "workflow-pack",
-      "path": ".claude/commands/test-driven-development.md",
-      "description": "Workflow command scaffold for test-driven-development."
+      "path": ".claude/commands/ecc-bundle-component-addition.md",
+      "description": "Workflow command scaffold for ecc-bundle-component-addition."
     },
     {
       "moduleId": "workflow-pack",
-      "path": ".claude/commands/add-or-update-security-rule.md",
-      "description": "Workflow command scaffold for add-or-update-security-rule."
+      "path": ".claude/commands/feature-or-rule-implementation-with-tests.md",
+      "description": "Workflow command scaffold for feature-or-rule-implementation-with-tests."
     }
   ],
   "workflows": [
@@ -307,12 +307,12 @@
       "path": ".claude/commands/feature-development.md"
     },
     {
-      "command": "test-driven-development",
-      "path": ".claude/commands/test-driven-development.md"
+      "command": "ecc-bundle-component-addition",
+      "path": ".claude/commands/ecc-bundle-component-addition.md"
     },
     {
-      "command": "add-or-update-security-rule",
-      "path": ".claude/commands/add-or-update-security-rule.md"
+      "command": "feature-or-rule-implementation-with-tests",
+      "path": ".claude/commands/feature-or-rule-implementation-with-tests.md"
     }
   ],
   "adapters": {
@@ -321,8 +321,8 @@
       "identityPath": ".claude/identity.json",
       "commandPaths": [
         ".claude/commands/feature-development.md",
-        ".claude/commands/test-driven-development.md",
-        ".claude/commands/add-or-update-security-rule.md"
+        ".claude/commands/ecc-bundle-component-addition.md",
+        ".claude/commands/feature-or-rule-implementation-with-tests.md"
       ]
     },
     "codex": {
