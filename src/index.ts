@@ -209,6 +209,9 @@ program
   .option("--log <path>", "Write structured scan log to file")
   .option("--log-format <format>", "Log format: ndjson (default) or json", "ndjson")
   .option("--corpus", "Run scanner validation against built-in attack corpus", false)
+  .option("--baseline <path>", "Compare against a baseline file and report regressions")
+  .option("--save-baseline <path>", "Save current scan results as a baseline file")
+  .option("--gate", "Fail if new critical/high findings or score drops (use with --baseline)", false)
   .option("--min-severity <severity>", "Minimum severity to report: critical, high, medium, low, info", "info")
   .option("-v, --verbose", "Show detailed output", false)
   .action(async (options) => {
@@ -265,6 +268,40 @@ program
         break;
       default:
         console.log(renderTerminalReport(report));
+    }
+
+    // ── Phase 1b: Baseline save/compare ───────────────────
+    if (options.saveBaseline) {
+      const { saveBaseline } = await import("./baseline/index.js");
+      saveBaseline(filteredResult.findings, report.score, options.saveBaseline);
+      console.log(`\n  Baseline saved to: ${options.saveBaseline}\n`);
+      logger.log({ level: "info", phase: "baseline", message: `Baseline saved to ${options.saveBaseline}` });
+    }
+
+    if (options.baseline) {
+      const { loadBaseline, compareBaseline, evaluateGate, renderComparison, renderGateResult } =
+        await import("./baseline/index.js");
+      const baseline = loadBaseline(options.baseline);
+      if (!baseline) {
+        console.error(`\n  Error: Could not load baseline from ${options.baseline}\n`);
+      } else {
+        const comparison = compareBaseline(baseline, filteredResult.findings, report.score);
+        console.log(renderComparison(comparison));
+        logger.log({
+          level: comparison.isRegression ? "warn" : "info",
+          phase: "baseline",
+          message: `Baseline comparison: ${comparison.newFindings.length} new, ${comparison.resolvedFindings.length} resolved, score delta ${comparison.scoreDelta}`,
+        });
+
+        if (options.gate) {
+          const gateResult = evaluateGate(comparison);
+          console.log(renderGateResult(gateResult));
+          if (!gateResult.passed) {
+            logger.log({ level: "error", phase: "gate", message: `Gate FAILED: ${gateResult.reasons.join("; ")}` });
+            process.exit(3);
+          }
+        }
+      }
     }
 
     // ── Phase 2: Auto-fix (if enabled) ──────────────────────

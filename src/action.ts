@@ -90,6 +90,8 @@ async function run(): Promise<void> {
   const minSeverity = getInput("min-severity", "medium");
   const failOnFindings = getInput("fail-on-findings", "true") === "true";
   const format = getInput("format", "terminal");
+  const baselinePath = getInput("baseline", "");
+  const saveBaselinePath = getInput("save-baseline", "");
 
   // Resolve and validate path
   const workspace = process.env.GITHUB_WORKSPACE ?? process.cwd();
@@ -140,6 +142,48 @@ async function run(): Promise<void> {
   console.log(`  Medium: ${report.summary.medium}`);
   console.log(`  Low: ${report.summary.low}`);
   console.log(`  Info: ${report.summary.info}`);
+
+  // Save baseline if requested
+  if (saveBaselinePath) {
+    const { saveBaseline } = await import("./baseline/index.js");
+    const savePath = resolve(workspace, saveBaselinePath);
+    saveBaseline(filteredResult.findings, report.score, savePath);
+    setOutput("baseline-path", savePath);
+    console.log(`Baseline saved to: ${savePath}`);
+  }
+
+  // Compare against baseline if provided
+  if (baselinePath) {
+    const { loadBaseline, compareBaseline, evaluateGate } = await import("./baseline/index.js");
+    const baseline = loadBaseline(resolve(workspace, baselinePath));
+
+    if (baseline) {
+      const comparison = compareBaseline(baseline, filteredResult.findings, report.score);
+
+      setOutput("new-findings", String(comparison.newFindings.length));
+      setOutput("resolved-findings", String(comparison.resolvedFindings.length));
+      setOutput("score-delta", String(comparison.scoreDelta));
+
+      // Emit annotations only for NEW findings (regression-only mode)
+      if (comparison.newFindings.length > 0) {
+        console.log("");
+        console.log(`Baseline comparison: ${comparison.newFindings.length} new, ${comparison.resolvedFindings.length} resolved`);
+        emitAnnotations(comparison.newFindings);
+      }
+
+      const gateResult = evaluateGate(comparison);
+      if (!gateResult.passed) {
+        console.log("");
+        console.log(`::error::AgentShield gate FAILED: ${gateResult.reasons.join("; ")}`);
+        process.exitCode = 1;
+        return;
+      } else {
+        console.log("Baseline gate: PASSED");
+      }
+    } else {
+      console.log(`::warning::Could not load baseline from ${baselinePath}. Skipping comparison.`);
+    }
+  }
 
   // Fail if requested and findings exist
   if (failOnFindings && filteredResult.findings.length > 0) {
