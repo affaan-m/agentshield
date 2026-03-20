@@ -10,7 +10,7 @@ Use this workflow when working on **add-or-update-ecc-bundle-component** in `age
 
 ## Goal
 
-Adds or updates an ECC bundle component, which likely defines a modular part of the agentshield system.
+Adds or updates an ECC bundle component, such as configuration or documentation, for the agentshield project.
 
 ## Common Files
 
@@ -25,8 +25,8 @@ Adds or updates an ECC bundle component, which likely defines a modular part of 
 
 ## Typical Commit Signals
 
-- Create or modify a markdown file in .claude/commands/ named add-or-update-ecc-bundle-component.md
-- Commit the change with a message referencing ECC bundle component
+- Create or update .claude/commands/add-or-update-ecc-bundle-component.md
+- Commit the file with a message referencing the ECC bundle component
 
 ## Notes
 
