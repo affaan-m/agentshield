@@ -1,0 +1,36 @@
+language: en-US
+
+reviews:
+  profile: assertive
+  high_level_summary: true
+  review_status: true
+  collapse_walkthrough: true
+  poem: false
+  path_filters:
+    - "!dist/**"
+    - "!coverage/**"
+    - "!node_modules/**"
+  path_instructions:
+    - path: "src/**/*.ts"
+      instructions: |
+        Focus reviews on security-scanner correctness, false-positive reduction, Node 18+ compatibility, and preserving the CLI and GitHub Action public behavior.
+    - path: ".github/workflows/**/*.yml"
+      instructions: |
+        Verify GitHub Actions syntax, npm cache usage, least-privilege permissions, and that CI covers Node 18, 20, and 22 on both push and pull_request events.
+    - path: "action.yml"
+      instructions: |
+        Treat action.yml as a public interface. Flag breaking changes to inputs, outputs, defaults, or documentation drift.
+  auto_review:
+    enabled: true
+    auto_incremental_review: true
+    drafts: false
+
+tools:
+  eslint:
+    enabled: false
+  actionlint:
+    enabled: true
+  github-checks:
+    enabled: true
+  markdownlint:
+    enabled: true

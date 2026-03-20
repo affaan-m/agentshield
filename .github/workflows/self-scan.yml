@@ -3,8 +3,29 @@ name: AgentShield Self-Scan
 on:
   push:
     branches: [main]
+    paths:
+      - "src/**"
+      - "tests/**"
+      - "examples/**"
+      - "action.yml"
+      - "package.json"
+      - "package-lock.json"
+      - ".github/workflows/self-scan.yml"
   pull_request:
     branches: [main]
+    paths:
+      - "src/**"
+      - "tests/**"
+      - "examples/**"
+      - "action.yml"
+      - "package.json"
+      - "package-lock.json"
+      - ".github/workflows/self-scan.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
@@ -12,6 +33,7 @@ permissions:
 jobs:
   self-scan:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
 
     steps:
       - name: Checkout repository
@@ -22,6 +44,7 @@ jobs:
         with:
           node-version: 20
           cache: npm
+          cache-dependency-path: package-lock.json
 
       - name: Install dependencies
         run: npm ci

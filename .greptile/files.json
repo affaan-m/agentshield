@@ -1,0 +1,16 @@
+{
+  "files": [
+    {
+      "path": "README.md",
+      "description": "Project overview, CLI usage, and expected user-facing behavior."
+    },
+    {
+      "path": "CLAUDE.md",
+      "description": "Repository-specific engineering guidance and workflow expectations."
+    },
+    {
+      "path": "action.yml",
+      "description": "Public GitHub Action interface for AgentShield."
+    }
+  ]
+}

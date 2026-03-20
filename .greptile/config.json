@@ -1,0 +1,7 @@
+{
+  "strictness": 2,
+  "commentTypes": ["logic", "syntax"],
+  "statusCheck": true,
+  "triggerOnUpdates": true,
+  "ignorePatterns": "dist/**\ncoverage/**\nnode_modules/**"
+}

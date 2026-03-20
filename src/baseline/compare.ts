@@ -4,7 +4,6 @@ import { mkdirSync } from "node:fs";
 import type { Finding, SecurityScore } from "../types.js";
 import type {
   SerializedBaseline,
-  SerializedFinding,
   BaselineComparison,
   GateConfig,
   GateResult,

@@ -4,12 +4,29 @@ on:
   push:
     branches: [main]
     paths:
+      - "src/**"
+      - "tests/**"
       - "src/action.ts"
       - "action.yml"
       - "dist/**"
+      - "package.json"
+      - "package-lock.json"
       - ".github/workflows/test-action.yml"
   pull_request:
     branches: [main]
+    paths:
+      - "src/**"
+      - "tests/**"
+      - "action.yml"
+      - "dist/**"
+      - "package.json"
+      - "package-lock.json"
+      - ".github/workflows/test-action.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
@@ -19,6 +36,7 @@ jobs:
   test-vulnerable:
     name: Scan vulnerable examples
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
 
@@ -58,6 +76,7 @@ jobs:
   test-clean:
     name: Scan clean directory
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
 
@@ -85,6 +104,7 @@ jobs:
   test-severity-filter:
     name: Test severity filtering
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
 
@@ -117,6 +137,7 @@ jobs:
   test-fail-on-findings:
     name: Test fail-on-findings
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
 
