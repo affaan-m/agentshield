@@ -15,7 +15,6 @@ Adds or updates the team configuration for agentshield.
 ## Common Files
 
 - `.claude/team/agentshield-team-config.json`
-- `.claude/commands/add-or-update-team-config.md`
 
 ## Suggested Sequence
 
@@ -26,8 +25,8 @@ Adds or updates the team configuration for agentshield.
 
 ## Typical Commit Signals
 
-- Edit or add .claude/team/agentshield-team-config.json
-- Optionally, update .claude/commands/add-or-update-team-config.md to document the process
+- Create or modify .claude/team/agentshield-team-config.json
+- Commit the change with a message referencing team config
 
 ## Notes
 
