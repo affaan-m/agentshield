@@ -28,7 +28,7 @@ Activate this skill when:
 
 ## Commit Conventions
 
-Follow these commit message conventions based on 207 analyzed commits.
+Follow these commit message conventions based on 222 analyzed commits.
 
 ### Commit Style: Conventional Commits
 
@@ -49,7 +49,7 @@ Follow these commit message conventions based on 207 analyzed commits.
 *Commit message example*
 
 ```text
-feat: add agentshield ECC bundle (.claude/commands/add-or-update-codex-agent-config.md)
+feat: add agentshield ECC bundle (.claude/commands/add-or-update-team-config.md)
 ```
 
 *Commit message example*
@@ -236,161 +236,111 @@ Standard feature implementation workflow
 
 **Example commit sequence**:
 ```
-feat: add agentshield ECC bundle (.claude/team/agentshield-team-config.json)
 feat: add agentshield ECC bundle (.claude/enterprise/controls.md)
+feat: add agentshield ECC bundle (.claude/team/agentshield-team-config.json)
 feat: add agentshield ECC bundle (.claude/commands/feature-development.md)
-```
-
-### Add Or Update Ecc Bundle Component
-
-Adds or updates a component in the agentshield ECC bundle, such as configuration files, skills, rules, team configs, or tools.
-
-**Frequency**: ~5 times per month
-
-**Steps**:
-1. Create or update a relevant markdown or json file under .claude/commands/, .claude/team/, .claude/research/, .claude/rules/, .claude/skills/, .claude/enterprise/, .claude/ecc-tools.json, or .agents/skills/agentshield/
-2. Commit the change with a message referencing the ECC bundle and the specific file
-
-**Files typically involved**:
-- `.claude/commands/add-or-update-codex-agent-config.md`
-- `.claude/commands/add-or-update-ecc-bundle-component.md`
-- `.claude/commands/feature-development.md`
-- `.claude/commands/feature-development-workflow.md`
-- `.claude/commands/add-or-update-command-workflow.md`
-- `.claude/commands/add-or-update-team-config.md`
-- `.claude/commands/add-or-update-feature-development-workflow.md`
-- `.claude/team/agentshield-team-config.json`
-- `.claude/research/agentshield-research-playbook.md`
-- `.claude/rules/agentshield-guardrails.md`
-- `.claude/skills/agentshield/SKILL.md`
-- `.claude/enterprise/controls.md`
-- `.claude/ecc-tools.json`
-- `.claude/identity.json`
-- `.agents/skills/agentshield/SKILL.md`
-- `.agents/skills/agentshield/agents/openai.yaml`
-- `.codex/agents/docs-researcher.toml`
-- `.codex/agents/reviewer.toml`
-- `.codex/agents/explorer.toml`
-
-**Example commit sequence**:
-```
-Create or update a relevant markdown or json file under .claude/commands/, .claude/team/, .claude/research/, .claude/rules/, .claude/skills/, .claude/enterprise/, .claude/ecc-tools.json, or .agents/skills/agentshield/
-Commit the change with a message referencing the ECC bundle and the specific file
 ```
 
 ### Add Or Update Team Config
 
-Adds or updates the team configuration for agentshield, typically by modifying the agentshield-team-config.json file.
+Adds or updates the team configuration for agentshield.
 
-**Frequency**: ~3 times per month
+**Frequency**: ~5 times per month
 
 **Steps**:
-1. Edit or create .claude/team/agentshield-team-config.json
-2. Commit the change with a message referencing ECC bundle and team config
+1. Edit or add .claude/team/agentshield-team-config.json
+2. Optionally, update .claude/commands/add-or-update-team-config.md to document the process
 
 **Files typically involved**:
 - `.claude/team/agentshield-team-config.json`
+- `.claude/commands/add-or-update-team-config.md`
 
 **Example commit sequence**:
 ```
-Edit or create .claude/team/agentshield-team-config.json
-Commit the change with a message referencing ECC bundle and team config
+Edit or add .claude/team/agentshield-team-config.json
+Optionally, update .claude/commands/add-or-update-team-config.md to document the process
 ```
 
-### Add Or Update Skill Documentation
+### Add Or Update Ecc Bundle Component
 
-Adds or updates skill documentation for agentshield, typically by modifying SKILL.md files.
+Adds or updates a component of the agentshield ECC bundle, such as commands, skills, or rules.
 
-**Frequency**: ~3 times per month
+**Frequency**: ~4 times per month
 
 **Steps**:
-1. Edit or create .agents/skills/agentshield/SKILL.md or .claude/skills/agentshield/SKILL.md
-2. Commit the change with a message referencing ECC bundle and skill
+1. Edit or add the relevant .claude/commands/*.md file (e.g., add-or-update-ecc-bundle-component.md, feature-development.md)
+2. Optionally, update related documentation or workflow files
 
 **Files typically involved**:
+- `.claude/commands/add-or-update-ecc-bundle-component.md`
+- `.claude/commands/feature-development.md`
+- `.claude/commands/feature-development-workflow.md`
+- `.claude/commands/add-or-update-feature-development-workflow.md`
+
+**Example commit sequence**:
+```
+Edit or add the relevant .claude/commands/*.md file (e.g., add-or-update-ecc-bundle-component.md, feature-development.md)
+Optionally, update related documentation or workflow files
+```
+
+### Update Research And Rules Playbooks
+
+Updates the research playbook and guardrails for agentshield.
+
+**Frequency**: ~4 times per month
+
+**Steps**:
+1. Edit or add .claude/research/agentshield-research-playbook.md
+2. Edit or add .claude/rules/agentshield-guardrails.md
+
+**Files typically involved**:
+- `.claude/research/agentshield-research-playbook.md`
+- `.claude/rules/agentshield-guardrails.md`
+
+**Example commit sequence**:
+```
+Edit or add .claude/research/agentshield-research-playbook.md
+Edit or add .claude/rules/agentshield-guardrails.md
+```
+
+### Update Identity And Skills
+
+Updates the identity and skills documentation for agentshield.
+
+**Frequency**: ~4 times per month
+
+**Steps**:
+1. Edit or add .claude/identity.json
+2. Edit or add .agents/skills/agentshield/SKILL.md
+3. Edit or add .claude/skills/agentshield/SKILL.md
+
+**Files typically involved**:
+- `.claude/identity.json`
 - `.agents/skills/agentshield/SKILL.md`
 - `.claude/skills/agentshield/SKILL.md`
 
 **Example commit sequence**:
 ```
-Edit or create .agents/skills/agentshield/SKILL.md or .claude/skills/agentshield/SKILL.md
-Commit the change with a message referencing ECC bundle and skill
+Edit or add .claude/identity.json
+Edit or add .agents/skills/agentshield/SKILL.md
+Edit or add .claude/skills/agentshield/SKILL.md
 ```
 
-### Add Or Update Research Playbook
+### Update Ecc Tools
 
-Adds or updates the research playbook for agentshield.
+Updates the ECC tools configuration for agentshield.
 
-**Frequency**: ~3 times per month
+**Frequency**: ~4 times per month
 
 **Steps**:
-1. Edit or create .claude/research/agentshield-research-playbook.md
-2. Commit the change with a message referencing ECC bundle and research playbook
-
-**Files typically involved**:
-- `.claude/research/agentshield-research-playbook.md`
-
-**Example commit sequence**:
-```
-Edit or create .claude/research/agentshield-research-playbook.md
-Commit the change with a message referencing ECC bundle and research playbook
-```
-
-### Add Or Update Guardrails
-
-Adds or updates guardrails (rules) for agentshield.
-
-**Frequency**: ~3 times per month
-
-**Steps**:
-1. Edit or create .claude/rules/agentshield-guardrails.md
-2. Commit the change with a message referencing ECC bundle and guardrails
-
-**Files typically involved**:
-- `.claude/rules/agentshield-guardrails.md`
-
-**Example commit sequence**:
-```
-Edit or create .claude/rules/agentshield-guardrails.md
-Commit the change with a message referencing ECC bundle and guardrails
-```
-
-### Add Or Update Ecc Tools
-
-Adds or updates the ECC tools configuration for agentshield.
-
-**Frequency**: ~3 times per month
-
-**Steps**:
-1. Edit or create .claude/ecc-tools.json
-2. Commit the change with a message referencing ECC bundle and tools
+1. Edit or add .claude/ecc-tools.json
 
 **Files typically involved**:
 - `.claude/ecc-tools.json`
 
 **Example commit sequence**:
 ```
-Edit or create .claude/ecc-tools.json
-Commit the change with a message referencing ECC bundle and tools
-```
-
-### Add Or Update Identity
-
-Adds or updates the identity configuration for agentshield.
-
-**Frequency**: ~3 times per month
-
-**Steps**:
-1. Edit or create .claude/identity.json
-2. Commit the change with a message referencing ECC bundle and identity
-
-**Files typically involved**:
-- `.claude/identity.json`
-
-**Example commit sequence**:
-```
-Edit or create .claude/identity.json
-Commit the change with a message referencing ECC bundle and identity
+Edit or add .claude/ecc-tools.json
 ```
 
 
