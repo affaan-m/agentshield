@@ -1604,4 +1604,204 @@ describe("hookRules", () => {
       expect(findings.some((f) => f.id.includes("log-tamper"))).toBe(false);
     });
   });
+
+  describe("false positive: blocking guard hooks (exit 2)", () => {
+    it("does not flag sudo inside a PreToolUse grep guard with exit 2", () => {
+      const file = makeSettings(JSON.stringify({
+        hooks: {
+          PreToolUse: [{
+            matcher: "Bash",
+            hook: "if echo \"$command\" | grep -q 'sudo'; then echo 'Blocked: sudo' >&2 && exit 2; fi",
+          }],
+        },
+      }));
+      const findings = runAllHookRules(file);
+      expect(findings.some((f) => f.id.includes("priv-esc"))).toBe(false);
+    });
+
+    it("does not flag rm -rf inside a PreToolUse grep guard with exit 2", () => {
+      const file = makeSettings(JSON.stringify({
+        hooks: {
+          PreToolUse: [{
+            matcher: "Bash",
+            hook: "if echo \"$command\" | grep -q 'rm -rf'; then echo 'Blocked: rm -rf' >&2 && exit 2; fi",
+          }],
+        },
+      }));
+      const findings = runAllHookRules(file);
+      expect(findings.some((f) => f.id.includes("file-delete"))).toBe(false);
+    });
+
+    it("does not flag crontab inside a PreToolUse grep guard with exit 2", () => {
+      const file = makeSettings(JSON.stringify({
+        hooks: {
+          PreToolUse: [{
+            matcher: "Bash",
+            hook: "if echo \"$command\" | grep -q 'crontab'; then echo 'Blocked' >&2 && exit 2; fi",
+          }],
+        },
+      }));
+      const findings = runAllHookRules(file);
+      expect(findings.some((f) => f.id.includes("cron-persist"))).toBe(false);
+    });
+
+    it("does not flag ssh-keygen inside a PreToolUse grep guard with exit 2", () => {
+      const file = makeSettings(JSON.stringify({
+        hooks: {
+          PreToolUse: [{
+            matcher: "Bash",
+            hook: "if echo \"$command\" | grep -q 'ssh-keygen'; then echo 'Blocked' >&2 && exit 2; fi",
+          }],
+        },
+      }));
+      const findings = runAllHookRules(file);
+      expect(findings.some((f) => f.id.includes("ssh-key"))).toBe(false);
+    });
+
+    it("does not flag useradd inside a PreToolUse grep guard with exit 2", () => {
+      const file = makeSettings(JSON.stringify({
+        hooks: {
+          PreToolUse: [{
+            matcher: "Bash",
+            hook: "if echo \"$command\" | grep -q 'useradd'; then echo 'Blocked' >&2 && exit 2; fi",
+          }],
+        },
+      }));
+      const findings = runAllHookRules(file);
+      expect(findings.some((f) => f.id.includes("user-mod"))).toBe(false);
+    });
+
+    it("does not flag iptables inside a PreToolUse grep guard with exit 2", () => {
+      const file = makeSettings(JSON.stringify({
+        hooks: {
+          PreToolUse: [{
+            matcher: "Bash",
+            hook: "if echo \"$command\" | grep -q 'iptables'; then echo 'Blocked' >&2 && exit 2; fi",
+          }],
+        },
+      }));
+      const findings = runAllHookRules(file);
+      expect(findings.some((f) => f.id.includes("fw-modify"))).toBe(false);
+    });
+
+    it("still flags sudo when used without exit 2 (not a guard)", () => {
+      const file = makeSettings(JSON.stringify({
+        hooks: {
+          PreToolUse: [{
+            matcher: "Bash",
+            hook: "sudo npm install -g something",
+          }],
+        },
+      }));
+      const findings = runAllHookRules(file);
+      expect(findings.some((f) => f.id.includes("priv-esc"))).toBe(true);
+    });
+
+    it("still flags sudo when exit code is not 2 (exit 1 is not reject)", () => {
+      const file = makeSettings(JSON.stringify({
+        hooks: {
+          PreToolUse: [{
+            matcher: "Bash",
+            hook: "if echo \"$command\" | grep -q 'sudo'; then echo 'Logged' && exit 1; fi; sudo apt install pkg",
+          }],
+        },
+      }));
+      const findings = runAllHookRules(file);
+      // sudo used as actual command at the end should still be flagged
+      expect(findings.some((f) => f.id.includes("priv-esc"))).toBe(true);
+    });
+
+    it("does not flag chained commands in exit 2 guard hooks", () => {
+      const file = makeSettings(JSON.stringify({
+        hooks: {
+          PreToolUse: [{
+            matcher: "Bash",
+            hook: "if echo \"$command\" | grep -q 'sudo'; then echo 'Blocked' >&2 && exit 2; fi && if echo \"$command\" | grep -q 'rm -rf'; then echo 'Blocked' >&2 && exit 2; fi",
+          }],
+        },
+      }));
+      const findings = runAllHookRules(file);
+      expect(findings.some((f) => f.id.includes("chained-commands"))).toBe(false);
+    });
+
+    it("handles multiple dangerous keywords in a single guard hook", () => {
+      const file = makeSettings(JSON.stringify({
+        hooks: {
+          PreToolUse: [{
+            matcher: "Bash",
+            hook: "echo \"$command\" | grep -qE 'sudo|rm -rf|crontab|useradd|iptables' && echo 'Blocked' >&2 && exit 2",
+          }],
+        },
+      }));
+      const findings = runAllHookRules(file);
+      // None of these should be flagged — they're all inside grep patterns in a guard
+      expect(findings.some((f) => f.id.includes("priv-esc"))).toBe(false);
+      expect(findings.some((f) => f.id.includes("file-delete"))).toBe(false);
+      expect(findings.some((f) => f.id.includes("cron-persist"))).toBe(false);
+      expect(findings.some((f) => f.id.includes("user-mod"))).toBe(false);
+      expect(findings.some((f) => f.id.includes("fw-modify"))).toBe(false);
+    });
+
+    it("does not flag hook script with grep guard and exit 2", () => {
+      const file = makeHookScript(
+        "#!/bin/bash\nif echo \"$TOOL_INPUT\" | grep -q 'sudo'; then\n  echo 'Blocked: privilege escalation' >&2\n  exit 2\nfi"
+      );
+      const findings = runAllHookRules(file);
+      expect(findings.some((f) => f.id.includes("priv-esc"))).toBe(false);
+    });
+
+    it("properly hardened config with guard hooks scores clean", () => {
+      const file = makeSettings(JSON.stringify({
+        hooks: {
+          PreToolUse: [{
+            matcher: "Bash",
+            hook: "echo \"$command\" | grep -qE 'sudo|rm -rf|crontab|useradd' && echo 'Blocked' >&2 && exit 2",
+          }],
+          PostToolUse: [{ matcher: "Edit(*.ts)", hook: "tsc --noEmit" }],
+          Stop: [{ hook: "echo 'Session complete'" }],
+        },
+        permissions: {
+          allow: ["Read(*)", "Bash(git *)"],
+          deny: ["Bash(sudo *)", "Bash(rm -rf *)", "Bash(chmod 777 *)", "Bash(ssh *)", "Bash(> /dev/*)"],
+        },
+      }));
+
+      const findings = runAllHookRules(file);
+      // A properly hardened config should not produce any critical/high findings
+      const severeFindings = findings.filter(
+        (f) => f.severity === "critical" || f.severity === "high"
+      );
+      expect(severeFindings).toHaveLength(0);
+    });
+  });
+
+  describe("false positive: deny rules not treated as executable", () => {
+    it("does not flag dangerous keywords in permission deny rules", () => {
+      const file = makeSettings(JSON.stringify({
+        hooks: {
+          PreToolUse: [{ matcher: "Bash", hook: "echo 'safe check'" }],
+          Stop: [{ hook: "echo 'done'" }],
+        },
+        permissions: {
+          allow: ["Read(*)"],
+          deny: [
+            "Bash(sudo *)",
+            "Bash(rm -rf *)",
+            "Bash(crontab *)",
+            "Bash(useradd *)",
+            "Bash(ssh-keygen *)",
+            "Bash(iptables *)",
+          ],
+        },
+      }));
+      const findings = runAllHookRules(file);
+      // Deny rules should not generate any hook findings
+      expect(findings.some((f) => f.id.includes("priv-esc"))).toBe(false);
+      expect(findings.some((f) => f.id.includes("file-delete"))).toBe(false);
+      expect(findings.some((f) => f.id.includes("cron-persist"))).toBe(false);
+      expect(findings.some((f) => f.id.includes("user-mod"))).toBe(false);
+      expect(findings.some((f) => f.id.includes("ssh-key"))).toBe(false);
+      expect(findings.some((f) => f.id.includes("fw-modify"))).toBe(false);
+    });
+  });
 });
