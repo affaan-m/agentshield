@@ -8,8 +8,8 @@
   ],
   "commandFiles": [
     ".claude/commands/feature-development.md",
-    ".claude/commands/add-or-update-feature-development-workflow.md",
-    ".claude/commands/add-or-update-team-config.md"
+    ".claude/commands/add-or-update-command-workflow.md",
+    ".claude/commands/feature-development-workflow.md"
   ],
-  "updatedAt": "2026-03-20T07:29:54.746Z"
+  "updatedAt": "2026-03-20T07:30:35.622Z"
 }
