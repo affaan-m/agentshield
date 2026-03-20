@@ -9,7 +9,7 @@
   "commandFiles": [
     ".claude/commands/feature-development.md",
     ".claude/commands/test-driven-development.md",
-    ".claude/commands/add-new-security-rule.md"
+    ".claude/commands/add-or-update-security-rule.md"
   ],
-  "updatedAt": "2026-03-20T07:26:50.408Z"
+  "updatedAt": "2026-03-20T07:27:41.057Z"
 }
