@@ -3,6 +3,8 @@ import { secretRules } from "./secrets.js";
 import { permissionRules } from "./permissions.js";
 import { hookRules } from "./hooks.js";
 import { mcpRules } from "./mcp.js";
+import { cveMcpRules } from "./mcp-cve.js";
+import { toolPoisoningRules } from "./mcp-tool-poisoning.js";
 import { agentRules } from "./agents.js";
 import { skillRules } from "./skills.js";
 
@@ -16,6 +18,8 @@ export function getBuiltinRules(): ReadonlyArray<Rule> {
     ...permissionRules,
     ...hookRules,
     ...mcpRules,
+    ...cveMcpRules,
+    ...toolPoisoningRules,
     ...skillRules,
     ...agentRules,
   ];
