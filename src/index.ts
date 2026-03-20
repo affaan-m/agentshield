@@ -2,7 +2,7 @@
 
 import { Command } from "commander";
 import { resolve } from "node:path";
-import { existsSync, writeFileSync, appendFileSync } from "node:fs";
+import { existsSync, writeFileSync, appendFileSync, mkdirSync } from "node:fs";
 import { scan } from "./scanner/index.js";
 import { calculateScore } from "./reporter/score.js";
 import { renderTerminalReport } from "./reporter/terminal.js";
@@ -316,25 +316,37 @@ program
       try {
         const { loadPolicy: loadOrgPolicy, evaluatePolicy, renderPolicyEvaluation } =
           await import("./policy/index.js");
-        const policy = loadOrgPolicy(resolve(options.policy));
-        if (!policy) {
-          console.error(`\n  Error: Could not load policy from ${options.policy}\n`);
-        } else {
-          const evaluation = evaluatePolicy(policy, filteredResult.findings, report.score, result.target.files);
-          console.log(renderPolicyEvaluation(evaluation));
+        const policyResult = loadOrgPolicy(resolve(options.policy));
+        if (!policyResult.success) {
+          console.error(`\n  Error: ${policyResult.error}\n`);
           logger.log({
-            level: evaluation.passed ? "info" : "warn",
+            level: "error",
             phase: "policy",
-            message: `Policy "${evaluation.policyName}": ${evaluation.passed ? "COMPLIANT" : `NON-COMPLIANT (${evaluation.violations.length} violations)`}`,
+            message: `Failed to load policy: ${policyResult.error}`,
           });
-          if (!evaluation.passed) {
-            process.exit(4);
-          }
+          process.exit(4);
+        }
+
+        const evaluation = evaluatePolicy(
+          policyResult.policy,
+          filteredResult.findings,
+          report.score,
+          result.target.files
+        );
+        console.log(renderPolicyEvaluation(evaluation));
+        logger.log({
+          level: evaluation.passed ? "info" : "warn",
+          phase: "policy",
+          message: `Policy "${evaluation.policyName}": ${evaluation.passed ? "COMPLIANT" : `NON-COMPLIANT (${evaluation.violations.length} violations)`}`,
+        });
+        if (!evaluation.passed) {
+          process.exit(4);
         }
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         console.error(`  Policy evaluation failed: ${message}`);
         logger.log({ level: "error", phase: "policy", message: `Failed: ${message}` });
+        process.exit(4);
       }
     }
 
@@ -668,7 +680,6 @@ policyCmd
 
     const dir = resolve(outputPath, "..");
     if (!existsSync(dir)) {
-      const { mkdirSync } = await import("node:fs");
       mkdirSync(dir, { recursive: true });
     }
 

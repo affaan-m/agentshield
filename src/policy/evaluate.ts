@@ -7,18 +7,25 @@ const SEVERITY_ORDER: Record<Severity, number> = {
   critical: 0, high: 1, medium: 2, low: 3, info: 4,
 };
 
+export type LoadPolicyResult =
+  | { readonly success: true; readonly policy: OrgPolicy }
+  | { readonly success: false; readonly error: string };
+
 /**
  * Load and validate an organization policy file.
  */
-export function loadPolicy(policyPath: string): OrgPolicy | null {
-  if (!existsSync(policyPath)) return null;
+export function loadPolicy(policyPath: string): LoadPolicyResult {
+  if (!existsSync(policyPath)) {
+    return { success: false, error: `Policy file not found: ${policyPath}` };
+  }
 
   try {
     const raw = readFileSync(policyPath, "utf-8");
     const parsed = JSON.parse(raw);
-    return OrgPolicySchema.parse(parsed);
-  } catch {
-    return null;
+    return { success: true, policy: OrgPolicySchema.parse(parsed) };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return { success: false, error: message };
   }
 }
 
@@ -234,12 +241,23 @@ function extractHookPatterns(
   return hooks;
 }
 
+/**
+ * Check whether an actual deny-list entry satisfies a required pattern.
+ * Matching succeeds on exact equality, case-insensitive equality, or when
+ * the actual entry starts with the required pattern. For example, a pattern
+ * of "Bash(rm" matches "Bash(rm -rf /)", but the reverse does not.
+ * Equality checks are case-insensitive; prefix matching keeps the current
+ * case-sensitive behavior.
+ */
 function matchesDenyPattern(actual: string, pattern: string): boolean {
   if (actual === pattern) return true;
   if (actual.toLowerCase() === pattern.toLowerCase()) return true;
   return actual.startsWith(pattern);
 }
 
+/**
+ * Check whether a configured MCP server matches a banned server pattern.
+ */
 function matchesBanned(serverName: string, banned: string): boolean {
   if (serverName === banned) return true;
   if (serverName.toLowerCase() === banned.toLowerCase()) return true;
