@@ -10,16 +10,14 @@ Use this workflow when working on **add-or-update-ecc-bundle-component** in `age
 
 ## Goal
 
-Adds or updates a component in the agentshield ECC bundle, such as configuration files, skills, rules, team configs, or tools.
+Adds or updates a component of the agentshield ECC bundle, such as commands, skills, or rules.
 
 ## Common Files
 
-- `.claude/commands/add-or-update-codex-agent-config.md`
 - `.claude/commands/add-or-update-ecc-bundle-component.md`
 - `.claude/commands/feature-development.md`
 - `.claude/commands/feature-development-workflow.md`
-- `.claude/commands/add-or-update-command-workflow.md`
-- `.claude/commands/add-or-update-team-config.md`
+- `.claude/commands/add-or-update-feature-development-workflow.md`
 
 ## Suggested Sequence
 
@@ -30,8 +28,8 @@ Adds or updates a component in the agentshield ECC bundle, such as configuration
 
 ## Typical Commit Signals
 
-- Create or update a relevant markdown or json file under .claude/commands/, .claude/team/, .claude/research/, .claude/rules/, .claude/skills/, .claude/enterprise/, .claude/ecc-tools.json, or .agents/skills/agentshield/
-- Commit the change with a message referencing the ECC bundle and the specific file
+- Edit or add the relevant .claude/commands/*.md file (e.g., add-or-update-ecc-bundle-component.md, feature-development.md)
+- Optionally, update related documentation or workflow files
 
 ## Notes
 
