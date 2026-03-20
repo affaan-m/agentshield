@@ -106,6 +106,40 @@ describe("renderSupplyChainReport", () => {
     expect(output).toContain("1 maintainer(s)");
     expect(output).toContain("latest: 0.0.1");
   });
+
+  it("escapes terminal control characters in package details", () => {
+    const output = renderSupplyChainReport(
+      makeReport({
+        totalPackages: 1,
+        riskyPackages: 1,
+        packages: [
+          {
+            package: {
+              name: "evil\u001b[31m-server",
+              version: "1.0.0\u0007",
+              source: "npx",
+              serverName: "prod\u000a",
+            },
+            risks: [
+              {
+                type: "known-malicious",
+                severity: "critical",
+                description: "Bad\u001b[0m package",
+                evidence: "proof\u001b[2J",
+              },
+            ],
+            overallSeverity: "critical",
+          },
+        ],
+      })
+    );
+
+    expect(output).toContain("evil\\x1b[31m-server@1.0.0\\x07");
+    expect(output).toContain("(server: prod\\x0a, via: npx)");
+    expect(output).toContain("Bad\\x1b[0m package");
+    expect(output).toContain("proof\\x1b[2J");
+    expect(output).not.toContain("\u001b");
+  });
 });
 
 describe("renderSupplyChainJson", () => {

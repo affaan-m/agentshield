@@ -82,6 +82,45 @@ describe("extractPackages", () => {
     expect(packages[0].source).toBe("git");
   });
 
+  it("extracts all explicit npx package flags", () => {
+    const file = makeMcpConfig({
+      combo: {
+        command: "npx",
+        args: [
+          "-y",
+          "-p",
+          "@modelcontextprotocol/server-github",
+          "--package=@modelcontextprotocol/server-filesystem",
+          "mcp-router",
+        ],
+      },
+    });
+    const packages = extractPackages([file]);
+
+    expect(packages).toHaveLength(2);
+    expect(packages.map((pkg) => pkg.name)).toEqual([
+      "@modelcontextprotocol/server-github",
+      "@modelcontextprotocol/server-filesystem",
+    ]);
+  });
+
+  it("does not treat URL package flags as npm package specs", () => {
+    const file = makeMcpConfig({
+      custom: {
+        command: "npx",
+        args: ["-p", "github:org/mcp-server#main", "mcp-router"],
+      },
+    });
+    const packages = extractPackages([file]);
+
+    expect(packages).toHaveLength(1);
+    expect(packages[0]).toMatchObject({
+      name: "org/mcp-server",
+      source: "git",
+      gitRef: "main",
+    });
+  });
+
   it("detects unpinned git URLs", () => {
     const file = makeMcpConfig({
       custom: {
@@ -124,6 +163,46 @@ describe("extractPackages", () => {
       undefined,
       "0123456789abcdef0123456789abcdef01234567",
     ]);
+  });
+
+  it("supports git+ssh MCP package references", () => {
+    const file = makeMcpConfig({
+      ssh: {
+        command: "npx",
+        args: ["git+ssh://git@github.com/org/mcp-server.git#main"],
+      },
+    });
+    const packages = extractPackages([file]);
+
+    expect(packages).toHaveLength(1);
+    expect(packages[0]).toMatchObject({
+      name: "org/mcp-server",
+      source: "git",
+      gitRef: "main",
+    });
+  });
+
+  it("ignores malformed server command and args types without skipping valid servers", () => {
+    const file: ConfigFile = {
+      path: "mcp.json",
+      type: "mcp-json",
+      content: JSON.stringify({
+        mcpServers: {
+          invalid: {
+            command: { run: "npx" },
+            args: [42, true],
+          },
+          valid: {
+            command: "npx",
+            args: ["@modelcontextprotocol/server-github"],
+          },
+        },
+      }),
+    };
+    const packages = extractPackages([file]);
+
+    expect(packages).toHaveLength(1);
+    expect(packages[0].name).toBe("@modelcontextprotocol/server-github");
   });
 
   it("handles multiple servers in one config", () => {

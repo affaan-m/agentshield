@@ -1,6 +1,13 @@
 import type { ConfigFile } from "../types.js";
 import type { ExtractedPackage } from "./types.js";
 
+type JsonRecord = Record<string, unknown>;
+
+interface NormalizedServerConfig {
+  readonly command: string;
+  readonly args: ReadonlyArray<string>;
+}
+
 /**
  * Extract npm package references from MCP config files.
  * Handles npx commands, direct package references, and git URLs.
@@ -29,18 +36,17 @@ export function extractPackages(
 
 function extractFromMcpConfig(content: string): ReadonlyArray<ExtractedPackage> {
   try {
-    const config = JSON.parse(content);
-    const servers = config.mcpServers ?? {};
+    const config = JSON.parse(content) as unknown;
+    if (!isRecord(config) || !isRecord(config.mcpServers)) {
+      return [];
+    }
+
+    const servers = config.mcpServers;
     const packages: ExtractedPackage[] = [];
 
     for (const [serverName, serverConfig] of Object.entries(servers)) {
-      const server = serverConfig as {
-        command?: string;
-        args?: string[];
-        url?: string;
-      };
-
-      if (!server.command) continue;
+      const server = normalizeServerConfig(serverConfig);
+      if (!server) continue;
 
       const extracted = extractFromServerConfig(
         serverName,
@@ -65,19 +71,7 @@ function extractFromServerConfig(
 
   // Handle npx commands: npx @scope/package or npx package@version
   if (command === "npx" || command.endsWith("/npx")) {
-    for (const arg of args) {
-      if (arg.startsWith("-")) continue;
-      if (parseGitUrl(arg)) continue;
-      const parsed = parsePackageSpec(arg);
-      if (parsed) {
-        packages.push({
-          ...parsed,
-          source: "npx",
-          serverName,
-        });
-        break; // First non-flag arg is the package
-      }
-    }
+    packages.push(...extractFromNpxArgs(serverName, args));
   }
 
   // Handle node commands running specific packages
@@ -137,6 +131,83 @@ function buildPackageDedupeKey(pkg: ExtractedPackage): string {
   ].join("|");
 }
 
+function isRecord(value: unknown): value is JsonRecord {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function normalizeServerConfig(value: unknown): NormalizedServerConfig | null {
+  if (!isRecord(value) || typeof value.command !== "string") {
+    return null;
+  }
+
+  const args = Array.isArray(value.args)
+    ? value.args.filter((arg): arg is string => typeof arg === "string")
+    : [];
+
+  return {
+    command: value.command,
+    args,
+  };
+}
+
+function extractFromNpxArgs(
+  serverName: string,
+  args: ReadonlyArray<string>
+): ReadonlyArray<ExtractedPackage> {
+  const packages: ExtractedPackage[] = [];
+  let sawExplicitPackageFlag = false;
+
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i];
+    if (arg === "-p" || arg === "--package") {
+      sawExplicitPackageFlag = true;
+      const spec = args[i + 1];
+      const parsed = spec ? parsePackageSpec(spec) : null;
+      if (parsed) {
+        packages.push({
+          ...parsed,
+          source: "npx",
+          serverName,
+        });
+      }
+      i += 1;
+      continue;
+    }
+
+    if (arg.startsWith("--package=")) {
+      sawExplicitPackageFlag = true;
+      const parsed = parsePackageSpec(arg.slice("--package=".length));
+      if (parsed) {
+        packages.push({
+          ...parsed,
+          source: "npx",
+          serverName,
+        });
+      }
+    }
+  }
+
+  if (packages.length > 0 || sawExplicitPackageFlag) {
+    return packages;
+  }
+
+  for (const arg of args) {
+    if (arg.startsWith("-")) continue;
+    if (parseGitUrl(arg)) continue;
+    const parsed = parsePackageSpec(arg);
+    if (parsed) {
+      packages.push({
+        ...parsed,
+        source: "npx",
+        serverName,
+      });
+      break; // First non-flag arg is the package
+    }
+  }
+
+  return packages;
+}
+
 /**
  * Parse a package specifier like "@scope/name@1.2.3" or "name@latest".
  */
@@ -144,6 +215,12 @@ function parsePackageSpec(
   spec: string
 ): { readonly name: string; readonly version?: string } | null {
   if (!spec || spec.startsWith("-") || spec.startsWith(".") || spec.startsWith("/")) {
+    return null;
+  }
+  if (isUrlLikeSpec(spec)) {
+    return null;
+  }
+  if (spec.includes("/") && !spec.startsWith("@")) {
     return null;
   }
 
@@ -173,6 +250,10 @@ function parsePackageSpec(
   };
 }
 
+function isUrlLikeSpec(spec: string): boolean {
+  return /^(?:[a-z][a-z0-9+.-]*:|git@)/i.test(spec) || spec.includes("://");
+}
+
 /**
  * Check if a string looks like an npm package name.
  */
@@ -189,25 +270,21 @@ function looksLikeNpmPackage(name: string): boolean {
 function parseGitUrl(
   url: string
 ): { readonly repo: string; readonly ref?: string } | null {
-  // Match github.com/org/repo or git+https://... patterns
-  const match = url.match(
-    /(?:git\+)?https?:\/\/github\.com\/([^/]+\/[^/#@]+)(?:[#@](.+))?/
-  );
-  if (match) {
+  const patterns = [
+    /^(?:git\+)?https?:\/\/github\.com\/([^#@]+?)(?:[#@](.+))?$/i,
+    /^git:\/\/github\.com\/([^#@]+?)(?:[#@](.+))?$/i,
+    /^git\+ssh:\/\/git@github\.com\/([^#@]+?)(?:[#@](.+))?$/i,
+    /^git@github\.com:([^#@]+?)(?:[#@](.+))?$/i,
+    /^github:([^#@]+?)(?:[#@](.+))?$/i,
+  ];
+
+  for (const pattern of patterns) {
+    const match = url.match(pattern);
+    if (!match) continue;
+
     return {
       repo: match[1].replace(/\.git$/, ""),
       ref: match[2],
-    };
-  }
-
-  // Match git:// URLs
-  const gitMatch = url.match(
-    /git:\/\/github\.com\/([^/]+\/[^/#@]+)(?:[#@](.+))?/
-  );
-  if (gitMatch) {
-    return {
-      repo: gitMatch[1].replace(/\.git$/, ""),
-      ref: gitMatch[2],
     };
   }
 

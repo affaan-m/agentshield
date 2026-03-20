@@ -424,7 +424,10 @@ program
         const scReport = await verifyPackages(packages, {
           online: options.supplyChainOnline,
         });
-        console.log(renderSupplyChainReport(scReport));
+        if (options.format === "terminal") {
+          // Preserve machine-readable stdout for json/markdown/html scans.
+          console.log(renderSupplyChainReport(scReport));
+        }
         logger.log({
           level: scReport.criticalCount > 0 ? "error" : scReport.highCount > 0 ? "warn" : "info",
           phase: "supply-chain",

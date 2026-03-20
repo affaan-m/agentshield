@@ -1,5 +1,7 @@
 import type { SupplyChainReport, PackageVerification } from "./types.js";
 
+const CONTROL_CHAR_PATTERN = /[\u0000-\u001F\u007F-\u009F]/g;
+
 /**
  * Render a supply chain report to the terminal.
  */
@@ -45,8 +47,10 @@ export function renderSupplyChainReport(report: SupplyChainReport): string {
     lines.push("");
     lines.push("  CLEAN PACKAGES:");
     for (const pkg of clean) {
-      const version = pkg.package.version ? `@${pkg.package.version}` : "";
-      lines.push(`    [OK] ${pkg.package.name}${version} (${pkg.package.serverName})`);
+      const version = pkg.package.version ? `@${escapeControlChars(pkg.package.version)}` : "";
+      const name = escapeControlChars(pkg.package.name);
+      const serverName = escapeControlChars(pkg.package.serverName);
+      lines.push(`    [OK] ${name}${version} (${serverName})`);
     }
   }
 
@@ -60,15 +64,18 @@ export function renderSupplyChainReport(report: SupplyChainReport): string {
 function renderPackage(verification: PackageVerification): ReadonlyArray<string> {
   const lines: string[] = [];
   const pkg = verification.package;
-  const version = pkg.version ? `@${pkg.version}` : "";
+  const version = pkg.version ? `@${escapeControlChars(pkg.version)}` : "";
   const sev = verification.overallSeverity.toUpperCase();
+  const name = escapeControlChars(pkg.name);
+  const serverName = escapeControlChars(pkg.serverName);
+  const source = escapeControlChars(pkg.source);
 
-  lines.push(`    [${sev}] ${pkg.name}${version} (server: ${pkg.serverName}, via: ${pkg.source})`);
+  lines.push(`    [${sev}] ${name}${version} (server: ${serverName}, via: ${source})`);
 
   for (const risk of verification.risks) {
-    lines.push(`      - [${risk.severity.toUpperCase()}] ${risk.description}`);
+    lines.push(`      - [${risk.severity.toUpperCase()}] ${escapeControlChars(risk.description)}`);
     if (risk.evidence) {
-      lines.push(`        Evidence: ${risk.evidence}`);
+      lines.push(`        Evidence: ${escapeControlChars(risk.evidence)}`);
     }
   }
 
@@ -82,7 +89,7 @@ function renderPackage(verification: PackageVerification): ReadonlyArray<string>
       details.push(`${meta.maintainerCount} maintainer(s)`);
     }
     if (meta.latestVersion) {
-      details.push(`latest: ${meta.latestVersion}`);
+      details.push(`latest: ${escapeControlChars(meta.latestVersion)}`);
     }
     if (details.length > 0) {
       lines.push(`      Registry: ${details.join(", ")}`);
@@ -97,4 +104,13 @@ function renderPackage(verification: PackageVerification): ReadonlyArray<string>
  */
 export function renderSupplyChainJson(report: SupplyChainReport): string {
   return JSON.stringify(report, null, 2);
+}
+
+function escapeControlChars(value: string): string {
+  return value.replace(CONTROL_CHAR_PATTERN, (char) => {
+    const code = char.charCodeAt(0);
+    return code <= 0xff
+      ? `\\x${code.toString(16).padStart(2, "0")}`
+      : `\\u${code.toString(16).padStart(4, "0")}`;
+  });
 }
