@@ -1,4 +1,4 @@
-import { watch, existsSync, statSync } from "node:fs";
+import { watch, existsSync, readdirSync, statSync } from "node:fs";
 import { resolve } from "node:path";
 import { scan } from "../scanner/index.js";
 import { calculateScore } from "../reporter/score.js";
@@ -6,6 +6,12 @@ import type { Severity } from "../types.js";
 import type { WatchConfig, WatcherState, ScanBaseline, DriftResult } from "./types.js";
 import { createBaseline, diffBaseline } from "./diff.js";
 import { dispatchAlert } from "./alerts.js";
+
+type WatchHandle = ReturnType<typeof watch>;
+type WatchListener = (
+  eventType: string,
+  filename: string | Buffer | null
+) => void;
 
 const SEVERITY_ORDER: Record<Severity, number> = {
   critical: 0,
@@ -27,7 +33,7 @@ export function startWatcher(config: WatchConfig): {
   let lastDrift: DriftResult | null = null;
   let scanCount = 0;
   let debounceTimer: ReturnType<typeof setTimeout> | null = null;
-  const watchers: ReturnType<typeof watch>[] = [];
+  const watchers: WatchHandle[] = [];
 
   // Perform initial scan to establish baseline
   const initialBaseline = performInitialScan(config);
@@ -45,10 +51,9 @@ export function startWatcher(config: WatchConfig): {
     if (!isDir) continue;
 
     try {
-      const watcher = watch(
+      const pathWatchers = createPathWatchers(
         resolvedPath,
-        { recursive: true },
-        (_eventType, _filename) => {
+        () => {
           // Debounce: wait for config.debounceMs of silence before rescanning
           if (debounceTimer) {
             clearTimeout(debounceTimer);
@@ -66,7 +71,7 @@ export function startWatcher(config: WatchConfig): {
           }, config.debounceMs);
         }
       );
-      watchers.push(watcher);
+      watchers.push(...pathWatchers);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       console.error(`  Failed to watch ${resolvedPath}: ${message}`);
@@ -94,6 +99,70 @@ export function startWatcher(config: WatchConfig): {
   }
 
   return { stop, getState };
+}
+
+function createPathWatchers(
+  resolvedPath: string,
+  listener: WatchListener
+): ReadonlyArray<WatchHandle> {
+  try {
+    return [watch(resolvedPath, { recursive: true }, listener)];
+  } catch (error) {
+    if (!isRecursiveWatchUnsupported(error)) {
+      throw error;
+    }
+  }
+
+  const fallbackWatchers: WatchHandle[] = [];
+
+  try {
+    for (const directory of collectWatchDirectories(resolvedPath)) {
+      fallbackWatchers.push(watch(directory, listener));
+    }
+    return fallbackWatchers;
+  } catch (error) {
+    for (const watcher of fallbackWatchers) {
+      watcher.close();
+    }
+    throw error;
+  }
+}
+
+function collectWatchDirectories(rootPath: string): ReadonlyArray<string> {
+  const directories = [rootPath];
+  const queue = [rootPath];
+
+  while (queue.length > 0) {
+    const currentPath = queue.shift();
+    if (!currentPath) {
+      continue;
+    }
+
+    for (const entry of readdirSync(currentPath, { withFileTypes: true })) {
+      if (!entry.isDirectory()) {
+        continue;
+      }
+
+      const childPath = resolve(currentPath, entry.name);
+      directories.push(childPath);
+      queue.push(childPath);
+    }
+  }
+
+  return directories;
+}
+
+function isRecursiveWatchUnsupported(error: unknown): boolean {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+
+  const nodeError = error as NodeJS.ErrnoException;
+  return (
+    nodeError.code === "ERR_FEATURE_UNAVAILABLE_ON_PLATFORM" ||
+    (nodeError.code === "ERR_INVALID_ARG_VALUE" &&
+      error.message.toLowerCase().includes("recursive"))
+  );
 }
 
 /**
