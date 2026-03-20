@@ -8,8 +8,8 @@
   ],
   "commandFiles": [
     ".claude/commands/feature-development.md",
-    ".claude/commands/test-driven-development.md",
-    ".claude/commands/add-or-update-security-rule.md"
+    ".claude/commands/ecc-bundle-component-addition.md",
+    ".claude/commands/feature-or-rule-implementation-with-tests.md"
   ],
-  "updatedAt": "2026-03-20T07:27:41.057Z"
+  "updatedAt": "2026-03-20T07:28:37.195Z"
 }
