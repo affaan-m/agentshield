@@ -10,7 +10,7 @@ Use this workflow when working on **add-or-update-team-config** in `agentshield`
 
 ## Goal
 
-Adds or updates the agentshield team configuration file.
+Adds or updates the team configuration for agentshield, typically by modifying the agentshield-team-config.json file.
 
 ## Common Files
 
@@ -25,7 +25,8 @@ Adds or updates the agentshield team configuration file.
 
 ## Typical Commit Signals
 
-- Create or update .claude/team/agentshield-team-config.json
+- Edit or create .claude/team/agentshield-team-config.json
+- Commit the change with a message referencing ECC bundle and team config
 
 ## Notes
 
