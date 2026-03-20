@@ -1,0 +1,406 @@
+# Instincts generated from https://github.com/affaan-m/agentshield
+# Generated: 2026-03-20T08:31:23.825Z
+# Version: 2.0
+# NOTE: This file supplements (does not replace) any existing curated instincts.
+# High-confidence manually curated instincts should be preserved alongside these.
+
+---
+id: agentshield-commit-conventional
+trigger: "when writing a commit message"
+confidence: 0.85
+domain: git
+source: repo-analysis
+source_repo: https://github.com/affaan-m/agentshield
+---
+
+# Agentshield Commit Conventional
+
+## Action
+
+Use conventional commit format with prefixes: feat, chore, fix, docs, test
+
+## Evidence
+
+- 99 commits analyzed
+- Detected conventional commit pattern
+- Examples: feat: add PR security gate with baseline comparison (issue #16), merge: resolve README conflict with origin
+
+---
+id: agentshield-commit-length
+trigger: "when writing a commit message"
+confidence: 0.6
+domain: git
+source: repo-analysis
+source_repo: https://github.com/affaan-m/agentshield
+---
+
+# Agentshield Commit Length
+
+## Action
+
+Write moderate-length commit messages (~66 characters)
+
+## Evidence
+
+- Average commit message length: 66 chars
+- Based on 99 commits
+
+---
+id: agentshield-naming-files
+trigger: "when creating a new file"
+confidence: 0.8
+domain: code-style
+source: repo-analysis
+source_repo: https://github.com/affaan-m/agentshield
+---
+
+# Agentshield Naming Files
+
+## Action
+
+Use camelCase naming convention
+
+## Evidence
+
+- Analyzed file naming patterns in repository
+- Dominant pattern: camelCase
+
+---
+id: agentshield-import-relative
+trigger: "when importing modules"
+confidence: 0.75
+domain: code-style
+source: repo-analysis
+source_repo: https://github.com/affaan-m/agentshield
+---
+
+# Agentshield Import Relative
+
+## Action
+
+Use relative imports for project files
+
+## Evidence
+
+- Import analysis shows relative import pattern
+- Example: import { x } from '../lib/x'
+
+---
+id: agentshield-export-style
+trigger: "when exporting from a module"
+confidence: 0.7
+domain: code-style
+source: repo-analysis
+source_repo: https://github.com/affaan-m/agentshield
+---
+
+# Agentshield Export Style
+
+## Action
+
+Prefer named exports
+
+## Evidence
+
+- Export pattern analysis
+- Dominant style: named
+
+---
+id: agentshield-test-separate
+trigger: "when writing tests"
+confidence: 0.8
+domain: testing
+source: repo-analysis
+source_repo: https://github.com/affaan-m/agentshield
+---
+
+# Agentshield Test Separate
+
+## Action
+
+Place tests in the tests/ or __tests__/ directory, mirroring src structure
+
+## Evidence
+
+- Separate test directory pattern detected
+- Tests live in dedicated test folders
+
+---
+id: agentshield-test-framework
+trigger: "when writing tests"
+confidence: 0.9
+domain: testing
+source: repo-analysis
+source_repo: https://github.com/affaan-m/agentshield
+---
+
+# Agentshield Test Framework
+
+## Action
+
+Use vitest as the test framework
+
+## Evidence
+
+- Test framework detected: vitest
+- File pattern: *.test.ts
+
+---
+id: agentshield-test-naming
+trigger: "when creating a test file"
+confidence: 0.85
+domain: testing
+source: repo-analysis
+source_repo: https://github.com/affaan-m/agentshield
+---
+
+# Agentshield Test Naming
+
+## Action
+
+Name test files using the pattern: *.test.ts
+
+## Evidence
+
+- File pattern: *.test.ts
+- Consistent across test files
+
+---
+id: agentshield-test-types
+trigger: "when planning tests for a feature"
+confidence: 0.7
+domain: testing
+source: repo-analysis
+source_repo: https://github.com/affaan-m/agentshield
+---
+
+# Agentshield Test Types
+
+## Action
+
+Write unit, integration tests to match project standards
+
+## Evidence
+
+- Test types detected: unit, integration
+- Coverage config: yes
+
+---
+id: agentshield-workflow-feature-development
+trigger: "when implementing a new feature"
+confidence: 0.9
+domain: workflow
+source: repo-analysis
+source_repo: https://github.com/affaan-m/agentshield
+---
+
+# Agentshield Workflow Feature Development
+
+## Action
+
+Follow the feature-development workflow:
+1. Add feature implementation
+2. Add tests for feature
+3. Update documentation
+
+## Evidence
+
+- Workflow detected from commit patterns
+- Frequency: ~20x per month
+- Files: src/rules/*, tests/rules/*, src/*
+
+---
+id: agentshield-workflow-test-driven-development
+trigger: "when adding new functionality"
+confidence: 0.75
+domain: workflow
+source: repo-analysis
+source_repo: https://github.com/affaan-m/agentshield
+---
+
+# Agentshield Workflow Test Driven Development
+
+## Action
+
+Follow the test-driven-development workflow:
+1. Write failing test
+2. Implement code to pass test
+3. Refactor if needed
+
+## Evidence
+
+- Workflow detected from commit patterns
+- Frequency: ~5x per month
+- Files: **/*.test.*, **/*.spec.*, src/**/*
+
+---
+id: agentshield-workflow-add-new-scan-rule
+trigger: "when doing add new scan rule"
+confidence: 0.8
+domain: workflow
+source: repo-analysis
+source_repo: https://github.com/affaan-m/agentshield
+---
+
+# Agentshield Workflow Add New Scan Rule
+
+## Action
+
+Follow the add-new-scan-rule workflow:
+1. Implement new rule logic in src/rules/{category}.ts (e.g., agents.ts, hooks.ts, mcp.ts, permissions.ts, secrets.ts)
+2. Add or update corresponding test cases in tests/rules/{category}.test.ts
+3. Update README.md with new rule counts or descriptions
+4. Optionally update CLAUDE.md or scripts/record-demo.sh with new examples or documentation
+
+## Evidence
+
+- Workflow detected from commit patterns
+- Frequency: ~6x per month
+- Files: src/rules/agents.ts, src/rules/hooks.ts, src/rules/mcp.ts
+
+---
+id: agentshield-workflow-feature-development-with-tests-and-docs
+trigger: "when doing feature development with tests and docs"
+confidence: 0.6
+domain: workflow
+source: repo-analysis
+source_repo: https://github.com/affaan-m/agentshield
+---
+
+# Agentshield Workflow Feature Development With Tests And Docs
+
+## Action
+
+Follow the feature-development-with-tests-and-docs workflow:
+1. Implement new feature across src/ (may include new modules, types, or CLI flags)
+2. Add or update tests in tests/ (unit, integration, or feature-specific)
+3. Update documentation files such as README.md, API.md, or add new docs
+4. Update package.json version if releasing
+5. Optionally update dist/ files if distributing as an action or CLI
+
+## Evidence
+
+- Workflow detected from commit patterns
+- Frequency: ~2x per month
+- Files: src/**, tests/**, README.md
+
+---
+id: agentshield-workflow-rule-or-test-count-documentation-update
+trigger: "when doing rule or test count documentation update"
+confidence: 0.65
+domain: workflow
+source: repo-analysis
+source_repo: https://github.com/affaan-m/agentshield
+---
+
+# Agentshield Workflow Rule Or Test Count Documentation Update
+
+## Action
+
+Follow the rule-or-test-count-documentation-update workflow:
+1. Count rules and tests in source and test files
+2. Update README.md with new counts in badges, tables, and sections
+3. Update other documentation files (API.md, CLAUDE.md) as needed
+
+## Evidence
+
+- Workflow detected from commit patterns
+- Frequency: ~3x per month
+- Files: README.md, API.md, CLAUDE.md
+
+---
+id: agentshield-workflow-add-or-update-test-cases
+trigger: "when doing add or update test cases"
+confidence: 0.65
+domain: workflow
+source: repo-analysis
+source_repo: https://github.com/affaan-m/agentshield
+---
+
+# Agentshield Workflow Add Or Update Test Cases
+
+## Action
+
+Follow the add-or-update-test-cases workflow:
+1. Add or update test cases in tests/ directory (unit, integration, or regression tests)
+2. Optionally update README.md test badge or documentation if test count changes
+
+## Evidence
+
+- Workflow detected from commit patterns
+- Frequency: ~3x per month
+- Files: tests/**, README.md
+
+---
+id: agentshield-workflow-dependency-or-version-bump
+trigger: "when doing dependency or version bump"
+confidence: 0.6
+domain: workflow
+source: repo-analysis
+source_repo: https://github.com/affaan-m/agentshield
+---
+
+# Agentshield Workflow Dependency Or Version Bump
+
+## Action
+
+Follow the dependency-or-version-bump workflow:
+1. Update package.json and/or package-lock.json with new dependency or version
+2. Optionally update src/index.ts or other entry points for version export
+3. Optionally update dist/ files if building for distribution
+
+## Evidence
+
+- Workflow detected from commit patterns
+- Frequency: ~2x per month
+- Files: package.json, package-lock.json, src/index.ts
+
+---
+id: agentshield-workflow-add-or-update-github-action-or-workflow
+trigger: "when doing add or update github action or workflow"
+confidence: 0.55
+domain: workflow
+source: repo-analysis
+source_repo: https://github.com/affaan-m/agentshield
+---
+
+# Agentshield Workflow Add Or Update Github Action Or Workflow
+
+## Action
+
+Follow the add-or-update-github-action-or-workflow workflow:
+1. Add or update workflow YAML files in .github/workflows/
+2. Update dist/ files if needed for action distribution
+3. Update .gitignore to include/exclude dist/ as required
+4. Update package.json or package-lock.json if dependencies change
+
+## Evidence
+
+- Workflow detected from commit patterns
+- Frequency: ~1x per month
+- Files: .github/workflows/*.yml, .gitignore, dist/action.js
+
+---
+id: agentshield-workflow-add-or-update-false-positive-audit-documentation
+trigger: "when doing add or update false positive audit documentation"
+confidence: 0.6
+domain: workflow
+source: repo-analysis
+source_repo: https://github.com/affaan-m/agentshield
+---
+
+# Agentshield Workflow Add Or Update False Positive Audit Documentation
+
+## Action
+
+Follow the add-or-update-false-positive-audit-documentation workflow:
+1. Update or create false-positive-audit.md with new findings or guidance
+2. Update README.md with references or summaries
+3. Optionally update API.md or other docs
+
+## Evidence
+
+- Workflow detected from commit patterns
+- Frequency: ~2x per month
+- Files: false-positive-audit.md, README.md, API.md
+
