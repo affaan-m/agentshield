@@ -14,8 +14,6 @@ Standard feature implementation workflow
 
 ## Common Files
 
-- `src/rules/*`
-- `tests/rules/*`
 - `.claude/commands/*`
 - `**/*.test.*`
 
