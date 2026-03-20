@@ -14,6 +14,7 @@ import { runInit, renderInitSummary } from "./init/index.js";
 import { startMiniClaw } from "./miniclaw/index.js";
 import { startWatcher } from "./watch/index.js";
 import type { AlertMode } from "./watch/types.js";
+import { installRuntime, uninstallRuntime } from "./runtime/index.js";
 import type {
   InjectionSuiteResult,
   SandboxResult,
@@ -514,6 +515,43 @@ program
         process.exit(2);
       }
     }
+  });
+
+// ─── Runtime Commands ────────────────────────────────────
+
+const runtime = program
+  .command("runtime")
+  .description("Runtime monitoring — PreToolUse hook for policy enforcement");
+
+runtime
+  .command("install")
+  .description("Install the AgentShield PreToolUse hook into settings.json")
+  .option("-p, --path <path>", "Target directory (default: current directory)", ".")
+  .action((options) => {
+    const result = installRuntime(resolve(options.path));
+
+    console.log(`\n  AgentShield Runtime Monitor\n`);
+    console.log(`  ${result.message}`);
+    if (result.hookInstalled) {
+      console.log(`  Settings: ${result.settingsPath}`);
+    }
+    if (result.policyCreated) {
+      console.log(`  Policy:   ${result.policyPath}`);
+      console.log(`\n  Edit the policy file to configure deny rules.`);
+    }
+    console.log();
+  });
+
+runtime
+  .command("uninstall")
+  .description("Remove the AgentShield PreToolUse hook from settings.json")
+  .option("-p, --path <path>", "Target directory (default: current directory)", ".")
+  .action((options) => {
+    const result = uninstallRuntime(resolve(options.path));
+
+    console.log(`\n  AgentShield Runtime Monitor\n`);
+    console.log(`  ${result.message}\n`);
+  });
   });
 
 // ─── MiniClaw Commands ───────────────────────────────────
