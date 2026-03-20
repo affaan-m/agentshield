@@ -28,7 +28,7 @@ Activate this skill when:
 
 ## Commit Conventions
 
-Follow these commit message conventions based on 99 analyzed commits.
+Follow these commit message conventions based on 117 analyzed commits.
 
 ### Commit Style: Conventional Commits
 
@@ -42,7 +42,7 @@ Follow these commit message conventions based on 99 analyzed commits.
 
 ### Message Guidelines
 
-- Average message length: ~65 characters
+- Average message length: ~66 characters
 - Keep first line concise and descriptive
 - Use imperative mood ("Add feature" not "Added feature")
 
@@ -50,13 +50,13 @@ Follow these commit message conventions based on 99 analyzed commits.
 *Commit message example*
 
 ```text
-chore: bump version to 1.6.0
+feat: add agentshield ECC bundle (.claude/commands/add-new-security-rule.md)
 ```
 
 *Commit message example*
 
 ```text
-feat: add CLAUDE.md filesystem permission check (issue #18)
+chore: bump version to 1.6.0
 ```
 
 *Commit message example*
@@ -80,19 +80,19 @@ docs: add funding config and distribution channels to README
 *Commit message example*
 
 ```text
-feat: skill health audit rules + self-improving skills scanner integration
+feat: add agentshield ECC bundle (.claude/commands/test-driven-development.md)
 ```
 
 *Commit message example*
 
 ```text
-feat: AgentShield 1.5.0 — version bump, port handling, expanded tests
+feat: add agentshield ECC bundle (.claude/commands/feature-development.md)
 ```
 
 *Commit message example*
 
 ```text
-feat: false positive audit, severity fixes, reporter improvements
+feat: add agentshield ECC bundle (.claude/enterprise/controls.md)
 ```
 
 ## Architecture
@@ -225,7 +225,7 @@ These workflows were detected from analyzing commit patterns.
 
 Standard feature implementation workflow
 
-**Frequency**: ~19 times per month
+**Frequency**: ~21 times per month
 
 **Steps**:
 1. Add feature implementation
@@ -240,16 +240,16 @@ Standard feature implementation workflow
 
 **Example commit sequence**:
 ```
-feat: add dual-transport detection, fix force-push false positive, expand edge cases (611 tests)
-chore: update stats to 611 tests, 36 rules
-feat: add data exfiltration instruction detection rule for agents (623 tests)
+feat: add container escape, package install, time bomb, data harvesting, bind-all, sensitive file, IP detection rules (851 tests, 97 rules)
+fix: correct README rule counts to match source (91 rules, not 97)
+feat: add new security rules and fix README counts (96 rules, 876 tests)
 ```
 
 ### Test Driven Development
 
 Test-first development workflow (TDD)
 
-**Frequency**: ~5 times per month
+**Frequency**: ~4 times per month
 
 **Steps**:
 1. Write failing test
@@ -267,177 +267,140 @@ test: add tests for user validation
 feat: implement user validation
 ```
 
-### Add New Security Rule
+### Add Or Update Security Rule
 
-Adds a new security rule to the codebase, with corresponding tests and README/stat updates.
-
-**Frequency**: ~6 times per month
-
-**Steps**:
-1. Implement new rule logic in src/rules/{category}.ts (e.g. agents.ts, hooks.ts, permissions.ts, mcp.ts, secrets.ts)
-2. Add or update corresponding tests in tests/rules/{category}.test.ts
-3. Update README.md with new rule count/statistics
-4. Optionally update CLAUDE.md, scripts/record-demo.sh, or examples/vulnerable/* if relevant
-
-**Files typically involved**:
-- `src/rules/agents.ts`
-- `src/rules/hooks.ts`
-- `src/rules/permissions.ts`
-- `src/rules/mcp.ts`
-- `src/rules/secrets.ts`
-- `tests/rules/agents.test.ts`
-- `tests/rules/hooks.test.ts`
-- `tests/rules/permissions.test.ts`
-- `tests/rules/mcp.test.ts`
-- `tests/rules/secrets.test.ts`
-- `README.md`
-
-**Example commit sequence**:
-```
-Implement new rule logic in src/rules/{category}.ts (e.g. agents.ts, hooks.ts, permissions.ts, mcp.ts, secrets.ts)
-Add or update corresponding tests in tests/rules/{category}.test.ts
-Update README.md with new rule count/statistics
-Optionally update CLAUDE.md, scripts/record-demo.sh, or examples/vulnerable/* if relevant
-```
-
-### Update Readme Rule Counts And Stats
-
-Synchronizes README.md statistics, rule/test counts, and documentation with the actual codebase.
+Adds or updates a security rule, typically for agent, hook, mcp, permission, or secret scanning.
 
 **Frequency**: ~4 times per month
 
 **Steps**:
-1. Count rules and tests in source files
-2. Update rule/test counts in README.md badges, tables, and documentation sections
-3. Align summary tables and architecture sections with actual code
+1. Edit or add rule implementation in src/rules/{area}.ts (e.g., agents.ts, hooks.ts, mcp.ts, permissions.ts, secrets.ts)
+2. Add or update corresponding tests in tests/rules/{area}.test.ts
+3. Optionally update README.md to reflect new rule counts or document the rule
+4. Optionally update types in src/types.ts if new rule categories or types are added
 
 **Files typically involved**:
+- `src/rules/agents.ts`
+- `src/rules/hooks.ts`
+- `src/rules/mcp.ts`
+- `src/rules/permissions.ts`
+- `src/rules/secrets.ts`
+- `tests/rules/agents.test.ts`
+- `tests/rules/hooks.test.ts`
+- `tests/rules/mcp.test.ts`
+- `tests/rules/permissions.test.ts`
+- `tests/rules/secrets.test.ts`
 - `README.md`
+- `src/types.ts`
 
 **Example commit sequence**:
 ```
-Count rules and tests in source files
-Update rule/test counts in README.md badges, tables, and documentation sections
-Align summary tables and architecture sections with actual code
+Edit or add rule implementation in src/rules/{area}.ts (e.g., agents.ts, hooks.ts, mcp.ts, permissions.ts, secrets.ts)
+Add or update corresponding tests in tests/rules/{area}.test.ts
+Optionally update README.md to reflect new rule counts or document the rule
+Optionally update types in src/types.ts if new rule categories or types are added
 ```
 
-### Add Or Update Reporter Or Score Logic
+### Feature Development Implementation Tests Docs
 
-Implements or refines scoring, reporting, or output logic, with corresponding tests.
+Implements a new feature or major capability, with code, tests, and documentation.
 
 **Frequency**: ~2 times per month
 
 **Steps**:
-1. Edit src/reporter/{html,json,terminal,score}.ts to implement new logic
-2. Update or add tests in tests/reporter/{score,terminal,html,json}.test.ts
-3. Update README.md or API.md if public output format changes
+1. Implement feature in src/ and supporting files (may touch multiple modules)
+2. Add or update tests in tests/ (unit, integration, or new test files)
+3. Update dist/ files (action.js, index.js) if build artifacts are committed
+4. Update documentation in README.md or other docs
+5. Update types in src/types.ts if needed
+6. Optionally update package.json version
 
 **Files typically involved**:
-- `src/reporter/html.ts`
-- `src/reporter/json.ts`
-- `src/reporter/terminal.ts`
-- `src/reporter/score.ts`
-- `tests/reporter/score.test.ts`
-- `tests/reporter/terminal.test.ts`
-- `tests/reporter/html.test.ts`
-- `tests/reporter/json.test.ts`
+- `src/**/*.ts`
+- `tests/**/*.test.ts`
+- `dist/action.js`
+- `dist/index.js`
 - `README.md`
-- `API.md`
+- `src/types.ts`
+- `package.json`
 
 **Example commit sequence**:
 ```
-Edit src/reporter/{html,json,terminal,score}.ts to implement new logic
-Update or add tests in tests/reporter/{score,terminal,html,json}.test.ts
-Update README.md or API.md if public output format changes
+Implement feature in src/ and supporting files (may touch multiple modules)
+Add or update tests in tests/ (unit, integration, or new test files)
+Update dist/ files (action.js, index.js) if build artifacts are committed
+Update documentation in README.md or other docs
+Update types in src/types.ts if needed
+Optionally update package.json version
 ```
 
-### Add Or Fix False Positive Audit Documentation
+### Ecc Bundle Onboarding
 
-Updates documentation and templates related to false positive audits and guidance.
+Adds a new ECC bundle or onboarding configuration for AgentShield, typically for documentation, team config, or skills.
 
-**Frequency**: ~3 times per month
+**Frequency**: ~1 times per month
 
 **Steps**:
-1. Edit or create false-positive-audit.md with new patterns or guidance
-2. Update README.md to reference or summarize audit changes
-3. Optionally update API.md or add issue templates
+1. Add new file(s) under .claude/, .codex/, or .agents/skills/agentshield/
+2. Commit with message referencing ECC bundle addition
+
+**Files typically involved**:
+- `.claude/commands/*.md`
+- `.claude/enterprise/*.md`
+- `.claude/team/*.json`
+- `.claude/research/*.md`
+- `.claude/rules/*.md`
+- `.claude/homunculus/instincts/inherited/*.yaml`
+- `.codex/agents/*.toml`
+- `.codex/AGENTS.md`
+- `.codex/config.toml`
+- `.claude/identity.json`
+- `.agents/skills/agentshield/agents/*.yaml`
+- `.agents/skills/agentshield/SKILL.md`
+- `.claude/skills/agentshield/SKILL.md`
+- `.claude/ecc-tools.json`
+
+**Example commit sequence**:
+```
+Add new file(s) under .claude/, .codex/, or .agents/skills/agentshield/
+Commit with message referencing ECC bundle addition
+```
+
+### False Positive Audit And Docs Update
+
+Performs a false positive audit and updates related documentation.
+
+**Frequency**: ~2 times per month
+
+**Steps**:
+1. Edit false-positive-audit.md with new findings or patterns
+2. Update README.md and/or API.md to reflect audit results or guidance
+3. Optionally update code in src/rules/ or tests/ to reduce false positives
 
 **Files typically involved**:
 - `false-positive-audit.md`
 - `README.md`
 - `API.md`
+- `src/rules/*.ts`
+- `tests/rules/*.test.ts`
 
 **Example commit sequence**:
 ```
-Edit or create false-positive-audit.md with new patterns or guidance
-Update README.md to reference or summarize audit changes
-Optionally update API.md or add issue templates
+Edit false-positive-audit.md with new findings or patterns
+Update README.md and/or API.md to reflect audit results or guidance
+Optionally update code in src/rules/ or tests/ to reduce false positives
 ```
 
-### Add Or Update Distribution Or Github Action
+### Version Bump And Release
 
-Prepares or updates the GitHub Action or distribution packaging for publication or CI.
-
-**Frequency**: ~2 times per month
-
-**Steps**:
-1. Edit .github/workflows/*.yml to add or update CI/CD workflows
-2. Update dist/action.js and related dist/* files (build output)
-3. Update package.json and package-lock.json as needed
-4. Edit .gitignore to include/exclude dist/ as appropriate
-
-**Files typically involved**:
-- `.github/workflows/*.yml`
-- `dist/action.js`
-- `dist/index.js`
-- `dist/chunk-*.js`
-- `dist/miniclaw/index.js`
-- `package.json`
-- `package-lock.json`
-- `.gitignore`
-
-**Example commit sequence**:
-```
-Edit .github/workflows/*.yml to add or update CI/CD workflows
-Update dist/action.js and related dist/* files (build output)
-Update package.json and package-lock.json as needed
-Edit .gitignore to include/exclude dist/ as appropriate
-```
-
-### Add Or Update Assets Or Branding
-
-Adds or updates project assets such as logos or funding configuration.
+Bumps the package version and prepares for a new release.
 
 **Frequency**: ~1 times per month
 
 **Steps**:
-1. Add or update files in assets/ (e.g. logo images)
-2. Edit .github/FUNDING.yml for sponsorship info
-3. Update README.md with new branding or distribution channels
-
-**Files typically involved**:
-- `assets/agentshield-logo-1.jpg`
-- `assets/agentshield-logo-2.jpg`
-- `.github/FUNDING.yml`
-- `README.md`
-
-**Example commit sequence**:
-```
-Add or update files in assets/ (e.g. logo images)
-Edit .github/FUNDING.yml for sponsorship info
-Update README.md with new branding or distribution channels
-```
-
-### Bump Version
-
-Bumps the project version in package.json (and sometimes package-lock.json or src/index.ts).
-
-**Frequency**: ~2 times per month
-
-**Steps**:
-1. Update version field in package.json
-2. Optionally update package-lock.json and/or src/index.ts
-3. Commit with a version bump message
+1. Update version in package.json (and optionally src/index.ts)
+2. Optionally update package-lock.json
+3. Commit with message indicating version bump
 
 **Files typically involved**:
 - `package.json`
@@ -446,16 +409,16 @@ Bumps the project version in package.json (and sometimes package-lock.json or sr
 
 **Example commit sequence**:
 ```
-Update version field in package.json
-Optionally update package-lock.json and/or src/index.ts
-Commit with a version bump message
+Update version in package.json (and optionally src/index.ts)
+Optionally update package-lock.json
+Commit with message indicating version bump
 ```
 
 ### Dependency Update Via Dependabot
 
-Automated update of npm dependencies via Dependabot.
+Updates dependencies (e.g., rollup, minimatch) via automated PRs (Dependabot).
 
-**Frequency**: ~2 times per month
+**Frequency**: ~1 times per month
 
 **Steps**:
 1. Update package-lock.json with new dependency version
