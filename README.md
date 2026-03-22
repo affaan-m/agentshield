@@ -1,5 +1,7 @@
 <div align="center">
 
+<img src="./assets/agentshield-logo.png" alt="AgentShield" width="180" />
+
 # AgentShield
 
 **Security auditor for AI agent configurations**
