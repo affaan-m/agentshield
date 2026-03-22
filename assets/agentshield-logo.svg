@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" fill="none">
+  <rect width="512" height="512" rx="96" fill="#0a0a12"/>
+  <defs>
+    <linearGradient id="shield-frame" x1="128" y1="85" x2="384" y2="448" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#7ee787"/>
+      <stop offset="0.55" stop-color="#8ab4f8"/>
+      <stop offset="1" stop-color="#ffd700"/>
+    </linearGradient>
+    <radialGradient id="shield-core" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(256 262) rotate(90) scale(149)">
+      <stop stop-color="rgba(126,231,135,0.28)"/>
+      <stop offset="1" stop-color="rgba(126,231,135,0)"/>
+    </radialGradient>
+  </defs>
+  <path d="M256 53L400 112V224C400 314.8 345.6 397 256 448C166.4 397 112 314.8 112 224V112L256 53Z" fill="rgba(10,10,18,0.9)" stroke="url(#shield-frame)" stroke-width="13"/>
+  <path d="M256 96L357 139V227C357 295 318 356 256 395C194 356 155 295 155 227V139L256 96Z" fill="url(#shield-core)"/>
+  <path d="M256 160C220.7 160 192 188.7 192 224C192 243.7 200.9 261.3 215 272C211.6 277.3 207.5 282 203 286M256 160C291.3 160 320 188.7 320 224C320 243.7 311.1 261.3 297 272C300.4 277.3 304.5 282 309 286M256 160V288M229 299C237 306 245 310 256 310C267 310 275 306 283 299" stroke="#7ee787" stroke-width="17" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="203" cy="288" r="19" fill="#ffd700"/>
+  <circle cx="309" cy="288" r="19" fill="#ffd700"/>
+  <circle cx="256" cy="310" r="19" fill="#E07856"/>
+</svg>

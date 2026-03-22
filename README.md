@@ -9,11 +9,11 @@ hook injection, MCP server risks, and agent prompt injection vectors.
 
 [![npm version](https://img.shields.io/npm/v/ecc-agentshield)](https://www.npmjs.com/package/ecc-agentshield)
 [![npm downloads](https://img.shields.io/npm/dm/ecc-agentshield)](https://www.npmjs.com/package/ecc-agentshield)
-[![tests](https://img.shields.io/badge/tests-1280%20passed-brightgreen)]()
-[![coverage](https://img.shields.io/badge/coverage-98%25-brightgreen)]()
+[![tests](https://img.shields.io/badge/tests-passing-brightgreen)]()
+[![coverage](https://img.shields.io/badge/coverage-v8-blue)]()
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-[Quick Start](#quick-start) · [What It Catches](#what-it-catches) · [Opus Pipeline](#opus-46-deep-analysis---opus) · [GitHub Action](#github-action) · [MiniClaw](#miniclaw) · [Distribution](#distribution)
+[Quick Start](#quick-start) · [What It Catches](#what-it-catches) · [Opus Pipeline](#opus-46-deep-analysis---opus) · [GitHub Action](#github-action) · [MiniClaw](#miniclaw) · [Distribution](#distribution) · [Changelog](./CHANGELOG.md)
 
 </div>
 

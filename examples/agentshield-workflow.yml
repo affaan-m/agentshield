@@ -1,0 +1,44 @@
+# AgentShield Security Scan
+# Drop this file into .github/workflows/ in any repo to scan agent configs on every push/PR
+#
+# Scans: .claude/, hooks, MCP configs, permissions, agent definitions
+# Grades: A-F with 0-100 numeric score
+# Fails CI on critical/high findings by default
+#
+# More info: https://github.com/affaan-m/agentshield
+
+name: AgentShield Security Scan
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.claude/**'
+      - '.cursor/**'
+      - '.codex/**'
+      - '.opencode/**'
+      - 'hooks/**'
+      - '**/settings.json'
+      - '**/.mcp.json'
+  pull_request:
+    paths:
+      - '.claude/**'
+      - '.cursor/**'
+      - '.codex/**'
+      - '.opencode/**'
+      - 'hooks/**'
+      - '**/settings.json'
+      - '**/.mcp.json'
+
+jobs:
+  security-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run AgentShield
+        uses: affaan-m/agentshield@v1.4.0
+        with:
+          min-severity: medium
+          fail-on-findings: true
+          format: terminal

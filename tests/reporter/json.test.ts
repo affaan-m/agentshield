@@ -166,4 +166,135 @@ describe("renderMarkdownReport", () => {
     expect(output).toContain("**Auto-fixable:** Yes");
     expect(output).toContain("`CLAUDE.md:10`");
   });
+
+  it("renders skill health metrics and fallback score labels", () => {
+    const output = renderMarkdownReport(makeReport({
+      score: {
+        grade: "A",
+        numericScore: 94,
+        breakdown: {
+          secrets: 100,
+          permissions: 96,
+          hooks: 91,
+          custom: 77,
+        },
+      },
+      skillHealth: {
+        totalSkills: 4,
+        instrumentedSkills: 3,
+        versionedSkills: 2,
+        rollbackReadySkills: 1,
+        observedSkills: 3,
+        averageScore: 88,
+      },
+    }));
+
+    expect(output).toContain("## Skill Health");
+    expect(output).toContain("| Skills discovered | 4 |");
+    expect(output).toContain("| Average health score | 88/100 |");
+    expect(output).toContain("| custom | 77/100 |");
+  });
+
+  it("formats additional runtime confidence labels", () => {
+    const output = renderMarkdownReport(makeReport({
+      findings: [
+        {
+          id: "RC-1",
+          severity: "high",
+          category: "hooks",
+          title: "Optional local project hook",
+          description: "A test",
+          file: "hooks/local.sh",
+          runtimeConfidence: "project-local-optional",
+        },
+        {
+          id: "RC-2",
+          severity: "medium",
+          category: "agents",
+          title: "Docs example role",
+          description: "A test",
+          file: "docs/example.md",
+          runtimeConfidence: "docs-example",
+        },
+        {
+          id: "RC-3",
+          severity: "low",
+          category: "mcp",
+          title: "Plugin manifest source",
+          description: "A test",
+          file: "plugin.json",
+          runtimeConfidence: "plugin-manifest",
+        },
+        {
+          id: "RC-4",
+          severity: "info",
+          category: "agents",
+          title: "Unknown confidence source",
+          description: "A test",
+          file: "agent.md",
+          runtimeConfidence: "custom-confidence",
+        },
+      ],
+      summary: {
+        totalFindings: 4,
+        critical: 0,
+        high: 1,
+        medium: 1,
+        low: 1,
+        info: 1,
+        filesScanned: 4,
+        autoFixable: 0,
+      },
+    }));
+
+    expect(output).toContain("project-local optional");
+    expect(output).toContain("docs/example");
+    expect(output).toContain("plugin manifest");
+    expect(output).toContain("custom-confidence");
+  });
+
+  it("renders high, medium, and low severity emojis", () => {
+    const output = renderMarkdownReport(makeReport({
+      findings: [
+        {
+          id: "EMOJI-1",
+          severity: "high",
+          category: "secrets",
+          title: "High severity finding",
+          description: "A test",
+          file: "high.md",
+        },
+        {
+          id: "EMOJI-2",
+          severity: "medium",
+          category: "hooks",
+          title: "Medium severity finding",
+          description: "A test",
+          file: "medium.md",
+        },
+        {
+          id: "EMOJI-3",
+          severity: "low",
+          category: "mcp",
+          title: "Low severity finding",
+          description: "A test",
+          file: "low.md",
+        },
+      ],
+      summary: {
+        totalFindings: 3,
+        critical: 0,
+        high: 1,
+        medium: 1,
+        low: 1,
+        info: 0,
+        filesScanned: 3,
+        autoFixable: 0,
+      },
+    }));
+
+    expect(output).toContain("### 🟡 High severity finding");
+    expect(output).toContain("### 🔵 Medium severity finding");
+    expect(output).toContain("### ⚪ Low severity finding");
+  });
 });

@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi, afterEach } from "vitest";
 import {
   verifyPackages,
   checkTyposquatting,
@@ -14,6 +14,18 @@ function makePackage(overrides: Partial<ExtractedPackage> = {}): ExtractedPackag
     ...overrides,
   };
 }
+
+function mockJsonResponse(body: unknown, ok = true): Response {
+  return {
+    ok,
+    json: async () => body,
+  } as Response;
+}
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+  vi.restoreAllMocks();
+});
 
 describe("levenshteinDistance", () => {
   it("returns 0 for identical strings", () => {
@@ -185,6 +197,111 @@ describe("verifyPackages", () => {
     const packages = [makePackage()];
     const report = await verifyPackages(packages);
 
+    expect(report.packages[0].overallSeverity).toBe("info");
+  });
+
+  it("assesses registry metadata risks when online mode is enabled", async () => {
+    const recentPublish = new Date();
+    recentPublish.setDate(recentPublish.getDate() - 10);
+
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(mockJsonResponse({
+        time: { created: recentPublish.toISOString() },
+        maintainers: [{ name: "solo" }],
+        "dist-tags": { latest: "1.2.3" },
+        versions: {
+          "1.2.3": {
+            scripts: {
+              postinstall: "node install.js",
+            },
+          },
+        },
+        deprecated: true,
+        description: "Suspicious test package",
+      }))
+      .mockResolvedValueOnce(mockJsonResponse({ downloads: 12 }));
+
+    vi.stubGlobal("fetch", fetchMock);
+
+    const report = await verifyPackages([
+      makePackage({
+        name: "very-rare-package",
+        serverName: "rare",
+      }),
+    ], { online: true });
+
+    const verifiedPackage = report.packages[0];
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(verifiedPackage.registry).toMatchObject({
+      name: "very-rare-package",
+      maintainerCount: 1,
+      downloadsLastWeek: 12,
+      hasPostinstall: true,
+      latestVersion: "1.2.3",
+      deprecated: true,
+    });
+    expect(verifiedPackage.risks.map((risk) => risk.type)).toEqual(
+      expect.arrayContaining([
+        "deprecated",
+        "has-postinstall",
+        "single-maintainer",
+        "low-downloads",
+        "new-package",
+      ])
+    );
+    expect(verifiedPackage.overallSeverity).toBe("medium");
+  });
+
+  it("tolerates download API failures after fetching registry metadata", async () => {
+    const olderPublish = new Date("2020-01-01T00:00:00.000Z");
+
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(mockJsonResponse({
+        time: { created: olderPublish.toISOString() },
+        maintainers: [{ name: "alice" }, { name: "bob" }],
+        "dist-tags": { latest: "2.0.0" },
+        versions: {
+          "2.0.0": {
+            scripts: {},
+          },
+        },
+        deprecated: false,
+        description: "Stable package",
+      }))
+      .mockRejectedValueOnce(new Error("downloads endpoint unavailable"));
+
+    vi.stubGlobal("fetch", fetchMock);
+
+    const report = await verifyPackages([
+      makePackage({
+        name: "stable-package",
+        serverName: "stable",
+      }),
+    ], { online: true });
+
+    const verifiedPackage = report.packages[0];
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(verifiedPackage.registry?.downloadsLastWeek).toBeUndefined();
+    expect(verifiedPackage.risks).toEqual([]);
+    expect(verifiedPackage.overallSeverity).toBe("info");
+  });
+
+  it("treats registry lookup failures as optional metadata", async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce(mockJsonResponse({}, false));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const report = await verifyPackages([
+      makePackage({
+        name: "missing-registry-entry",
+        serverName: "missing",
+      }),
+    ], { online: true });
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(report.packages[0].registry).toBeUndefined();
+    expect(report.packages[0].risks).toEqual([]);
     expect(report.packages[0].overallSeverity).toBe("info");
   });
 });
