@@ -7,7 +7,8 @@
 **Security auditor for AI agent configurations**
 
 Scans Claude Code setups for hardcoded secrets, permission misconfigs,<br/>
-hook injection, MCP server risks, and agent prompt injection vectors.
+hook injection, MCP server risks, and agent prompt injection vectors.<br/>
+Available as CLI, GitHub Action, and [GitHub App](https://github.com/apps/ecc-tools) integration.
 
 [![npm version](https://img.shields.io/npm/v/ecc-agentshield)](https://www.npmjs.com/package/ecc-agentshield)
 [![npm downloads](https://img.shields.io/npm/dm/ecc-agentshield)](https://www.npmjs.com/package/ecc-agentshield)
@@ -15,7 +16,7 @@ hook injection, MCP server risks, and agent prompt injection vectors.
 [![coverage](https://img.shields.io/badge/coverage-v8-blue)]()
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-[Quick Start](#quick-start) · [What It Catches](#what-it-catches) · [Opus Pipeline](#opus-46-deep-analysis---opus) · [GitHub Action](#github-action) · [MiniClaw](#miniclaw) · [Distribution](#distribution) · [Changelog](./CHANGELOG.md)
+[Quick Start](#quick-start) · [What It Catches](#what-it-catches) · [Opus Pipeline](#opus-46-deep-analysis---opus) · [GitHub Action](#github-action) · [Distribution](#distribution) · [Changelog](./CHANGELOG.md)
 
 </div>
 
@@ -265,14 +266,6 @@ agentshield scan [options]         Scan configuration directory
   -v, --verbose                    Show detailed output
 
 agentshield init                   Generate secure baseline config
-
-agentshield miniclaw start [opts]  Launch MiniClaw secure agent server
-  -p, --port <port>                Port (default: 3847)
-  -H, --hostname <host>            Hostname (default: localhost)
-  --network <policy>               Network: none, localhost, allowlist
-  --rate-limit <n>                 Max req/min per IP (default: 10)
-  --sandbox-root <path>            Root path for sandboxes
-  --max-duration <ms>              Max session duration (default: 300000)
 ```
 
 ## Security Rules Summary
@@ -313,79 +306,18 @@ src/
 │   └── index.ts          Fix engine orchestrator
 ├── init/
 │   └── index.ts          Secure config generator
-├── opus/
-│   ├── prompts.ts        Attacker/Defender/Auditor system prompts
-│   ├── pipeline.ts       Three-agent Opus 4.6 pipeline
-│   └── render.ts         Opus analysis rendering
-└── miniclaw/
-    ├── types.ts          Core type system (immutable, readonly)
-    ├── sandbox.ts        Sandbox lifecycle + path validation
-    ├── router.ts         Prompt sanitization + output filtering
-    ├── tools.ts          Whitelist-based tool authorization
-    ├── server.ts         HTTP server with rate limiting + CORS
-    ├── dashboard.tsx     React dashboard component
-    └── index.ts          Entry point and re-exports
+└── opus/
+    ├── prompts.ts        Attacker/Defender/Auditor system prompts
+    ├── pipeline.ts       Three-agent Opus 4.6 pipeline
+    └── render.ts         Opus analysis rendering
 ```
-
-## MiniClaw
-
-MiniClaw is a minimal, sandboxed AI agent runtime bundled with AgentShield. Where typical agent platforms expose many attack surfaces (Telegram, Discord, email, community plugins), MiniClaw presents a **single HTTP endpoint** backed by an **isolated sandbox**.
-
-```bash
-# Start with secure defaults (localhost:3847, no network, safe tools only)
-npx ecc-agentshield miniclaw start
-
-# Custom configuration
-npx ecc-agentshield miniclaw start --port 4000 --network localhost --rate-limit 20
-```
-
-Or use as a library:
-
-```typescript
-import { startMiniClaw } from 'ecc-agentshield/miniclaw';
-
-const { server, stop } = startMiniClaw();
-// Listening on http://localhost:3847
-```
-
-### Security Model
-
-Four independently enforced layers:
-
-```
-Request → [Rate Limit] → [CORS] → [Size Cap] → [Sanitize Prompt]
-                                                       ↓
-                                                 [Tool Whitelist]
-                                                       ↓
-                                                   [Sandbox FS]
-                                                       ↓
-                                                 [Filter Output] → Response
-```
-
-- **Server** — Rate limiting (10 req/min/IP), CORS, 10KB request cap, localhost-only binding
-- **Prompt Router** — Strips 12+ injection pattern categories (system prompt overrides, identity reassignment, jailbreaks, data exfiltration URLs, zero-width Unicode, base64 payloads)
-- **Tool Whitelist** — Three tiers: Safe (read/search/list), Guarded (write/edit), Restricted (bash/network — disabled by default)
-- **Sandbox** — Isolated filesystem per session, path traversal blocked, symlink escape detection, extension whitelist, 10MB file cap, 5-min timeout, no network by default
-
-### API
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `POST` | `/api/prompt` | Send a prompt |
-| `POST` | `/api/session` | Create a sandboxed session |
-| `GET` | `/api/session` | Session info |
-| `DELETE` | `/api/session/:id` | Destroy session + cleanup |
-| `GET` | `/api/events/:sessionId` | Security audit events |
-| `GET` | `/api/health` | Health check |
-
-MiniClaw has **zero external runtime dependencies** — Node.js built-ins only (`http`, `fs`, `path`, `crypto`). The optional React dashboard requires React 18+ as a peer dependency.
 
 ## Development
 
 ```bash
 npm install          # Install dependencies
 npm run dev          # Development mode
-npm test             # Run tests (912 tests)
+npm test             # Run tests (1609 tests)
 npm run test:coverage # Coverage report
 npm run typecheck    # Type check
 npm run build        # Build
@@ -402,6 +334,7 @@ AgentShield is available through multiple channels:
 | **GitHub Action** | Automated security checks on PRs in CI/CD | `uses: affaan-m/agentshield@v1` |
 | **ECC Plugin** | Claude Code users via the ECC skill ecosystem | Install through [Everything Claude Code](https://github.com/affaan-m/everything-claude-code) |
 | **ECC Tools GitHub App** | Integrated scanning across your GitHub org | Install at [github.com/apps/ecc-tools](https://github.com/apps/ecc-tools) |
+| **ECC Tools Pro** | GitHub App with automated repo analysis, Stripe billing ($19/seat/mo) | [Install](https://github.com/apps/ecc-tools) |
 
 ## License
 
