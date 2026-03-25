@@ -1,3 +1,6 @@
+import { execFileSync } from "node:child_process";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { describe, it, expect } from "vitest";
 import { SettingsSchema, McpConfigSchema, SEVERITY_ORDER } from "../src/types.js";
 
@@ -78,6 +81,22 @@ describe("types", () => {
         },
       });
       expect(result.success).toBe(false);
+    });
+  });
+
+  describe("CLI versioning", () => {
+    it("keeps the built CLI version aligned with package.json", () => {
+      const packageJson = JSON.parse(
+        readFileSync(new URL("../package.json", import.meta.url), "utf8"),
+      ) as { version: string };
+
+      const cliVersion = execFileSync(
+        "node",
+        [fileURLToPath(new URL("../dist/index.js", import.meta.url)), "--version"],
+        { encoding: "utf8" },
+      ).trim();
+
+      expect(cliVersion).toBe(packageJson.version);
     });
   });
 });
