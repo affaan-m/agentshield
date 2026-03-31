@@ -5,3 +5,5 @@ coverage/
 .env.local
 .DS_Store
 dashboard/results.json
+.dmux/
+.dmux-hooks/
