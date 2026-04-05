@@ -1,6 +1,6 @@
 # Working Context
 
-Last updated: 2026-03-31
+Last updated: 2026-04-05
 
 ## Purpose
 
@@ -13,6 +13,7 @@ AgentShield is the security scanner and supply-chain defense layer for agent con
 - Primary role in the wider ECC program:
   - keep the scanner trustworthy
   - feed supply-chain and configuration guardrails back into ECC and ECC Tools
+- The CVE-aware MCP rules, MCP tool-poisoning detection, runtime monitor, and org-policy surfaces are already present on `main`
 
 ## Current Constraints
 
@@ -36,3 +37,11 @@ AgentShield is the security scanner and supply-chain defense layer for agent con
 ## Update Rule
 
 Keep only the live scanner, release, and integration context here. Historical investigation detail belongs in repo docs or dated snapshots.
+
+## Latest Execution Notes
+
+- 2026-04-05: Re-audited the stale feature branches:
+  - `feat/cve-db-and-mcp-poisoning`
+  - `feat/issue-14-runtime-monitor`
+  - `feat/issue-17-org-policy`
+- Result: their core capabilities are already represented on `main`, so they are no longer merge candidates. Future cleanup should prune or archive those branches rather than replaying them.
