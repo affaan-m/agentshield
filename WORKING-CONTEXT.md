@@ -45,3 +45,7 @@ Keep only the live scanner, release, and integration context here. Historical in
   - `feat/issue-14-runtime-monitor`
   - `feat/issue-17-org-policy`
 - Result: their core capabilities are already represented on `main`, so they are no longer merge candidates. Future cleanup should prune or archive those branches rather than replaying them.
+- 2026-04-05: Re-audited the remaining old release branches:
+  - `feat/v1.6.0-false-positives`
+  - `release/v1.8.0`
+- Result: both were behind `main` and only carried older release/review variants of fixes already merged separately. They should be pruned rather than treated as pending feature work.
