@@ -7,6 +7,7 @@ import { cveMcpRules } from "./mcp-cve.js";
 import { toolPoisoningRules } from "./mcp-tool-poisoning.js";
 import { agentRules } from "./agents.js";
 import { skillRules } from "./skills.js";
+import { promptDefenseRules } from "./prompt-defense.js";
 
 /**
  * Returns all built-in security rules.
@@ -22,5 +23,6 @@ export function getBuiltinRules(): ReadonlyArray<Rule> {
     ...toolPoisoningRules,
     ...skillRules,
     ...agentRules,
+    ...promptDefenseRules,
   ];
 }

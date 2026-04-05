@@ -40,6 +40,12 @@ Keep only the live scanner, release, and integration context here. Historical in
 
 ## Latest Execution Notes
 
+- 2026-04-05: Implemented prompt-defense posture audit coverage directly on `main` for issue `#45`.
+- Added a new built-in `prompt-defense-posture` rule covering 12 missing-defense checks for real prompt surfaces (`CLAUDE.md`, agent prompts, and `.claude/rules/*` markdown), while intentionally excluding generic `context-md` files to avoid noisy findings against archival or planning docs.
+- Validation status for that lane:
+  - targeted rule/discovery tests: green
+  - typecheck: green
+  - lint script currently fails before evaluation because the repo has no checked-in ESLint flat config for ESLint 9; treat that as repo tooling debt, not a blocker on the rule logic itself
 - 2026-04-05: Re-audited the stale feature branches:
   - `feat/cve-db-and-mcp-poisoning`
   - `feat/issue-14-runtime-monitor`
