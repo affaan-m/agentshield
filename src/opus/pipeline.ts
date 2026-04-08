@@ -96,7 +96,6 @@ interface ToolCallResult {
  * Accepts Anthropic SDK ContentBlock[] or any typed-block array.
  */
 export function extractToolCalls(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   contentBlocks: ReadonlyArray<any>
 ): ReadonlyArray<ToolCallResult> {
   return contentBlocks
@@ -112,7 +111,6 @@ export function extractToolCalls(
  * Accepts Anthropic SDK ContentBlock[] or any typed-block array.
  */
 export function extractTextContent(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   contentBlocks: ReadonlyArray<any>
 ): string {
   return contentBlocks
@@ -690,7 +688,6 @@ async function runAgentNonStreaming(
     messages: [{ role: "user", content: userMessage }],
   });
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const content = response.content as ReadonlyArray<any>;
   const text = extractTextContent(content);
   const toolCalls = extractToolCalls(content);

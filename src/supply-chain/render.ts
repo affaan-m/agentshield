@@ -1,5 +1,6 @@
 import type { SupplyChainReport, PackageVerification } from "./types.js";
 
+// eslint-disable-next-line no-control-regex -- strips terminal control bytes before rendering report text
 const CONTROL_CHAR_PATTERN = /[\u0000-\u001F\u007F-\u009F]/g;
 
 /**

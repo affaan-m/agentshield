@@ -51,7 +51,7 @@ const SECRET_PATTERNS: ReadonlyArray<{
   },
   {
     name: "bearer-token",
-    pattern: /["']Bearer\s+[a-zA-Z0-9._\-]{20,}["']/g,
+    pattern: /["']Bearer\s+[a-zA-Z0-9._-]{20,}["']/g,
     description: "Hardcoded bearer token",
   },
   {
@@ -71,7 +71,7 @@ const SECRET_PATTERNS: ReadonlyArray<{
   },
   {
     name: "google-api-key",
-    pattern: /AIza[a-zA-Z0-9_\\-]{35}/g,
+    pattern: /AIza[a-zA-Z0-9_-]{35}/g,
     description: "Google API key",
   },
   {
@@ -101,7 +101,7 @@ const SECRET_PATTERNS: ReadonlyArray<{
   },
   {
     name: "azure-key",
-    pattern: /[a-zA-Z0-9\/+]{86}==/g,
+    pattern: /[a-zA-Z0-9/+]{86}==/g,
     description: "Azure storage account key",
   },
   {

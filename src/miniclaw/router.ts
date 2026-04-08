@@ -19,9 +19,6 @@ import type {
   ToolCallRecord,
 } from "./types.js";
 import { createSecurityEvent } from "./sandbox.js";
-// Tool validation/execution imports — used by processPromptWithTools in production
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-import type { ToolCallRequest as _ToolCallRequest } from "./types.js";
 
 // ─── Prompt Injection Patterns ────────────────────────────
 
@@ -110,7 +107,8 @@ const INJECTION_PATTERNS: ReadonlyArray<{
  *
  * Example: "Read the file" + [zero-width chars encoding "delete everything"]
  */
-const INVISIBLE_CHAR_PATTERN = /[\u200B\u200C\u200D\u200E\u200F\uFEFF\u00AD\u034F\u061C\u115F\u1160\u17B4\u17B5\u180E\u2000-\u200A\u202A-\u202E\u2060-\u2064\u2066-\u206F]/g;
+// eslint-disable-next-line no-misleading-character-class -- intentional security scan for invisible and bidi Unicode controls
+const INVISIBLE_CHAR_PATTERN = /[\u200B\u200C\u200D\u200E\u200F\uFEFF\u00AD\u034F\u061C\u115F\u1160\u17B4\u17B5\u180E\u2000-\u200A\u202A-\u202E\u2060-\u2064\u2066-\u206F]/gu;
 
 /**
  * Base64 encoded instruction patterns.

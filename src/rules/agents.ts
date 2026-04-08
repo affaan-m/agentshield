@@ -442,17 +442,18 @@ export const agentRules: ReadonlyArray<Rule> = [
         readonly description: string;
       }> = [
         {
-          pattern: /[\u200B\u200C\u200D\uFEFF]/g,
+          // eslint-disable-next-line no-misleading-character-class -- intentional security scan for hidden Unicode instructions
+          pattern: /[\u200B\u200C\u200D\uFEFF]/gu,
           name: "zero-width character",
           description: "Zero-width characters (U+200B/200C/200D/FEFF) can hide text from visual inspection while still being processed by the model",
         },
         {
-          pattern: /[\u202A-\u202E\u2066-\u2069]/g,
+          pattern: /[\u202A-\u202E\u2066-\u2069]/gu,
           name: "bidirectional override",
           description: "Bidirectional text override characters (U+202A-202E, U+2066-2069) can reverse displayed text direction, making malicious instructions appear differently than they actually read",
         },
         {
-          pattern: /[\u00AD]/g,
+          pattern: /[\u00AD]/gu,
           name: "soft hyphen",
           description: "Soft hyphens (U+00AD) are invisible but can break up keywords to evade pattern matching while preserving the original meaning for the model",
         },
@@ -1025,7 +1026,7 @@ export const agentRules: ReadonlyArray<Rule> = [
           desc: "Instructs agent to perform mass file deletion",
         },
         {
-          pattern: /rm\s+-rf\s+(?:\/|\~|\.\.)/g,
+          pattern: /rm\s+-rf\s+(?:\/|~|\.\.)/g,
           desc: "Contains literal rm -rf command targeting root, home, or parent directories",
         },
         {
@@ -1450,7 +1451,7 @@ export const agentRules: ReadonlyArray<Rule> = [
           desc: "Markdown image from non-standard host — could be a tracking pixel for data exfiltration",
         },
         {
-          pattern: /\[.*?\]\(https?:\/\/[^\s)]+\$\{[^\}]+\}[^\s)]*\)/gi,
+          pattern: /\[.*?\]\(https?:\/\/[^\s)]+\$\{[^}]+\}[^\s)]*\)/gi,
           desc: "Markdown link with variable interpolation in URL — can dynamically exfiltrate data",
         },
       ];

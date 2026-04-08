@@ -1,6 +1,6 @@
 # Working Context
 
-Last updated: 2026-04-05
+Last updated: 2026-04-08
 
 ## Purpose
 
@@ -40,12 +40,24 @@ Keep only the live scanner, release, and integration context here. Historical in
 
 ## Latest Execution Notes
 
+- 2026-04-08: Finished the lingering repo-tooling/security maintenance lane directly on `main`.
+- Landed the transitive `vite` patch bump (`7.3.1 -> 7.3.2`) that was still sitting in open PR `#46`.
+- Completed the missing ESLint 9 flat-config migration:
+  - added checked-in `eslint.config.mjs`
+  - added TypeScript-aware lint tooling (`@eslint/js`, `typescript-eslint`, `globals`)
+  - fixed the handful of real regex/annotation lint findings in shipped source instead of weakening the ruleset
+- Validation status for that lane:
+  - full test suite: green
+  - typecheck: green
+  - lint: green
+  - build: green
+  - CLI smoke (`node dist/index.js --help`): green
 - 2026-04-05: Implemented prompt-defense posture audit coverage directly on `main` for issue `#45`.
 - Added a new built-in `prompt-defense-posture` rule covering 12 missing-defense checks for real prompt surfaces (`CLAUDE.md`, agent prompts, and `.claude/rules/*` markdown), while intentionally excluding generic `context-md` files to avoid noisy findings against archival or planning docs.
 - Validation status for that lane:
   - targeted rule/discovery tests: green
   - typecheck: green
-  - lint script currently fails before evaluation because the repo has no checked-in ESLint flat config for ESLint 9; treat that as repo tooling debt, not a blocker on the rule logic itself
+  - lint: green
 - 2026-04-05: Re-audited the stale feature branches:
   - `feat/cve-db-and-mcp-poisoning`
   - `feat/issue-14-runtime-monitor`

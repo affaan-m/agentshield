@@ -205,7 +205,7 @@ var INJECTION_PATTERNS = [
     description: "Network request attempt in prompt"
   }
 ];
-var INVISIBLE_CHAR_PATTERN = /[\u200B\u200C\u200D\u200E\u200F\uFEFF\u00AD\u034F\u061C\u115F\u1160\u17B4\u17B5\u180E\u2000-\u200A\u202A-\u202E\u2060-\u2064\u2066-\u206F]/g;
+var INVISIBLE_CHAR_PATTERN = /[\u200B\u200C\u200D\u200E\u200F\uFEFF\u00AD\u034F\u061C\u115F\u1160\u17B4\u17B5\u180E\u2000-\u200A\u202A-\u202E\u2060-\u2064\u2066-\u206F]/gu;
 var BASE64_INSTRUCTION_PATTERN = /(?:eval|decode|execute|run)\s*\(\s*(?:atob|Buffer\.from|base64)\s*\(/i;
 var SYSTEM_PROMPT_MARKERS = [
   "you are miniclaw",
