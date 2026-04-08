@@ -391,34 +391,75 @@ export async function routePrompt(
 }
 
 /**
- * Processes a sanitized prompt through allowed tools.
+ * Processes a sanitized prompt through the current MiniClaw fallback responder.
  *
- * This is the integration point for the LLM. In the current implementation,
- * it provides the tool validation pipeline without the actual LLM call.
+ * MiniClaw intentionally ships a deterministic fallback instead of pretending
+ * there is a live model behind the router. That keeps the runtime honest while
+ * still making the API useful for local validation, sandbox demos, and UI work.
  *
- * WHY separate from routePrompt: This function can be replaced with
- * different LLM backends (Anthropic, local models, etc.) without
- * changing the security envelope in routePrompt.
+ * WHY separate from routePrompt: This function remains the integration point
+ * for future LLM backends (Anthropic, local models, etc.) without changing the
+ * security envelope in routePrompt.
  */
 async function processPromptWithTools(
-  _sanitizedPrompt: string,
+  sanitizedPrompt: string,
   session: MiniClawSession,
   _toolCalls: ToolCallRecord[],
-  _events: SecurityEvent[]
+  events: SecurityEvent[]
 ): Promise<string> {
-  // In production, this would:
+  // In a future production backend, this would:
   // 1. Send the sanitized prompt to the LLM
   // 2. Receive tool call requests from the LLM
   // 3. Validate each tool call against the whitelist
   // 4. Execute approved tool calls within the sandbox
   // 5. Return results to the LLM for final response generation
 
-  // Placeholder: Echo back that the prompt was received and processed
-  // This demonstrates the tool validation pipeline is in place
-  const toolCount = session.allowedTools.length;
-  return (
-    `Prompt received and sanitized. ` +
-    `Session ${session.id} has ${toolCount} tools available. ` +
-    `Ready for LLM integration.`
+  const toolNames = session.allowedTools.map((tool) => tool.name);
+  const blockedFragments = events.filter(
+    (event) => event.type === "prompt_injection_detected"
+  ).length;
+
+  const summaryLines = [
+    "MiniClaw fallback responder is active. No external LLM backend is configured in this runtime.",
+    `Session ${session.id} is sandboxed with ${toolNames.length} allowed tool${toolNames.length === 1 ? "" : "s"}: ${toolNames.join(", ") || "none"}.`,
+  ];
+
+  if (blockedFragments > 0) {
+    summaryLines.push(
+      `Security filters blocked ${blockedFragments} prompt fragment${blockedFragments === 1 ? "" : "s"} before routing.`
+    );
+  }
+
+  const normalizedPrompt = sanitizedPrompt.trim().toLowerCase();
+  if (!normalizedPrompt) {
+    summaryLines.push(
+      "Send a prompt describing the file, directory, or policy question you want the sandboxed agent to inspect."
+    );
+    return summaryLines.join(" ");
+  }
+
+  const asksAboutTools =
+    /\b(tool|tools|whitelist|allowed)\b/.test(normalizedPrompt);
+  const asksAboutSession =
+    /\b(session|sandbox|duration|timeout)\b/.test(normalizedPrompt);
+
+  if (asksAboutTools) {
+    summaryLines.push(
+      `Tool whitelist: ${toolNames.map((tool) => `"${tool}"`).join(", ")}.`
+    );
+  }
+
+  if (asksAboutSession) {
+    const minutes = Math.max(1, Math.round(session.maxDuration / 60_000));
+    summaryLines.push(
+      `Session policy: sandbox-scoped filesystem access with a maximum duration of about ${minutes} minute${minutes === 1 ? "" : "s"}.`
+    );
+  }
+
+  summaryLines.push(`Sanitized prompt preview: "${sanitizedPrompt.slice(0, 240)}"`);
+  summaryLines.push(
+    "To turn this into a full agent, wire a backend model into processPromptWithTools() while keeping the existing sanitize/filter/tool-validation envelope intact."
   );
+
+  return summaryLines.join(" ");
 }

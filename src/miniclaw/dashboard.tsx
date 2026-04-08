@@ -11,7 +11,7 @@
  * Features:
  * - Dark theme, minimal aesthetic
  * - Prompt input with submit
- * - Streaming response display placeholder
+ * - Deterministic fallback response display with room for future streaming upgrades
  * - Session status indicator
  * - Security events panel
  * - Tool whitelist display

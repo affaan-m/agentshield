@@ -104,7 +104,7 @@ import {
 High-value exports:
 - `startMiniClaw(config?)` starts the built-in HTTP server with secure defaults
 - `createMiniClawSession(config?)` creates a sandbox session for embedding
-- `routePrompt(request, session)` sanitizes and executes a prompt against an existing session
+- `routePrompt(request, session)` sanitizes a prompt and runs it through MiniClaw's deterministic fallback responder against an existing session
 - `createSafeWhitelist()`, `createGuardedWhitelist()`, and `createCustomWhitelist()` define tool policies
 - `createMiniClawServer(config)` exposes the lower-level server factory
 
@@ -127,8 +127,8 @@ Primary endpoint. Accepts a prompt and returns a response.
 // Response
 {
   "sessionId": "uuid",
-  "response": "File contents: ...",
-  "toolCalls": [{ "tool": "read", "args": { "path": "src/index.ts" }, "result": "..." }],
+  "response": "MiniClaw fallback responder is active. No external LLM backend is configured in this runtime. Session uuid is sandboxed with 3 allowed tools: read, search, list. Sanitized prompt preview: \"Read the file src/index.ts\" ...",
+  "toolCalls": [],
   "duration": 1234,
   "tokenUsage": { "input": 100, "output": 200 }
 }
@@ -222,7 +222,7 @@ It is not currently exported as a separate npm subpath such as `ecc-agentshield/
 ### Features
 - Dark theme, minimal aesthetic
 - Prompt input with submit button
-- Streaming response display area (placeholder for SSE/WebSocket upgrade)
+- Response display area for deterministic fallback output today, with room for future SSE/WebSocket upgrades
 - Session status indicator (active / idle / error)
 - Security events panel (blocked injections, denied tools)
 - Tool whitelist display (categorized by risk level)
