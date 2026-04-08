@@ -14406,9 +14406,45 @@ async function routePrompt(request, session) {
     securityEvents: allEvents
   };
 }
-async function processPromptWithTools(_sanitizedPrompt, session, _toolCalls, _events) {
-  const toolCount = session.allowedTools.length;
-  return `Prompt received and sanitized. Session ${session.id} has ${toolCount} tools available. Ready for LLM integration.`;
+async function processPromptWithTools(sanitizedPrompt, session, _toolCalls, events) {
+  const toolNames = session.allowedTools.map((tool) => tool.name);
+  const blockedFragments = events.filter(
+    (event) => event.type === "prompt_injection_detected"
+  ).length;
+  const summaryLines = [
+    "MiniClaw fallback responder is active. No external LLM backend is configured in this runtime.",
+    `Session ${session.id} is sandboxed with ${toolNames.length} allowed tool${toolNames.length === 1 ? "" : "s"}: ${toolNames.join(", ") || "none"}.`
+  ];
+  if (blockedFragments > 0) {
+    summaryLines.push(
+      `Security filters blocked ${blockedFragments} prompt fragment${blockedFragments === 1 ? "" : "s"} before routing.`
+    );
+  }
+  const normalizedPrompt = sanitizedPrompt.trim().toLowerCase();
+  if (!normalizedPrompt) {
+    summaryLines.push(
+      "Send a prompt describing the file, directory, or policy question you want the sandboxed agent to inspect."
+    );
+    return summaryLines.join(" ");
+  }
+  const asksAboutTools = /\b(tool|tools|whitelist|allowed)\b/.test(normalizedPrompt);
+  const asksAboutSession = /\b(session|sandbox|duration|timeout)\b/.test(normalizedPrompt);
+  if (asksAboutTools) {
+    summaryLines.push(
+      `Tool whitelist: ${toolNames.map((tool) => `"${tool}"`).join(", ")}.`
+    );
+  }
+  if (asksAboutSession) {
+    const minutes = Math.max(1, Math.round(session.maxDuration / 6e4));
+    summaryLines.push(
+      `Session policy: sandbox-scoped filesystem access with a maximum duration of about ${minutes} minute${minutes === 1 ? "" : "s"}.`
+    );
+  }
+  summaryLines.push(`Sanitized prompt preview: "${sanitizedPrompt.slice(0, 240)}"`);
+  summaryLines.push(
+    "To turn this into a full agent, wire a backend model into processPromptWithTools() while keeping the existing sanitize/filter/tool-validation envelope intact."
+  );
+  return summaryLines.join(" ");
 }
 
 // src/miniclaw/tools.ts
