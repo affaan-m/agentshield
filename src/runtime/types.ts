@@ -62,3 +62,28 @@ export interface InstallResult {
   readonly policyPath: string;
   readonly message: string;
 }
+
+// ─── Runtime Status Result ───────────────────────────────────
+
+export type RuntimeStatusHealth =
+  | "ready"
+  | "not_installed"
+  | "missing_policy"
+  | "invalid_policy"
+  | "invalid_settings";
+
+export interface RuntimeStatusResult {
+  readonly settingsPath: string;
+  readonly settingsExists: boolean;
+  readonly settingsValid: boolean;
+  readonly hookInstalled: boolean;
+  readonly hookCount: number;
+  readonly policyPath: string;
+  readonly policyExists: boolean;
+  readonly policyValid: boolean;
+  readonly logPath: string;
+  readonly logExists: boolean;
+  readonly health: RuntimeStatusHealth;
+  readonly checkExitCode: number;
+  readonly message: string;
+}

@@ -9593,7 +9593,7 @@ var init_injection = __esm({
 // src/sandbox/executor.ts
 import { spawn } from "child_process";
 import { mkdtemp, readdir, stat as stat2, readFile, rm as rm2 } from "fs/promises";
-import { join as join6 } from "path";
+import { join as join7 } from "path";
 import { tmpdir } from "os";
 function parseHooks(settingsContent) {
   const hooks = [];
@@ -9630,7 +9630,7 @@ function parseHooks(settingsContent) {
 async function executeHookInSandbox(hookCommand, options = {}) {
   const opts = { ...DEFAULT_OPTIONS, ...options };
   const fakeEnv = { ...DEFAULT_FAKE_ENV, ...opts.fakeEnv };
-  const workDir = await mkdtemp(join6(tmpdir(), "agentshield-sandbox-"));
+  const workDir = await mkdtemp(join7(tmpdir(), "agentshield-sandbox-"));
   const sandboxEnv = {
     HOME: workDir,
     TMPDIR: workDir,
@@ -9649,7 +9649,7 @@ async function executeHookInSandbox(hookCommand, options = {}) {
     controller.abort();
   }, opts.timeout);
   try {
-    const result = await new Promise((resolve8) => {
+    const result = await new Promise((resolve9) => {
       const stdoutChunks = [];
       const stderrChunks = [];
       const child = spawn(hookCommand, [], {
@@ -9666,7 +9666,7 @@ async function executeHookInSandbox(hookCommand, options = {}) {
         stderrChunks.push(chunk);
       });
       child.on("close", (code) => {
-        resolve8({
+        resolve9({
           exitCode: code,
           stdout: Buffer.concat(stdoutChunks).toString("utf-8"),
           stderr: Buffer.concat(stderrChunks).toString("utf-8")
@@ -9674,13 +9674,13 @@ async function executeHookInSandbox(hookCommand, options = {}) {
       });
       child.on("error", (err) => {
         if (err.code === "ABORT_ERR" || err.name === "AbortError") {
-          resolve8({
+          resolve9({
             exitCode: null,
             stdout: Buffer.concat(stdoutChunks).toString("utf-8"),
             stderr: Buffer.concat(stderrChunks).toString("utf-8")
           });
         } else {
-          resolve8({
+          resolve9({
             exitCode: null,
             stdout: Buffer.concat(stdoutChunks).toString("utf-8"),
             stderr: Buffer.concat(stderrChunks).toString("utf-8") + `
@@ -9803,7 +9803,7 @@ async function detectFileWrites(workDir, observations) {
   try {
     const entries = await readdir(workDir);
     for (const entry of entries) {
-      const entryPath = join6(workDir, entry);
+      const entryPath = join7(workDir, entry);
       const entryStat = await stat2(entryPath);
       if (entryStat.isFile()) {
         const content = await readFile(entryPath, "utf-8");
@@ -11057,7 +11057,7 @@ var init_types = __esm({
 });
 
 // src/baseline/compare.ts
-import { readFileSync as readFileSync5, writeFileSync as writeFileSync4, existsSync as existsSync7 } from "fs";
+import { readFileSync as readFileSync6, writeFileSync as writeFileSync4, existsSync as existsSync8 } from "fs";
 import { dirname as dirname4 } from "path";
 import { mkdirSync as mkdirSync4 } from "fs";
 function fingerprintFinding2(finding) {
@@ -11079,15 +11079,15 @@ function saveBaseline(findings, score, outputPath) {
     }))
   };
   const dir = dirname4(outputPath);
-  if (!existsSync7(dir)) {
+  if (!existsSync8(dir)) {
     mkdirSync4(dir, { recursive: true });
   }
   writeFileSync4(outputPath, JSON.stringify(serialized, null, 2));
 }
 function loadBaseline(baselinePath) {
-  if (!existsSync7(baselinePath)) return null;
+  if (!existsSync8(baselinePath)) return null;
   try {
-    const raw = readFileSync5(baselinePath, "utf-8");
+    const raw = readFileSync6(baselinePath, "utf-8");
     const parsed = JSON.parse(raw);
     if (parsed.version !== 1 || !Array.isArray(parsed.findings)) {
       return null;
@@ -11271,13 +11271,13 @@ var init_types2 = __esm({
 });
 
 // src/policy/evaluate.ts
-import { readFileSync as readFileSync6, existsSync as existsSync8 } from "fs";
+import { readFileSync as readFileSync7, existsSync as existsSync9 } from "fs";
 function loadPolicy2(policyPath) {
-  if (!existsSync8(policyPath)) {
+  if (!existsSync9(policyPath)) {
     return { success: false, error: `Policy file not found: ${policyPath}` };
   }
   try {
-    const raw = readFileSync6(policyPath, "utf-8");
+    const raw = readFileSync7(policyPath, "utf-8");
     const parsed = JSON.parse(raw);
     return { success: true, policy: OrgPolicySchema.parse(parsed) };
   } catch (error) {
@@ -12111,8 +12111,8 @@ var init_supply_chain = __esm({
 // src/index.ts
 init_scanner();
 import { Command } from "commander";
-import { resolve as resolve7 } from "path";
-import { existsSync as existsSync9, writeFileSync as writeFileSync5, appendFileSync as appendFileSync2, mkdirSync as mkdirSync5 } from "fs";
+import { resolve as resolve8 } from "path";
+import { existsSync as existsSync10, writeFileSync as writeFileSync5, appendFileSync as appendFileSync2, mkdirSync as mkdirSync5 } from "fs";
 
 // src/reporter/score.ts
 var SCORE_DEDUCTIONS = {
@@ -14525,7 +14525,7 @@ function checkRateLimit(ip, maxRequests) {
   return true;
 }
 function readBody(req, maxSize) {
-  return new Promise((resolve8, reject) => {
+  return new Promise((resolve9, reject) => {
     const chunks = [];
     let totalSize = 0;
     req.on("data", (chunk) => {
@@ -14538,7 +14538,7 @@ function readBody(req, maxSize) {
       chunks.push(chunk);
     });
     req.on("end", () => {
-      resolve8(Buffer.concat(chunks).toString("utf-8"));
+      resolve9(Buffer.concat(chunks).toString("utf-8"));
     });
     req.on("error", (err) => {
       reject(err);
@@ -15105,6 +15105,7 @@ import { dirname as dirname2 } from "path";
 // src/runtime/install.ts
 import { readFileSync as readFileSync4, writeFileSync as writeFileSync3, existsSync as existsSync6, mkdirSync as mkdirSync3 } from "fs";
 import { join as join5, dirname as dirname3 } from "path";
+var RUNTIME_HOOK_MARKER = "agentshield/runtime-policy";
 var HOOK_COMMAND = `node -e "const fs=require('fs'),p=require('path');const s=Date.now();const t=process.env.TOOL_NAME||'unknown';const i=process.env.TOOL_INPUT||'';const pp=p.resolve('.agentshield/runtime-policy.json');if(!fs.existsSync(pp)){process.exit(0)}const pol=JSON.parse(fs.readFileSync(pp,'utf-8'));for(const r of pol.deny||[]){if(r.tool==='*'||r.tool===t||t.startsWith(r.tool.replace('*',''))){if(!r.pattern||new RegExp(r.pattern,'i').test(i)){const lp=p.resolve((pol.log||{}).path||'.agentshield/runtime.ndjson');const d=p.dirname(lp);if(!fs.existsSync(d))fs.mkdirSync(d,{recursive:true});fs.appendFileSync(lp,JSON.stringify({timestamp:new Date().toISOString(),tool:t,decision:'block',reason:r.reason,durationMs:Date.now()-s})+'\\n');process.stderr.write('AgentShield: BLOCKED '+t+' \u2014 '+(r.reason||'denied by policy')+'\\n');process.exit(2)}}}const lp2=p.resolve((pol.log||{}).path||'.agentshield/runtime.ndjson');const d2=p.dirname(lp2);if(!fs.existsSync(d2))fs.mkdirSync(d2,{recursive:true});fs.appendFileSync(lp2,JSON.stringify({timestamp:new Date().toISOString(),tool:t,decision:'allow',durationMs:Date.now()-s})+'\\n');process.exit(0)"`;
 var HOOK_ENTRY = {
   matcher: "",
@@ -15133,7 +15134,7 @@ function installRuntime(targetPath) {
   const hooks = settings.hooks ?? {};
   const preToolUse = hooks.PreToolUse ?? [];
   const alreadyInstalled = preToolUse.some(
-    (h) => typeof h.hook === "string" && h.hook.includes("agentshield/runtime-policy")
+    (h) => typeof h.hook === "string" && h.hook.includes(RUNTIME_HOOK_MARKER)
   );
   if (alreadyInstalled) {
     return {
@@ -15173,7 +15174,7 @@ function uninstallRuntime(targetPath) {
     }
     const preToolUse = hooks.PreToolUse;
     const filtered = preToolUse.filter(
-      (h) => !(typeof h.hook === "string" && h.hook.includes("agentshield/runtime-policy"))
+      (h) => !(typeof h.hook === "string" && h.hook.includes(RUNTIME_HOOK_MARKER))
     );
     if (filtered.length === preToolUse.length) {
       return { removed: false, message: "AgentShield runtime hook not found." };
@@ -15192,6 +15193,94 @@ function resolveSettingsPath(targetPath) {
   const directSettings = join5(targetPath, "settings.json");
   if (existsSync6(directSettings)) return directSettings;
   return claudeSettings;
+}
+
+// src/runtime/status.ts
+import { existsSync as existsSync7, readFileSync as readFileSync5 } from "fs";
+import { join as join6, resolve as resolve7 } from "path";
+function defaultLogPath(targetPath) {
+  return resolve7(targetPath, ".agentshield", "runtime.ndjson");
+}
+function runtimePolicyPath(targetPath) {
+  return join6(targetPath, ".agentshield", "runtime-policy.json");
+}
+function getRuntimeStatus(targetPath) {
+  const settingsPath = resolveSettingsPath(targetPath);
+  const settingsExists = existsSync7(settingsPath);
+  const policyPath = runtimePolicyPath(targetPath);
+  const policyExists = existsSync7(policyPath);
+  let settingsValid = false;
+  let hookCount = 0;
+  if (settingsExists) {
+    try {
+      const settings = JSON.parse(readFileSync5(settingsPath, "utf-8"));
+      const preToolUse = settings.hooks?.PreToolUse;
+      settingsValid = true;
+      if (Array.isArray(preToolUse)) {
+        hookCount = preToolUse.filter(
+          (entry) => typeof entry.hook === "string" && entry.hook.includes(RUNTIME_HOOK_MARKER)
+        ).length;
+      }
+    } catch {
+      settingsValid = false;
+    }
+  }
+  let policyValid = false;
+  let logPath = defaultLogPath(targetPath);
+  if (policyExists) {
+    try {
+      const parsed = JSON.parse(readFileSync5(policyPath, "utf-8"));
+      const result = RuntimePolicySchema.safeParse(parsed);
+      if (result.success) {
+        policyValid = true;
+        const configuredLogPath = result.data.log?.path ?? ".agentshield/runtime.ndjson";
+        logPath = resolve7(targetPath, configuredLogPath);
+      }
+    } catch {
+      policyValid = false;
+    }
+  }
+  const logExists = existsSync7(logPath);
+  const hookInstalled = hookCount > 0;
+  let health;
+  let checkExitCode;
+  let message;
+  if (settingsExists && !settingsValid) {
+    health = "invalid_settings";
+    checkExitCode = 2;
+    message = "settings.json exists but could not be parsed.";
+  } else if (!hookInstalled) {
+    health = "not_installed";
+    checkExitCode = 1;
+    message = "AgentShield runtime hook is not installed.";
+  } else if (!policyExists) {
+    health = "missing_policy";
+    checkExitCode = 1;
+    message = "Runtime hook is installed, but runtime-policy.json is missing.";
+  } else if (!policyValid) {
+    health = "invalid_policy";
+    checkExitCode = 2;
+    message = "Runtime hook is installed, but runtime-policy.json is invalid.";
+  } else {
+    health = "ready";
+    checkExitCode = 0;
+    message = "AgentShield runtime monitor is installed and ready.";
+  }
+  return {
+    settingsPath,
+    settingsExists,
+    settingsValid,
+    hookInstalled,
+    hookCount,
+    policyPath,
+    policyExists,
+    policyValid,
+    logPath,
+    logExists,
+    health,
+    checkExitCode,
+    message
+  };
 }
 
 // src/index.ts
@@ -15317,7 +15406,7 @@ var program = new Command();
 program.name("agentshield").description("Security auditor for AI agent configurations").version("1.4.0");
 program.command("scan").description("Scan a Claude Code configuration directory for security issues").option("-p, --path <path>", "Path to scan (default: ~/.claude or current dir)").option("-f, --format <format>", "Output format: terminal, json, markdown, html", "terminal").option("--fix", "Auto-apply safe fixes", false).option("--opus", "Enable Opus 4.6 multi-agent deep analysis", false).option("--stream", "Stream Opus analysis in real-time", false).option("--injection", "Run active prompt injection testing against the config", false).option("--sandbox", "Execute hooks in sandbox and observe behavior", false).option("--taint", "Run taint analysis (data flow tracking)", false).option("--deep", "Run ALL analysis (injection + sandbox + taint + opus)", false).option("--log <path>", "Write structured scan log to file").option("--log-format <format>", "Log format: ndjson (default) or json", "ndjson").option("--corpus", "Run scanner validation against built-in attack corpus", false).option("--baseline <path>", "Compare against a baseline file and report regressions").option("--save-baseline <path>", "Save current scan results as a baseline file").option("--gate", "Fail if new critical/high findings or score drops (use with --baseline)", false).option("--supply-chain", "Verify MCP npm packages against known-bad list and typosquatting", false).option("--supply-chain-online", "Also query npm registry for metadata (requires network)", false).option("--policy <path>", "Validate against an organization policy file").option("--min-severity <severity>", "Minimum severity to report: critical, high, medium, low, info", "info").option("-v, --verbose", "Show detailed output", false).action(async (options) => {
   const targetPath = resolveTargetPath(options.path);
-  if (!existsSync9(targetPath)) {
+  if (!existsSync10(targetPath)) {
     console.error(`Error: Path does not exist: ${targetPath}`);
     process.exit(1);
   }
@@ -15394,7 +15483,7 @@ program.command("scan").description("Scan a Claude Code configuration directory 
     logger.log({ level: "info", phase: "policy", message: "Validating against organization policy" });
     try {
       const { loadPolicy: loadOrgPolicy, evaluatePolicy: evaluatePolicy2, renderPolicyEvaluation: renderPolicyEvaluation2 } = await Promise.resolve().then(() => (init_policy(), policy_exports));
-      const policyResult = loadOrgPolicy(resolve7(options.policy));
+      const policyResult = loadOrgPolicy(resolve8(options.policy));
       if (!policyResult.success) {
         console.error(`
   Error: ${policyResult.error}
@@ -15574,7 +15663,7 @@ program.command("init").description("Generate a secure baseline Claude Code conf
 });
 program.command("watch").description("Continuously monitor config directories for security regressions").option("-p, --path <path>", "Path to watch (default: ~/.claude or current dir)").option("--debounce <ms>", "Debounce interval in milliseconds", "500").option("--alert <mode>", "Alert mode: terminal, webhook, both", "terminal").option("--webhook <url>", "Webhook URL for alerts").option("--min-severity <severity>", "Minimum severity to track: critical, high, medium, low, info", "info").option("--block", "Exit non-zero if critical findings detected (for CI integration)", false).action((options) => {
   const targetPath = resolveTargetPath(options.path);
-  if (!existsSync9(targetPath)) {
+  if (!existsSync10(targetPath)) {
     console.error(`Error: Path does not exist: ${targetPath}`);
     process.exit(1);
   }
@@ -15609,12 +15698,12 @@ program.command("watch").description("Continuously monitor config directories fo
   }
   console.log(`
   Performing initial scan to establish baseline...`);
-  const homeClaude = resolve7(
+  const homeClaude = resolve8(
     process.env.HOME ?? process.env.USERPROFILE ?? ".",
     ".claude"
   );
   const watchPaths = [targetPath];
-  if (existsSync9(homeClaude) && homeClaude !== targetPath) {
+  if (existsSync10(homeClaude) && homeClaude !== targetPath) {
     watchPaths.push(homeClaude);
     console.log(`  Also watching:  ${homeClaude}`);
   }
@@ -15654,7 +15743,7 @@ program.command("watch").description("Continuously monitor config directories fo
 });
 var runtime = program.command("runtime").description("Runtime monitoring \u2014 PreToolUse hook for policy enforcement");
 runtime.command("install").description("Install the AgentShield PreToolUse hook into settings.json").option("-p, --path <path>", "Target directory (default: current directory)", ".").action((options) => {
-  const result = installRuntime(resolve7(options.path));
+  const result = installRuntime(resolve8(options.path));
   console.log(`
   AgentShield Runtime Monitor
 `);
@@ -15670,25 +15759,51 @@ runtime.command("install").description("Install the AgentShield PreToolUse hook 
   console.log();
 });
 runtime.command("uninstall").description("Remove the AgentShield PreToolUse hook from settings.json").option("-p, --path <path>", "Target directory (default: current directory)", ".").action((options) => {
-  const result = uninstallRuntime(resolve7(options.path));
+  const result = uninstallRuntime(resolve8(options.path));
   console.log(`
   AgentShield Runtime Monitor
 `);
   console.log(`  ${result.message}
 `);
 });
+runtime.command("status").description("Inspect runtime hook, policy, and logging readiness").option("-p, --path <path>", "Target directory (default: current directory)", ".").option("--json", "Output status as JSON", false).option("--check", "Exit non-zero when runtime monitor is not ready", false).action((options) => {
+  const result = getRuntimeStatus(resolve8(options.path));
+  if (options.json) {
+    console.log(JSON.stringify(result, null, 2));
+  } else {
+    console.log(`
+  AgentShield Runtime Monitor
+`);
+    console.log(`  Health:         ${result.health}`);
+    console.log(`  Settings:       ${result.settingsPath}`);
+    console.log(`  Settings file:  ${result.settingsExists ? "present" : "missing"}`);
+    console.log(`  Settings valid: ${result.settingsValid ? "yes" : "no"}`);
+    console.log(`  Hook installed: ${result.hookInstalled ? "yes" : "no"} (${result.hookCount})`);
+    console.log(`  Policy:         ${result.policyPath}`);
+    console.log(`  Policy file:    ${result.policyExists ? "present" : "missing"}`);
+    console.log(`  Policy valid:   ${result.policyValid ? "yes" : "no"}`);
+    console.log(`  Log path:       ${result.logPath}`);
+    console.log(`  Log file:       ${result.logExists ? "present" : "missing"}`);
+    console.log(`
+  ${result.message}
+`);
+  }
+  if (options.check) {
+    process.exit(result.checkExitCode);
+  }
+});
 var policyCmd = program.command("policy").description("Organization-wide security policy management");
 policyCmd.command("init").description("Generate an example organization policy file").option("-o, --output <path>", "Output path", ".agentshield/policy.json").action(async (options) => {
   const { generateExamplePolicy: generateExamplePolicy2 } = await Promise.resolve().then(() => (init_policy(), policy_exports));
-  const outputPath = resolve7(options.output);
-  if (existsSync9(outputPath)) {
+  const outputPath = resolve8(options.output);
+  if (existsSync10(outputPath)) {
     console.error(`
   Error: Policy file already exists at ${outputPath}
 `);
     process.exit(1);
   }
-  const dir = resolve7(outputPath, "..");
-  if (!existsSync9(dir)) {
+  const dir = resolve8(outputPath, "..");
+  if (!existsSync10(dir)) {
     mkdirSync5(dir, { recursive: true });
   }
   writeFileSync5(outputPath, generateExamplePolicy2());
@@ -15789,17 +15904,17 @@ miniclaw.command("start").description("Start the MiniClaw server").option("-p, -
 program.parse();
 function resolveTargetPath(pathArg) {
   if (pathArg) {
-    return resolve7(pathArg);
+    return resolve8(pathArg);
   }
-  const localClaude = resolve7(process.cwd(), ".claude");
-  if (existsSync9(localClaude)) {
+  const localClaude = resolve8(process.cwd(), ".claude");
+  if (existsSync10(localClaude)) {
     return localClaude;
   }
-  const homeClaude = resolve7(
+  const homeClaude = resolve8(
     process.env.HOME ?? process.env.USERPROFILE ?? ".",
     ".claude"
   );
-  if (existsSync9(homeClaude)) {
+  if (existsSync10(homeClaude)) {
     return homeClaude;
   }
   return process.cwd();

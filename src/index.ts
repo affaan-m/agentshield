@@ -14,7 +14,7 @@ import { runInit, renderInitSummary } from "./init/index.js";
 import { startMiniClaw } from "./miniclaw/index.js";
 import { startWatcher } from "./watch/index.js";
 import type { AlertMode } from "./watch/types.js";
-import { installRuntime, uninstallRuntime } from "./runtime/index.js";
+import { getRuntimeStatus, installRuntime, uninstallRuntime } from "./runtime/index.js";
 import type {
   InjectionSuiteResult,
   SandboxResult,
@@ -657,6 +657,37 @@ runtime
 
     console.log(`\n  AgentShield Runtime Monitor\n`);
     console.log(`  ${result.message}\n`);
+  });
+
+runtime
+  .command("status")
+  .description("Inspect runtime hook, policy, and logging readiness")
+  .option("-p, --path <path>", "Target directory (default: current directory)", ".")
+  .option("--json", "Output status as JSON", false)
+  .option("--check", "Exit non-zero when runtime monitor is not ready", false)
+  .action((options) => {
+    const result = getRuntimeStatus(resolve(options.path));
+
+    if (options.json) {
+      console.log(JSON.stringify(result, null, 2));
+    } else {
+      console.log(`\n  AgentShield Runtime Monitor\n`);
+      console.log(`  Health:         ${result.health}`);
+      console.log(`  Settings:       ${result.settingsPath}`);
+      console.log(`  Settings file:  ${result.settingsExists ? "present" : "missing"}`);
+      console.log(`  Settings valid: ${result.settingsValid ? "yes" : "no"}`);
+      console.log(`  Hook installed: ${result.hookInstalled ? "yes" : "no"} (${result.hookCount})`);
+      console.log(`  Policy:         ${result.policyPath}`);
+      console.log(`  Policy file:    ${result.policyExists ? "present" : "missing"}`);
+      console.log(`  Policy valid:   ${result.policyValid ? "yes" : "no"}`);
+      console.log(`  Log path:       ${result.logPath}`);
+      console.log(`  Log file:       ${result.logExists ? "present" : "missing"}`);
+      console.log(`\n  ${result.message}\n`);
+    }
+
+    if (options.check) {
+      process.exit(result.checkExitCode);
+    }
   });
 
 // ─── Policy Commands ─────────────────────────────────────

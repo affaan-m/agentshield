@@ -3,6 +3,8 @@ import { join, dirname } from "node:path";
 import type { InstallResult } from "./types.js";
 import { generateDefaultPolicy } from "./policy.js";
 
+export const RUNTIME_HOOK_MARKER = "agentshield/runtime-policy";
+
 const HOOK_COMMAND = "node -e \"const fs=require('fs'),p=require('path');const s=Date.now();const t=process.env.TOOL_NAME||'unknown';const i=process.env.TOOL_INPUT||'';const pp=p.resolve('.agentshield/runtime-policy.json');if(!fs.existsSync(pp)){process.exit(0)}const pol=JSON.parse(fs.readFileSync(pp,'utf-8'));for(const r of pol.deny||[]){if(r.tool==='*'||r.tool===t||t.startsWith(r.tool.replace('*',''))){if(!r.pattern||new RegExp(r.pattern,'i').test(i)){const lp=p.resolve((pol.log||{}).path||'.agentshield/runtime.ndjson');const d=p.dirname(lp);if(!fs.existsSync(d))fs.mkdirSync(d,{recursive:true});fs.appendFileSync(lp,JSON.stringify({timestamp:new Date().toISOString(),tool:t,decision:'block',reason:r.reason,durationMs:Date.now()-s})+'\\n');process.stderr.write('AgentShield: BLOCKED '+t+' — '+(r.reason||'denied by policy')+'\\n');process.exit(2)}}}const lp2=p.resolve((pol.log||{}).path||'.agentshield/runtime.ndjson');const d2=p.dirname(lp2);if(!fs.existsSync(d2))fs.mkdirSync(d2,{recursive:true});fs.appendFileSync(lp2,JSON.stringify({timestamp:new Date().toISOString(),tool:t,decision:'allow',durationMs:Date.now()-s})+'\\n');process.exit(0)\"";
 
 const HOOK_ENTRY = {
@@ -47,7 +49,7 @@ export function installRuntime(targetPath: string): InstallResult {
 
   // Check if already installed
   const alreadyInstalled = preToolUse.some(
-    (h) => typeof h.hook === "string" && h.hook.includes("agentshield/runtime-policy")
+    (h) => typeof h.hook === "string" && h.hook.includes(RUNTIME_HOOK_MARKER)
   );
 
   if (alreadyInstalled) {
@@ -101,7 +103,7 @@ export function uninstallRuntime(targetPath: string): {
 
     const preToolUse = hooks.PreToolUse as Array<{ hook?: string }>;
     const filtered = preToolUse.filter(
-      (h) => !(typeof h.hook === "string" && h.hook.includes("agentshield/runtime-policy"))
+      (h) => !(typeof h.hook === "string" && h.hook.includes(RUNTIME_HOOK_MARKER))
     );
 
     if (filtered.length === preToolUse.length) {
@@ -118,7 +120,7 @@ export function uninstallRuntime(targetPath: string): {
   }
 }
 
-function resolveSettingsPath(targetPath: string): string {
+export function resolveSettingsPath(targetPath: string): string {
   // Check .claude/settings.json first
   const claudeSettings = join(targetPath, ".claude", "settings.json");
   if (existsSync(claudeSettings)) return claudeSettings;
