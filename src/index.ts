@@ -14,7 +14,7 @@ import { runInit, renderInitSummary } from "./init/index.js";
 import { startMiniClaw } from "./miniclaw/index.js";
 import { startWatcher } from "./watch/index.js";
 import type { AlertMode } from "./watch/types.js";
-import { getRuntimeStatus, installRuntime, uninstallRuntime } from "./runtime/index.js";
+import { getRuntimeStatus, installRuntime, repairRuntime, uninstallRuntime } from "./runtime/index.js";
 import type {
   InjectionSuiteResult,
   SandboxResult,
@@ -687,6 +687,31 @@ runtime
 
     if (options.check) {
       process.exit(result.checkExitCode);
+    }
+  });
+
+runtime
+  .command("repair")
+  .description("Back up invalid runtime files and restore a healthy monitor install")
+  .option("-p, --path <path>", "Target directory (default: current directory)", ".")
+  .action((options) => {
+    const result = repairRuntime(resolve(options.path));
+    const status = getRuntimeStatus(resolve(options.path));
+
+    console.log(`\n  AgentShield Runtime Monitor\n`);
+    console.log(`  ${result.message}`);
+    if (result.settingsBackupPath) {
+      console.log(`  Settings backup: ${result.settingsBackupPath}`);
+    }
+    if (result.policyBackupPath) {
+      console.log(`  Policy backup:   ${result.policyBackupPath}`);
+    }
+    console.log(`  Health:          ${status.health}`);
+    console.log(`  Settings:        ${result.settingsPath}`);
+    console.log(`  Policy:          ${result.policyPath}\n`);
+
+    if (!result.repaired) {
+      process.exit(1);
     }
   });
 

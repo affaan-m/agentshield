@@ -23,7 +23,12 @@ export function getRuntimeStatus(targetPath: string): RuntimeStatusResult {
 
   if (settingsExists) {
     try {
-      const settings = JSON.parse(readFileSync(settingsPath, "utf-8")) as {
+      const parsed = JSON.parse(readFileSync(settingsPath, "utf-8"));
+      if (parsed === null || Array.isArray(parsed) || typeof parsed !== "object") {
+        throw new Error("settings.json must contain an object");
+      }
+
+      const settings = parsed as {
         hooks?: { PreToolUse?: Array<{ hook?: unknown }> };
       };
       const preToolUse = settings.hooks?.PreToolUse;
@@ -65,19 +70,19 @@ export function getRuntimeStatus(targetPath: string): RuntimeStatusResult {
   if (settingsExists && !settingsValid) {
     health = "invalid_settings";
     checkExitCode = 2;
-    message = "settings.json exists but could not be parsed.";
+    message = "settings.json exists but could not be parsed. Run `agentshield runtime repair` to back it up and restore a valid runtime config.";
   } else if (!hookInstalled) {
     health = "not_installed";
     checkExitCode = 1;
-    message = "AgentShield runtime hook is not installed.";
+    message = "AgentShield runtime hook is not installed. Run `agentshield runtime install` to enable it.";
   } else if (!policyExists) {
     health = "missing_policy";
     checkExitCode = 1;
-    message = "Runtime hook is installed, but runtime-policy.json is missing.";
+    message = "Runtime hook is installed, but runtime-policy.json is missing. Run `agentshield runtime repair` to recreate it.";
   } else if (!policyValid) {
     health = "invalid_policy";
     checkExitCode = 2;
-    message = "Runtime hook is installed, but runtime-policy.json is invalid.";
+    message = "Runtime hook is installed, but runtime-policy.json is invalid. Run `agentshield runtime repair` to replace it safely.";
   } else {
     health = "ready";
     checkExitCode = 0;

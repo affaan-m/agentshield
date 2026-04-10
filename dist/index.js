@@ -15103,117 +15103,32 @@ import { appendFileSync, existsSync as existsSync5, mkdirSync as mkdirSync2 } fr
 import { dirname as dirname2 } from "path";
 
 // src/runtime/install.ts
-import { readFileSync as readFileSync4, writeFileSync as writeFileSync3, existsSync as existsSync6, mkdirSync as mkdirSync3 } from "fs";
-import { join as join5, dirname as dirname3 } from "path";
-var RUNTIME_HOOK_MARKER = "agentshield/runtime-policy";
-var HOOK_COMMAND = `node -e "const fs=require('fs'),p=require('path');const s=Date.now();const t=process.env.TOOL_NAME||'unknown';const i=process.env.TOOL_INPUT||'';const pp=p.resolve('.agentshield/runtime-policy.json');if(!fs.existsSync(pp)){process.exit(0)}const pol=JSON.parse(fs.readFileSync(pp,'utf-8'));for(const r of pol.deny||[]){if(r.tool==='*'||r.tool===t||t.startsWith(r.tool.replace('*',''))){if(!r.pattern||new RegExp(r.pattern,'i').test(i)){const lp=p.resolve((pol.log||{}).path||'.agentshield/runtime.ndjson');const d=p.dirname(lp);if(!fs.existsSync(d))fs.mkdirSync(d,{recursive:true});fs.appendFileSync(lp,JSON.stringify({timestamp:new Date().toISOString(),tool:t,decision:'block',reason:r.reason,durationMs:Date.now()-s})+'\\n');process.stderr.write('AgentShield: BLOCKED '+t+' \u2014 '+(r.reason||'denied by policy')+'\\n');process.exit(2)}}}const lp2=p.resolve((pol.log||{}).path||'.agentshield/runtime.ndjson');const d2=p.dirname(lp2);if(!fs.existsSync(d2))fs.mkdirSync(d2,{recursive:true});fs.appendFileSync(lp2,JSON.stringify({timestamp:new Date().toISOString(),tool:t,decision:'allow',durationMs:Date.now()-s})+'\\n');process.exit(0)"`;
-var HOOK_ENTRY = {
-  matcher: "",
-  hook: HOOK_COMMAND
-};
-function installRuntime(targetPath) {
-  const settingsPath = resolveSettingsPath(targetPath);
-  const policyDir = join5(targetPath, ".agentshield");
-  const policyPath = join5(policyDir, "runtime-policy.json");
-  if (!existsSync6(policyDir)) {
-    mkdirSync3(policyDir, { recursive: true });
-  }
-  let policyCreated = false;
-  if (!existsSync6(policyPath)) {
-    writeFileSync3(policyPath, generateDefaultPolicy());
-    policyCreated = true;
-  }
-  let settings = {};
-  if (existsSync6(settingsPath)) {
-    try {
-      settings = JSON.parse(readFileSync4(settingsPath, "utf-8"));
-    } catch {
-      settings = {};
-    }
-  }
-  const hooks = settings.hooks ?? {};
-  const preToolUse = hooks.PreToolUse ?? [];
-  const alreadyInstalled = preToolUse.some(
-    (h) => typeof h.hook === "string" && h.hook.includes(RUNTIME_HOOK_MARKER)
-  );
-  if (alreadyInstalled) {
-    return {
-      hookInstalled: false,
-      policyCreated,
-      settingsPath,
-      policyPath,
-      message: "AgentShield runtime hook is already installed."
-    };
-  }
-  const updatedPreToolUse = [...preToolUse, HOOK_ENTRY];
-  const updatedHooks = { ...hooks, PreToolUse: updatedPreToolUse };
-  const updatedSettings = { ...settings, hooks: updatedHooks };
-  const dir = dirname3(settingsPath);
-  if (!existsSync6(dir)) {
-    mkdirSync3(dir, { recursive: true });
-  }
-  writeFileSync3(settingsPath, JSON.stringify(updatedSettings, null, 2));
-  return {
-    hookInstalled: true,
-    policyCreated,
-    settingsPath,
-    policyPath,
-    message: "AgentShield runtime hook installed successfully."
-  };
-}
-function uninstallRuntime(targetPath) {
-  const settingsPath = resolveSettingsPath(targetPath);
-  if (!existsSync6(settingsPath)) {
-    return { removed: false, message: "No settings.json found." };
-  }
-  try {
-    const settings = JSON.parse(readFileSync4(settingsPath, "utf-8"));
-    const hooks = settings.hooks;
-    if (!hooks?.PreToolUse) {
-      return { removed: false, message: "No PreToolUse hooks found." };
-    }
-    const preToolUse = hooks.PreToolUse;
-    const filtered = preToolUse.filter(
-      (h) => !(typeof h.hook === "string" && h.hook.includes(RUNTIME_HOOK_MARKER))
-    );
-    if (filtered.length === preToolUse.length) {
-      return { removed: false, message: "AgentShield runtime hook not found." };
-    }
-    const updatedHooks = { ...hooks, PreToolUse: filtered };
-    const updatedSettings = { ...settings, hooks: updatedHooks };
-    writeFileSync3(settingsPath, JSON.stringify(updatedSettings, null, 2));
-    return { removed: true, message: "AgentShield runtime hook removed." };
-  } catch {
-    return { removed: false, message: "Failed to parse settings.json." };
-  }
-}
-function resolveSettingsPath(targetPath) {
-  const claudeSettings = join5(targetPath, ".claude", "settings.json");
-  if (existsSync6(claudeSettings)) return claudeSettings;
-  const directSettings = join5(targetPath, "settings.json");
-  if (existsSync6(directSettings)) return directSettings;
-  return claudeSettings;
-}
+import { readFileSync as readFileSync5, writeFileSync as writeFileSync3, existsSync as existsSync7, mkdirSync as mkdirSync3, renameSync } from "fs";
+import { join as join6, dirname as dirname3 } from "path";
 
 // src/runtime/status.ts
-import { existsSync as existsSync7, readFileSync as readFileSync5 } from "fs";
-import { join as join6, resolve as resolve7 } from "path";
+import { existsSync as existsSync6, readFileSync as readFileSync4 } from "fs";
+import { join as join5, resolve as resolve7 } from "path";
 function defaultLogPath(targetPath) {
   return resolve7(targetPath, ".agentshield", "runtime.ndjson");
 }
 function runtimePolicyPath(targetPath) {
-  return join6(targetPath, ".agentshield", "runtime-policy.json");
+  return join5(targetPath, ".agentshield", "runtime-policy.json");
 }
 function getRuntimeStatus(targetPath) {
   const settingsPath = resolveSettingsPath(targetPath);
-  const settingsExists = existsSync7(settingsPath);
+  const settingsExists = existsSync6(settingsPath);
   const policyPath = runtimePolicyPath(targetPath);
-  const policyExists = existsSync7(policyPath);
+  const policyExists = existsSync6(policyPath);
   let settingsValid = false;
   let hookCount = 0;
   if (settingsExists) {
     try {
-      const settings = JSON.parse(readFileSync5(settingsPath, "utf-8"));
+      const parsed = JSON.parse(readFileSync4(settingsPath, "utf-8"));
+      if (parsed === null || Array.isArray(parsed) || typeof parsed !== "object") {
+        throw new Error("settings.json must contain an object");
+      }
+      const settings = parsed;
       const preToolUse = settings.hooks?.PreToolUse;
       settingsValid = true;
       if (Array.isArray(preToolUse)) {
@@ -15229,7 +15144,7 @@ function getRuntimeStatus(targetPath) {
   let logPath = defaultLogPath(targetPath);
   if (policyExists) {
     try {
-      const parsed = JSON.parse(readFileSync5(policyPath, "utf-8"));
+      const parsed = JSON.parse(readFileSync4(policyPath, "utf-8"));
       const result = RuntimePolicySchema.safeParse(parsed);
       if (result.success) {
         policyValid = true;
@@ -15240,7 +15155,7 @@ function getRuntimeStatus(targetPath) {
       policyValid = false;
     }
   }
-  const logExists = existsSync7(logPath);
+  const logExists = existsSync6(logPath);
   const hookInstalled = hookCount > 0;
   let health;
   let checkExitCode;
@@ -15248,19 +15163,19 @@ function getRuntimeStatus(targetPath) {
   if (settingsExists && !settingsValid) {
     health = "invalid_settings";
     checkExitCode = 2;
-    message = "settings.json exists but could not be parsed.";
+    message = "settings.json exists but could not be parsed. Run `agentshield runtime repair` to back it up and restore a valid runtime config.";
   } else if (!hookInstalled) {
     health = "not_installed";
     checkExitCode = 1;
-    message = "AgentShield runtime hook is not installed.";
+    message = "AgentShield runtime hook is not installed. Run `agentshield runtime install` to enable it.";
   } else if (!policyExists) {
     health = "missing_policy";
     checkExitCode = 1;
-    message = "Runtime hook is installed, but runtime-policy.json is missing.";
+    message = "Runtime hook is installed, but runtime-policy.json is missing. Run `agentshield runtime repair` to recreate it.";
   } else if (!policyValid) {
     health = "invalid_policy";
     checkExitCode = 2;
-    message = "Runtime hook is installed, but runtime-policy.json is invalid.";
+    message = "Runtime hook is installed, but runtime-policy.json is invalid. Run `agentshield runtime repair` to replace it safely.";
   } else {
     health = "ready";
     checkExitCode = 0;
@@ -15281,6 +15196,215 @@ function getRuntimeStatus(targetPath) {
     checkExitCode,
     message
   };
+}
+
+// src/runtime/install.ts
+var RUNTIME_HOOK_MARKER = "agentshield/runtime-policy";
+var HOOK_COMMAND = `node -e "const fs=require('fs'),p=require('path');const s=Date.now();const t=process.env.TOOL_NAME||'unknown';const i=process.env.TOOL_INPUT||'';const pp=p.resolve('.agentshield/runtime-policy.json');if(!fs.existsSync(pp)){process.exit(0)}const pol=JSON.parse(fs.readFileSync(pp,'utf-8'));for(const r of pol.deny||[]){if(r.tool==='*'||r.tool===t||t.startsWith(r.tool.replace('*',''))){if(!r.pattern||new RegExp(r.pattern,'i').test(i)){const lp=p.resolve((pol.log||{}).path||'.agentshield/runtime.ndjson');const d=p.dirname(lp);if(!fs.existsSync(d))fs.mkdirSync(d,{recursive:true});fs.appendFileSync(lp,JSON.stringify({timestamp:new Date().toISOString(),tool:t,decision:'block',reason:r.reason,durationMs:Date.now()-s})+'\\n');process.stderr.write('AgentShield: BLOCKED '+t+' \u2014 '+(r.reason||'denied by policy')+'\\n');process.exit(2)}}}const lp2=p.resolve((pol.log||{}).path||'.agentshield/runtime.ndjson');const d2=p.dirname(lp2);if(!fs.existsSync(d2))fs.mkdirSync(d2,{recursive:true});fs.appendFileSync(lp2,JSON.stringify({timestamp:new Date().toISOString(),tool:t,decision:'allow',durationMs:Date.now()-s})+'\\n');process.exit(0)"`;
+var HOOK_ENTRY = {
+  matcher: "",
+  hook: HOOK_COMMAND
+};
+function parseJsonObject(raw) {
+  const parsed = JSON.parse(raw);
+  if (parsed === null || Array.isArray(parsed) || typeof parsed !== "object") {
+    return null;
+  }
+  return parsed;
+}
+function readSettingsFile(settingsPath) {
+  if (!existsSync7(settingsPath)) {
+    return { exists: false, valid: true, value: {} };
+  }
+  try {
+    const parsed = parseJsonObject(readFileSync5(settingsPath, "utf-8"));
+    if (!parsed) {
+      return { exists: true, valid: false, value: {} };
+    }
+    return { exists: true, valid: true, value: parsed };
+  } catch {
+    return { exists: true, valid: false, value: {} };
+  }
+}
+function runtimePolicyPath2(targetPath) {
+  return join6(targetPath, ".agentshield", "runtime-policy.json");
+}
+function hasValidRuntimePolicy(policyPath) {
+  if (!existsSync7(policyPath)) {
+    return false;
+  }
+  try {
+    const parsed = JSON.parse(readFileSync5(policyPath, "utf-8"));
+    return RuntimePolicySchema.safeParse(parsed).success;
+  } catch {
+    return false;
+  }
+}
+function repairHint() {
+  return "Run `agentshield runtime repair` to back up invalid files and restore a healthy runtime monitor.";
+}
+function nextBackupPath(filePath) {
+  const basePath = `${filePath}.agentshield.bak`;
+  if (!existsSync7(basePath)) {
+    return basePath;
+  }
+  let index = 1;
+  while (existsSync7(`${basePath}.${index}`)) {
+    index += 1;
+  }
+  return `${basePath}.${index}`;
+}
+function backupFile(filePath) {
+  const backupPath = nextBackupPath(filePath);
+  renameSync(filePath, backupPath);
+  return backupPath;
+}
+function installRuntimeAtPath(targetPath, settingsPath) {
+  const policyPath = runtimePolicyPath2(targetPath);
+  const policyDir = dirname3(policyPath);
+  if (!existsSync7(policyDir)) {
+    mkdirSync3(policyDir, { recursive: true });
+  }
+  let policyCreated = false;
+  if (!existsSync7(policyPath)) {
+    writeFileSync3(policyPath, generateDefaultPolicy());
+    policyCreated = true;
+  }
+  const settingsState = readSettingsFile(settingsPath);
+  if (!settingsState.valid) {
+    return {
+      hookInstalled: false,
+      policyCreated,
+      settingsPath,
+      policyPath,
+      message: `settings.json exists but could not be parsed. ${repairHint()}`
+    };
+  }
+  const settings = settingsState.value;
+  const hooks = settings.hooks ?? {};
+  const preToolUse = hooks.PreToolUse ?? [];
+  const alreadyInstalled = preToolUse.some(
+    (h) => typeof h.hook === "string" && h.hook.includes(RUNTIME_HOOK_MARKER)
+  );
+  if (alreadyInstalled) {
+    return {
+      hookInstalled: false,
+      policyCreated,
+      settingsPath,
+      policyPath,
+      message: "AgentShield runtime hook is already installed."
+    };
+  }
+  const updatedPreToolUse = [...preToolUse, HOOK_ENTRY];
+  const updatedHooks = { ...hooks, PreToolUse: updatedPreToolUse };
+  const updatedSettings = { ...settings, hooks: updatedHooks };
+  const dir = dirname3(settingsPath);
+  if (!existsSync7(dir)) {
+    mkdirSync3(dir, { recursive: true });
+  }
+  writeFileSync3(settingsPath, JSON.stringify(updatedSettings, null, 2));
+  return {
+    hookInstalled: true,
+    policyCreated,
+    settingsPath,
+    policyPath,
+    message: "AgentShield runtime hook installed successfully."
+  };
+}
+function installRuntime(targetPath) {
+  const settingsPath = resolveSettingsPath(targetPath);
+  const policyPath = runtimePolicyPath2(targetPath);
+  const settingsState = readSettingsFile(settingsPath);
+  if (settingsState.exists && !settingsState.valid) {
+    return {
+      hookInstalled: false,
+      policyCreated: false,
+      settingsPath,
+      policyPath,
+      message: `settings.json exists but could not be parsed. ${repairHint()}`
+    };
+  }
+  if (existsSync7(policyPath) && !hasValidRuntimePolicy(policyPath)) {
+    return {
+      hookInstalled: false,
+      policyCreated: false,
+      settingsPath,
+      policyPath,
+      message: `runtime-policy.json exists but is invalid. ${repairHint()}`
+    };
+  }
+  return installRuntimeAtPath(targetPath, settingsPath);
+}
+function repairRuntime(targetPath) {
+  const settingsPath = resolveSettingsPath(targetPath);
+  const policyPath = runtimePolicyPath2(targetPath);
+  let settingsBackupPath;
+  let policyBackupPath;
+  const settingsState = readSettingsFile(settingsPath);
+  if (settingsState.exists && !settingsState.valid) {
+    const dir = dirname3(settingsPath);
+    if (!existsSync7(dir)) {
+      mkdirSync3(dir, { recursive: true });
+    }
+    settingsBackupPath = backupFile(settingsPath);
+  }
+  if (existsSync7(policyPath) && !hasValidRuntimePolicy(policyPath)) {
+    const policyDir = dirname3(policyPath);
+    if (!existsSync7(policyDir)) {
+      mkdirSync3(policyDir, { recursive: true });
+    }
+    policyBackupPath = backupFile(policyPath);
+  }
+  const installResult = installRuntimeAtPath(targetPath, settingsPath);
+  const status = getRuntimeStatus(targetPath);
+  const changed = Boolean(
+    settingsBackupPath || policyBackupPath || installResult.hookInstalled || installResult.policyCreated
+  );
+  const repaired = status.health === "ready";
+  return {
+    repaired,
+    changed,
+    hookInstalled: installResult.hookInstalled,
+    policyCreated: installResult.policyCreated,
+    settingsPath: installResult.settingsPath,
+    policyPath: installResult.policyPath,
+    settingsBackupPath,
+    policyBackupPath,
+    message: repaired ? changed ? "AgentShield runtime monitor repaired successfully." : "AgentShield runtime monitor is already healthy." : `AgentShield runtime monitor is still not ready. ${status.message}`
+  };
+}
+function uninstallRuntime(targetPath) {
+  const settingsPath = resolveSettingsPath(targetPath);
+  if (!existsSync7(settingsPath)) {
+    return { removed: false, message: "No settings.json found." };
+  }
+  const settingsState = readSettingsFile(settingsPath);
+  if (!settingsState.valid) {
+    return { removed: false, message: `Failed to parse settings.json. ${repairHint()}` };
+  }
+  const settings = settingsState.value;
+  const hooks = settings.hooks;
+  if (!hooks?.PreToolUse) {
+    return { removed: false, message: "No PreToolUse hooks found." };
+  }
+  const preToolUse = hooks.PreToolUse;
+  const filtered = preToolUse.filter(
+    (h) => !(typeof h.hook === "string" && h.hook.includes(RUNTIME_HOOK_MARKER))
+  );
+  if (filtered.length === preToolUse.length) {
+    return { removed: false, message: "AgentShield runtime hook not found." };
+  }
+  const updatedHooks = { ...hooks, PreToolUse: filtered };
+  const updatedSettings = { ...settings, hooks: updatedHooks };
+  writeFileSync3(settingsPath, JSON.stringify(updatedSettings, null, 2));
+  return { removed: true, message: "AgentShield runtime hook removed." };
+}
+function resolveSettingsPath(targetPath) {
+  const claudeSettings = join6(targetPath, ".claude", "settings.json");
+  if (existsSync7(claudeSettings)) return claudeSettings;
+  const directSettings = join6(targetPath, "settings.json");
+  if (existsSync7(directSettings)) return directSettings;
+  return claudeSettings;
 }
 
 // src/index.ts
@@ -15790,6 +15914,27 @@ runtime.command("status").description("Inspect runtime hook, policy, and logging
   }
   if (options.check) {
     process.exit(result.checkExitCode);
+  }
+});
+runtime.command("repair").description("Back up invalid runtime files and restore a healthy monitor install").option("-p, --path <path>", "Target directory (default: current directory)", ".").action((options) => {
+  const result = repairRuntime(resolve8(options.path));
+  const status = getRuntimeStatus(resolve8(options.path));
+  console.log(`
+  AgentShield Runtime Monitor
+`);
+  console.log(`  ${result.message}`);
+  if (result.settingsBackupPath) {
+    console.log(`  Settings backup: ${result.settingsBackupPath}`);
+  }
+  if (result.policyBackupPath) {
+    console.log(`  Policy backup:   ${result.policyBackupPath}`);
+  }
+  console.log(`  Health:          ${status.health}`);
+  console.log(`  Settings:        ${result.settingsPath}`);
+  console.log(`  Policy:          ${result.policyPath}
+`);
+  if (!result.repaired) {
+    process.exit(1);
   }
 });
 var policyCmd = program.command("policy").description("Organization-wide security policy management");

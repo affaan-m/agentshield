@@ -107,6 +107,32 @@ describe("installRuntime", () => {
     expect(result.hookInstalled).toBe(true);
     expect(existsSync(result.settingsPath)).toBe(true);
   });
+
+  it("does not overwrite invalid settings.json without explicit repair", () => {
+    setupFixtures();
+    const settingsPath = join(FIXTURES_DIR, ".claude", "settings.json");
+    writeFileSync(settingsPath, "{ invalid json");
+
+    const result = installRuntime(FIXTURES_DIR);
+
+    expect(result.hookInstalled).toBe(false);
+    expect(result.message).toContain("runtime repair");
+    expect(readFileSync(settingsPath, "utf-8")).toBe("{ invalid json");
+    expect(existsSync(join(FIXTURES_DIR, ".agentshield", "runtime-policy.json"))).toBe(false);
+  });
+
+  it("does not install the hook when the existing runtime policy is invalid", () => {
+    setupFixtures();
+    const policyDir = join(FIXTURES_DIR, ".agentshield");
+    mkdirSync(policyDir, { recursive: true });
+    writeFileSync(join(policyDir, "runtime-policy.json"), "{ invalid json");
+
+    const result = installRuntime(FIXTURES_DIR);
+
+    expect(result.hookInstalled).toBe(false);
+    expect(result.message).toContain("runtime repair");
+    expect(existsSync(join(FIXTURES_DIR, ".claude", "settings.json"))).toBe(false);
+  });
 });
 
 describe("uninstallRuntime", () => {

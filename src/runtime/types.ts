@@ -63,6 +63,18 @@ export interface InstallResult {
   readonly message: string;
 }
 
+export interface RuntimeRepairResult {
+  readonly repaired: boolean;
+  readonly changed: boolean;
+  readonly hookInstalled: boolean;
+  readonly policyCreated: boolean;
+  readonly settingsPath: string;
+  readonly policyPath: string;
+  readonly settingsBackupPath?: string;
+  readonly policyBackupPath?: string;
+  readonly message: string;
+}
+
 // ─── Runtime Status Result ───────────────────────────────────
 
 export type RuntimeStatusHealth =

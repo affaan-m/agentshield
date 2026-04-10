@@ -494,6 +494,19 @@ agentshield scan [options]         Scan configuration directory
 agentshield init                   Generate secure baseline config
 ```
 
+Runtime monitor lifecycle:
+
+```bash
+# Install the PreToolUse runtime monitor
+agentshield runtime install
+
+# Check whether the hook, policy, and log path are healthy
+agentshield runtime status --check
+
+# Back up invalid runtime files and restore a healthy install
+agentshield runtime repair
+```
+
 Exit codes:
 - `0`: scan completed without critical findings
 - `1`: CLI usage or runtime error
