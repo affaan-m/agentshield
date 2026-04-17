@@ -1539,14 +1539,29 @@ const rawMcpRules: ReadonlyArray<Rule> = [
     id: "mcp-npx-shell-exec",
     name: "MCP npx shell-exec flag",
     description:
-      "Checks for MCP servers using `npx -c`, `--call`, `-e`, or `--eval` — these pass the argument to the user's shell, giving RCE equivalent to `sh -c`.",
+      "Checks for MCP servers using `npx -c` / `--call` (including `--call=…`) — these pass the argument to the user's shell, giving RCE equivalent to `sh -c`.",
     severity: "high",
     category: "mcp",
     check(file: ConfigFile): ReadonlyArray<Finding> {
       if (file.type !== "mcp-json" && file.type !== "settings-json") return [];
 
       const findings: Finding[] = [];
-      const shellExecFlags = new Set(["-c", "--call", "-e", "--eval"]);
+
+      function isNpxCommand(cmd: string | undefined): boolean {
+        if (!cmd) return false;
+        const basename = cmd.split(/[\\/]/).pop() ?? "";
+        return basename === "npx" || basename === "npx.cmd" || basename === "npx.exe";
+      }
+
+      function findShellExecFlag(args: ReadonlyArray<unknown>): string | undefined {
+        for (const raw of args) {
+          if (typeof raw !== "string") return undefined;
+          if (raw === "-c" || raw === "--call") return raw;
+          if (raw.startsWith("--call=")) return "--call";
+          if (!raw.startsWith("-")) return undefined;
+        }
+        return undefined;
+      }
 
       try {
         const config = JSON.parse(file.content);
@@ -1557,11 +1572,9 @@ const rawMcpRules: ReadonlyArray<Rule> = [
           const command = serverConfig.command as string | undefined;
           const args = (serverConfig.args ?? []) as unknown;
 
-          if (command !== "npx" || !Array.isArray(args)) continue;
+          if (!isNpxCommand(command) || !Array.isArray(args)) continue;
 
-          const matchedFlag = args.find(
-            (a): a is string => typeof a === "string" && shellExecFlags.has(a)
-          );
+          const matchedFlag = findShellExecFlag(args);
           if (!matchedFlag) continue;
 
           findings.push({
@@ -1571,11 +1584,11 @@ const rawMcpRules: ReadonlyArray<Rule> = [
             title: `MCP server "${name}" uses npx ${matchedFlag} (shell execution)`,
             description: `The MCP server "${name}" invokes \`npx ${matchedFlag}\` which passes the next argument to the user's shell — identical RCE primitive to \`sh -c\`. This is the Flowise bypass pattern (Ox Security "Mother of All AI Supply Chains", Family 2).`,
             file: file.path,
-            evidence: `command: npx, args: ${JSON.stringify(args)}`,
+            evidence: `command: ${command}, args: ${JSON.stringify(args)}`,
             fix: {
               description:
-                "Remove the shell-exec flag. Pin to a specific package version with `npx <pkg>@<version>` instead; if shell execution is required, declare the target binary explicitly rather than piggy-backing on npx.",
-              before: `"command": "npx", "args": ${JSON.stringify(args)}`,
+                "Remove `-c` / `--call`. Pin to a specific package version with `npx <pkg>@<version>` instead; if shell execution is required, declare the target binary explicitly rather than piggy-backing on npx.",
+              before: `"command": "${command}", "args": ${JSON.stringify(args)}`,
               after: `"command": "npx", "args": ["<package>@<version>"]`,
               auto: false,
             },

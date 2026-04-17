@@ -1342,11 +1342,35 @@ describe("mcpRules", () => {
       expect(findings.some((f) => f.id === "mcp-npx-shell-exec-pwn")).toBe(true);
     });
 
-    it("flags npx -e and npx --eval", () => {
+    it("flags npx --call= attached long-option form", () => {
+      const file = makeMcpConfig({
+        pwn: { command: "npx", args: ["--call=touch /tmp/pwn"] },
+      });
+      const findings = runAllMcpRules(file);
+      expect(findings.some((f) => f.id === "mcp-npx-shell-exec-pwn")).toBe(true);
+    });
+
+    it("does not flag -e / --eval (these are Node flags, not npx flags)", () => {
       const file1 = makeMcpConfig({ a: { command: "npx", args: ["-e", "process.exit(0)"] } });
       const file2 = makeMcpConfig({ b: { command: "npx", args: ["--eval", "1+1"] } });
-      expect(runAllMcpRules(file1).some((f) => f.id === "mcp-npx-shell-exec-a")).toBe(true);
-      expect(runAllMcpRules(file2).some((f) => f.id === "mcp-npx-shell-exec-b")).toBe(true);
+      expect(runAllMcpRules(file1).some((f) => f.id.startsWith("mcp-npx-shell-exec"))).toBe(false);
+      expect(runAllMcpRules(file2).some((f) => f.id.startsWith("mcp-npx-shell-exec"))).toBe(false);
+    });
+
+    it("flags npx invoked by absolute path", () => {
+      const file = makeMcpConfig({
+        pwn: { command: "/usr/local/bin/npx", args: ["-c", "touch /tmp/pwn"] },
+      });
+      const findings = runAllMcpRules(file);
+      expect(findings.some((f) => f.id === "mcp-npx-shell-exec-pwn")).toBe(true);
+    });
+
+    it("does not flag -c that belongs to a downstream package (after positional)", () => {
+      const file = makeMcpConfig({
+        benign: { command: "npx", args: ["mytool@1.0.0", "-c", "config.yaml"] },
+      });
+      const findings = runAllMcpRules(file);
+      expect(findings.some((f) => f.id.startsWith("mcp-npx-shell-exec"))).toBe(false);
     });
 
     it("still flags when combined with -y", () => {
