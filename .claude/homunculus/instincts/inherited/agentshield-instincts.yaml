@@ -1,0 +1,319 @@
+# Instincts generated from https://github.com/affaan-m/agentshield
+# Generated: 2026-04-17T05:30:26.279Z
+# Version: 2.0
+# NOTE: This file supplements (does not replace) any existing curated instincts.
+# High-confidence manually curated instincts should be preserved alongside these.
+
+---
+id: agentshield-commit-conventional
+trigger: "when writing a commit message"
+confidence: 0.85
+domain: git
+source: repo-analysis
+source_repo: https://github.com/affaan-m/agentshield
+---
+
+# Agentshield Commit Conventional
+
+## Action
+
+Use conventional commit format with prefixes: feat
+
+## Evidence
+
+- 1 commits analyzed
+- Detected conventional commit pattern
+- Examples: feat: detect npx -c / --call shell execution in MCP servers
+
+---
+id: agentshield-commit-length
+trigger: "when writing a commit message"
+confidence: 0.6
+domain: git
+source: repo-analysis
+source_repo: https://github.com/affaan-m/agentshield
+---
+
+# Agentshield Commit Length
+
+## Action
+
+Write moderate-length commit messages (~59 characters)
+
+## Evidence
+
+- Average commit message length: 59 chars
+- Based on 1 commits
+
+---
+id: agentshield-naming-files
+trigger: "when creating a new file"
+confidence: 0.8
+domain: code-style
+source: repo-analysis
+source_repo: https://github.com/affaan-m/agentshield
+---
+
+# Agentshield Naming Files
+
+## Action
+
+Use camelCase naming convention
+
+## Evidence
+
+- Analyzed file naming patterns in repository
+- Dominant pattern: camelCase
+
+---
+id: agentshield-import-relative
+trigger: "when importing modules"
+confidence: 0.75
+domain: code-style
+source: repo-analysis
+source_repo: https://github.com/affaan-m/agentshield
+---
+
+# Agentshield Import Relative
+
+## Action
+
+Use relative imports for project files
+
+## Evidence
+
+- Import analysis shows relative import pattern
+- Example: import { x } from '../lib/x'
+
+---
+id: agentshield-export-style
+trigger: "when exporting from a module"
+confidence: 0.7
+domain: code-style
+source: repo-analysis
+source_repo: https://github.com/affaan-m/agentshield
+---
+
+# Agentshield Export Style
+
+## Action
+
+Prefer named exports
+
+## Evidence
+
+- Export pattern analysis
+- Dominant style: named
+
+---
+id: agentshield-test-separate
+trigger: "when writing tests"
+confidence: 0.8
+domain: testing
+source: repo-analysis
+source_repo: https://github.com/affaan-m/agentshield
+---
+
+# Agentshield Test Separate
+
+## Action
+
+Place tests in the tests/ or __tests__/ directory, mirroring src structure
+
+## Evidence
+
+- Separate test directory pattern detected
+- Tests live in dedicated test folders
+
+---
+id: agentshield-instinct-file-naming-camelCase
+trigger: "When creating a new file in the codebase"
+confidence: 0.8
+domain: code-style
+source: repo-analysis
+source_repo: affaan-m/agentshield
+---
+
+# Agentshield Instinct File Naming CamelCase
+
+## Action
+
+Name the file using camelCase
+
+## Evidence
+
+- Pattern in namingConventions.files: camelCase
+
+---
+id: agentshield-instinct-function-naming-camelCase
+trigger: "When defining a new function"
+confidence: 0.9
+domain: code-style
+source: repo-analysis
+source_repo: affaan-m/agentshield
+---
+
+# Agentshield Instinct Function Naming CamelCase
+
+## Action
+
+Name the function using camelCase
+
+## Evidence
+
+- Pattern in namingConventions.functions: camelCase
+
+---
+id: agentshield-instinct-class-naming-PascalCase
+trigger: "When defining a new class"
+confidence: 0.9
+domain: code-style
+source: repo-analysis
+source_repo: affaan-m/agentshield
+---
+
+# Agentshield Instinct Class Naming PascalCase
+
+## Action
+
+Name the class using PascalCase
+
+## Evidence
+
+- Pattern in namingConventions.classes: PascalCase
+
+---
+id: agentshield-instinct-constant-naming-SCREAMING_SNAKE_CASE
+trigger: "When declaring a constant"
+confidence: 0.9
+domain: code-style
+source: repo-analysis
+source_repo: affaan-m/agentshield
+---
+
+# Agentshield Instinct Constant Naming SCREAMING_SNAKE_CASE
+
+## Action
+
+Name the constant using SCREAMING_SNAKE_CASE
+
+## Evidence
+
+- Pattern in namingConventions.constants: SCREAMING_SNAKE_CASE
+
+---
+id: agentshield-instinct-import-style-relative
+trigger: "When importing modules"
+confidence: 0.8
+domain: code-style
+source: repo-analysis
+source_repo: affaan-m/agentshield
+---
+
+# Agentshield Instinct Import Style Relative
+
+## Action
+
+Use relative import paths
+
+## Evidence
+
+- Pattern in importStyle: relative
+
+---
+id: agentshield-instinct-export-style-named
+trigger: "When exporting modules or functions"
+confidence: 0.8
+domain: code-style
+source: repo-analysis
+source_repo: affaan-m/agentshield
+---
+
+# Agentshield Instinct Export Style Named
+
+## Action
+
+Use named exports
+
+## Evidence
+
+- Pattern in exportStyle: named
+
+---
+id: agentshield-instinct-error-handling-try-catch
+trigger: "When handling errors in code"
+confidence: 0.7
+domain: code-style
+source: repo-analysis
+source_repo: affaan-m/agentshield
+---
+
+# Agentshield Instinct Error Handling Try Catch
+
+## Action
+
+Use try-catch blocks for error handling
+
+## Evidence
+
+- Pattern in errorHandling.style: try-catch
+
+---
+id: agentshield-instinct-test-location-separate
+trigger: "When adding new tests"
+confidence: 0.8
+domain: testing
+source: repo-analysis
+source_repo: affaan-m/agentshield
+---
+
+# Agentshield Instinct Test Location Separate
+
+## Action
+
+Place tests in a separate 'tests' folder
+
+## Evidence
+
+- Pattern in architecture.folderStructure.testLocation: separate
+- Presence of 'tests' folder
+
+---
+id: agentshield-instinct-commit-format-conventional-feat
+trigger: "When writing a commit message for a new feature"
+confidence: 0.9
+domain: git
+source: repo-analysis
+source_repo: affaan-m/agentshield
+---
+
+# Agentshield Instinct Commit Format Conventional Feat
+
+## Action
+
+Prefix the commit message with 'feat:' following the conventional commit format
+
+## Evidence
+
+- Pattern in commits.prefixes: feat
+- Example: 'feat: detect npx -c / --call shell execution in MCP servers'
+
+---
+id: agentshield-instinct-commit-length-brief
+trigger: "When composing a commit message"
+confidence: 0.7
+domain: git
+source: repo-analysis
+source_repo: affaan-m/agentshield
+---
+
+# Agentshield Instinct Commit Length Brief
+
+## Action
+
+Keep the commit message concise, around 59 characters on average
+
+## Evidence
+
+- Pattern in commits.averageLength: 59
+
