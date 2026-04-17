@@ -1553,12 +1553,48 @@ const rawMcpRules: ReadonlyArray<Rule> = [
         return basename === "npx" || basename === "npx.cmd" || basename === "npx.exe";
       }
 
+      // npx options that consume the following argv token as their value.
+      // When we encounter one of these we must skip that value so it isn't
+      // mistaken for the package positional (which terminates flag scanning).
+      const npxValueTakingOptions: ReadonlySet<string> = new Set([
+        "-p",
+        "--package",
+        "-w",
+        "--workspace",
+        "--workspaces",
+        "--registry",
+        "--loglevel",
+        "--userconfig",
+        "--globalconfig",
+        "--prefix",
+      ]);
+
       function findShellExecFlag(args: ReadonlyArray<unknown>): string | undefined {
-        for (const raw of args) {
+        let i = 0;
+        while (i < args.length) {
+          const raw = args[i];
           if (typeof raw !== "string") return undefined;
           if (raw === "-c" || raw === "--call") return raw;
           if (raw.startsWith("--call=")) return "--call";
-          if (!raw.startsWith("-")) return undefined;
+          // Attached long-option values (--package=foo) are self-contained.
+          if (raw.startsWith("--") && raw.includes("=")) {
+            i++;
+            continue;
+          }
+          // Known value-taking options consume the next token.
+          if (npxValueTakingOptions.has(raw)) {
+            i += 2;
+            continue;
+          }
+          // Any other flag (including combined short flags like -yp) is kept
+          // but doesn't consume the next token.
+          if (raw.startsWith("-")) {
+            i++;
+            continue;
+          }
+          // First positional = package name; anything past this belongs to
+          // the downstream command and must not be scanned.
+          return undefined;
         }
         return undefined;
       }

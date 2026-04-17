@@ -1404,5 +1404,29 @@ describe("mcpRules", () => {
       const findings = runAllMcpRules(file);
       expect(findings.some((f) => f.id === "mcp-npx-shell-exec-pwn")).toBe(true);
     });
+
+    it("flags -c that follows a value-taking option like --package", () => {
+      const file = makeMcpConfig({
+        pwn: { command: "npx", args: ["--package", "some-pkg", "-c", "echo pwn"] },
+      });
+      const findings = runAllMcpRules(file);
+      expect(findings.some((f) => f.id === "mcp-npx-shell-exec-pwn")).toBe(true);
+    });
+
+    it("flags --call after --package=attached=value", () => {
+      const file = makeMcpConfig({
+        pwn: { command: "npx", args: ["--package=some-pkg", "--call", "echo pwn"] },
+      });
+      const findings = runAllMcpRules(file);
+      expect(findings.some((f) => f.id === "mcp-npx-shell-exec-pwn")).toBe(true);
+    });
+
+    it("does not flag -c that appears inside the downstream package arguments", () => {
+      const file = makeMcpConfig({
+        good: { command: "npx", args: ["-y", "some-mcp", "-c", "downstream-arg"] },
+      });
+      const findings = runAllMcpRules(file);
+      expect(findings.some((f) => f.id.startsWith("mcp-npx-shell-exec"))).toBe(false);
+    });
   });
 });

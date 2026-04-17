@@ -5198,6 +5198,86 @@ var rawMcpRules = [
       }
       return findings;
     }
+  },
+  {
+    id: "mcp-npx-shell-exec",
+    name: "MCP npx shell-exec flag",
+    description: "Checks for MCP servers using `npx -c` / `--call` (including `--call=\u2026`) \u2014 these pass the argument to the user's shell, giving RCE equivalent to `sh -c`.",
+    severity: "high",
+    category: "mcp",
+    check(file) {
+      if (file.type !== "mcp-json" && file.type !== "settings-json") return [];
+      const findings = [];
+      function isNpxCommand(cmd) {
+        if (!cmd) return false;
+        const basename3 = cmd.split(/[\\/]/).pop() ?? "";
+        return basename3 === "npx" || basename3 === "npx.cmd" || basename3 === "npx.exe";
+      }
+      const npxValueTakingOptions = /* @__PURE__ */ new Set([
+        "-p",
+        "--package",
+        "-w",
+        "--workspace",
+        "--workspaces",
+        "--registry",
+        "--loglevel",
+        "--userconfig",
+        "--globalconfig",
+        "--prefix"
+      ]);
+      function findShellExecFlag(args) {
+        let i = 0;
+        while (i < args.length) {
+          const raw = args[i];
+          if (typeof raw !== "string") return void 0;
+          if (raw === "-c" || raw === "--call") return raw;
+          if (raw.startsWith("--call=")) return "--call";
+          if (raw.startsWith("--") && raw.includes("=")) {
+            i++;
+            continue;
+          }
+          if (npxValueTakingOptions.has(raw)) {
+            i += 2;
+            continue;
+          }
+          if (raw.startsWith("-")) {
+            i++;
+            continue;
+          }
+          return void 0;
+        }
+        return void 0;
+      }
+      try {
+        const config = JSON.parse(file.content);
+        const servers = config.mcpServers ?? {};
+        for (const [name, server] of Object.entries(servers)) {
+          const serverConfig = server;
+          const command = serverConfig.command;
+          const args = serverConfig.args ?? [];
+          if (!isNpxCommand(command) || !Array.isArray(args)) continue;
+          const matchedFlag = findShellExecFlag(args);
+          if (!matchedFlag) continue;
+          findings.push({
+            id: `mcp-npx-shell-exec-${name}`,
+            severity: "high",
+            category: "mcp",
+            title: `MCP server "${name}" uses npx ${matchedFlag} (shell execution)`,
+            description: `The MCP server "${name}" invokes \`npx ${matchedFlag}\` which passes the next argument to the user's shell \u2014 identical RCE primitive to \`sh -c\`. This is the Flowise bypass pattern (Ox Security "Mother of All AI Supply Chains", Family 2).`,
+            file: file.path,
+            evidence: `command: ${command}, args: ${JSON.stringify(args)}`,
+            fix: {
+              description: "Remove `-c` / `--call`. Pin to a specific package version with `npx <pkg>@<version>` instead; if shell execution is required, declare the target binary explicitly rather than piggy-backing on npx.",
+              before: `"command": "${command}", "args": ${JSON.stringify(args)}`,
+              after: `"command": "npx", "args": ["<package>@<version>"]`,
+              auto: false
+            }
+          });
+        }
+      } catch {
+      }
+      return findings;
+    }
   }
 ];
 var mcpRules = rawMcpRules.map((rule) => ({
