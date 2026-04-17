@@ -1535,6 +1535,59 @@ const rawMcpRules: ReadonlyArray<Rule> = [
       return findings;
     },
   },
+  {
+    id: "mcp-npx-shell-exec",
+    name: "MCP npx shell-exec flag",
+    description:
+      "Checks for MCP servers using `npx -c`, `--call`, `-e`, or `--eval` — these pass the argument to the user's shell, giving RCE equivalent to `sh -c`.",
+    severity: "high",
+    category: "mcp",
+    check(file: ConfigFile): ReadonlyArray<Finding> {
+      if (file.type !== "mcp-json" && file.type !== "settings-json") return [];
+
+      const findings: Finding[] = [];
+      const shellExecFlags = new Set(["-c", "--call", "-e", "--eval"]);
+
+      try {
+        const config = JSON.parse(file.content);
+        const servers = config.mcpServers ?? {};
+
+        for (const [name, server] of Object.entries(servers)) {
+          const serverConfig = server as Record<string, unknown>;
+          const command = serverConfig.command as string | undefined;
+          const args = (serverConfig.args ?? []) as unknown;
+
+          if (command !== "npx" || !Array.isArray(args)) continue;
+
+          const matchedFlag = args.find(
+            (a): a is string => typeof a === "string" && shellExecFlags.has(a)
+          );
+          if (!matchedFlag) continue;
+
+          findings.push({
+            id: `mcp-npx-shell-exec-${name}`,
+            severity: "high",
+            category: "mcp",
+            title: `MCP server "${name}" uses npx ${matchedFlag} (shell execution)`,
+            description: `The MCP server "${name}" invokes \`npx ${matchedFlag}\` which passes the next argument to the user's shell — identical RCE primitive to \`sh -c\`. This is the Flowise bypass pattern (Ox Security "Mother of All AI Supply Chains", Family 2).`,
+            file: file.path,
+            evidence: `command: npx, args: ${JSON.stringify(args)}`,
+            fix: {
+              description:
+                "Remove the shell-exec flag. Pin to a specific package version with `npx <pkg>@<version>` instead; if shell execution is required, declare the target binary explicitly rather than piggy-backing on npx.",
+              before: `"command": "npx", "args": ${JSON.stringify(args)}`,
+              after: `"command": "npx", "args": ["<package>@<version>"]`,
+              auto: false,
+            },
+          });
+        }
+      } catch {
+        // Not valid JSON
+      }
+
+      return findings;
+    },
+  },
 ];
 
 export const mcpRules: ReadonlyArray<Rule> = rawMcpRules.map((rule) => ({

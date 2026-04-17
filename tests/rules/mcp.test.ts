@@ -1322,4 +1322,63 @@ describe("mcpRules", () => {
       expect(findings.some((f) => f.id.includes("no-timeout"))).toBe(false);
     });
   });
+
+  describe("npx shell-exec (mcp-npx-shell-exec)", () => {
+    it("flags npx -c as high", () => {
+      const file = makeMcpConfig({
+        pwn: { command: "npx", args: ["-c", "touch /tmp/pwn"] },
+      });
+      const findings = runAllMcpRules(file);
+      const finding = findings.find((f) => f.id === "mcp-npx-shell-exec-pwn");
+      expect(finding?.severity).toBe("high");
+      expect(finding?.title).toContain("-c");
+    });
+
+    it("flags npx --call", () => {
+      const file = makeMcpConfig({
+        pwn: { command: "npx", args: ["--call", "node -e 'require(`x`)()'"] },
+      });
+      const findings = runAllMcpRules(file);
+      expect(findings.some((f) => f.id === "mcp-npx-shell-exec-pwn")).toBe(true);
+    });
+
+    it("flags npx -e and npx --eval", () => {
+      const file1 = makeMcpConfig({ a: { command: "npx", args: ["-e", "process.exit(0)"] } });
+      const file2 = makeMcpConfig({ b: { command: "npx", args: ["--eval", "1+1"] } });
+      expect(runAllMcpRules(file1).some((f) => f.id === "mcp-npx-shell-exec-a")).toBe(true);
+      expect(runAllMcpRules(file2).some((f) => f.id === "mcp-npx-shell-exec-b")).toBe(true);
+    });
+
+    it("still flags when combined with -y", () => {
+      const file = makeMcpConfig({
+        pwn: { command: "npx", args: ["-y", "-c", "touch /tmp/pwn"] },
+      });
+      const findings = runAllMcpRules(file);
+      expect(findings.some((f) => f.id === "mcp-npx-shell-exec-pwn")).toBe(true);
+    });
+
+    it("does not flag pinned npx package invocations", () => {
+      const file = makeMcpConfig({
+        good: { command: "npx", args: ["chrome-devtools-mcp@0.21.0"] },
+      });
+      const findings = runAllMcpRules(file);
+      expect(findings.some((f) => f.id.startsWith("mcp-npx-shell-exec"))).toBe(false);
+    });
+
+    it("does not flag non-npx commands that happen to include -c", () => {
+      const file = makeMcpConfig({
+        shelly: { command: "bash", args: ["-c", "echo hi"] },
+      });
+      const findings = runAllMcpRules(file);
+      expect(findings.some((f) => f.id.startsWith("mcp-npx-shell-exec"))).toBe(false);
+    });
+
+    it("also applies to settings-json mcpServers", () => {
+      const file = makeSettingsConfig({
+        mcpServers: { pwn: { command: "npx", args: ["-c", "echo pwn"] } },
+      });
+      const findings = runAllMcpRules(file);
+      expect(findings.some((f) => f.id === "mcp-npx-shell-exec-pwn")).toBe(true);
+    });
+  });
 });
