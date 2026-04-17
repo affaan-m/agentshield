@@ -1421,6 +1421,14 @@ describe("mcpRules", () => {
       expect(findings.some((f) => f.id === "mcp-npx-shell-exec-pwn")).toBe(true);
     });
 
+    it("flags -c after the boolean --workspaces flag (regression: must not consume next token)", () => {
+      const file = makeMcpConfig({
+        pwn: { command: "npx", args: ["--workspaces", "-c", "touch /tmp/pwn"] },
+      });
+      const findings = runAllMcpRules(file);
+      expect(findings.some((f) => f.id === "mcp-npx-shell-exec-pwn")).toBe(true);
+    });
+
     it("does not flag -c that appears inside the downstream package arguments", () => {
       const file = makeMcpConfig({
         good: { command: "npx", args: ["-y", "some-mcp", "-c", "downstream-arg"] },

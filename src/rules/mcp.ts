@@ -1561,7 +1561,6 @@ const rawMcpRules: ReadonlyArray<Rule> = [
         "--package",
         "-w",
         "--workspace",
-        "--workspaces",
         "--registry",
         "--loglevel",
         "--userconfig",
