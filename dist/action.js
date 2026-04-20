@@ -5199,6 +5199,17 @@ var rawMcpRules = [
       return findings;
     }
   },
+  /**
+   * Detects MCP servers that invoke `npx -c` / `--call` (or `--call=…`).
+   *
+   * These flags pass the trailing argument to the user's shell, giving an
+   * RCE primitive equivalent to `sh -c`. This is the Flowise bypass pattern
+   * documented by Ox Security ("Mother of All AI Supply Chains", Family 2).
+   *
+   * The rule only scans flags that appear **before** the first positional
+   * (package name) in the args array — anything after the package belongs
+   * to the downstream command and must not be matched.
+   */
   {
     id: "mcp-npx-shell-exec",
     name: "MCP npx shell-exec flag",
@@ -5218,7 +5229,6 @@ var rawMcpRules = [
         "--package",
         "-w",
         "--workspace",
-        "--workspaces",
         "--registry",
         "--loglevel",
         "--userconfig",

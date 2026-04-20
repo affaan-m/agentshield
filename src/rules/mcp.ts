@@ -1535,6 +1535,17 @@ const rawMcpRules: ReadonlyArray<Rule> = [
       return findings;
     },
   },
+  /**
+   * Detects MCP servers that invoke `npx -c` / `--call` (or `--call=…`).
+   *
+   * These flags pass the trailing argument to the user's shell, giving an
+   * RCE primitive equivalent to `sh -c`. This is the Flowise bypass pattern
+   * documented by Ox Security ("Mother of All AI Supply Chains", Family 2).
+   *
+   * The rule only scans flags that appear **before** the first positional
+   * (package name) in the args array — anything after the package belongs
+   * to the downstream command and must not be matched.
+   */
   {
     id: "mcp-npx-shell-exec",
     name: "MCP npx shell-exec flag",
@@ -1547,15 +1558,27 @@ const rawMcpRules: ReadonlyArray<Rule> = [
 
       const findings: Finding[] = [];
 
+      /**
+       * Returns true if `cmd` resolves to the npx binary.
+       *
+       * Matches bare `npx` as well as absolute paths (e.g. `/usr/local/bin/npx`)
+       * and Windows variants (`npx.cmd`, `npx.exe`). Splits on both `/` and `\`
+       * so the check is cross-platform.
+       */
       function isNpxCommand(cmd: string | undefined): boolean {
         if (!cmd) return false;
         const basename = cmd.split(/[\\/]/).pop() ?? "";
         return basename === "npx" || basename === "npx.cmd" || basename === "npx.exe";
       }
 
-      // npx options that consume the following argv token as their value.
-      // When we encounter one of these we must skip that value so it isn't
-      // mistaken for the package positional (which terminates flag scanning).
+      /**
+       * npx options that consume the following argv token as their value.
+       *
+       * When we encounter one of these we must skip that value so it isn't
+       * mistaken for the package positional (which terminates flag scanning).
+       * Keep this list aligned with the options documented by `npx --help`
+       * that take a separate value token.
+       */
       const npxValueTakingOptions: ReadonlySet<string> = new Set([
         "-p",
         "--package",
@@ -1568,6 +1591,23 @@ const rawMcpRules: ReadonlyArray<Rule> = [
         "--prefix",
       ]);
 
+      /**
+       * Scans npx args for a shell-execution flag before the package positional.
+       *
+       * Returns the matched flag (`-c`, `--call`, or `--call` for the `--call=…`
+       * attached form) or `undefined` if no such flag appears in the pre-package
+       * region of the args array.
+       *
+       * Handling rules:
+       * - `--call=<cmd>` — attached long-option form, matches immediately.
+       * - `--<name>=<value>` — any other attached long option is self-contained;
+       *   advance one token.
+       * - Value-taking options from `npxValueTakingOptions` consume the next
+       *   token as their value; advance two tokens.
+       * - Any other `-`-prefixed token (including combined short flags like
+       *   `-yp`) is a boolean flag; advance one token.
+       * - First non-flag token = package name; stop scanning.
+       */
       function findShellExecFlag(args: ReadonlyArray<unknown>): string | undefined {
         let i = 0;
         while (i < args.length) {
