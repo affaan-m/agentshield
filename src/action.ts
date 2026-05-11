@@ -7,11 +7,13 @@
  */
 
 import { resolve } from "node:path";
+import { dirname } from "node:path";
 import { existsSync } from "node:fs";
-import { appendFileSync } from "node:fs";
+import { appendFileSync, mkdirSync, writeFileSync } from "node:fs";
 import { scan } from "./scanner/index.js";
 import { calculateScore } from "./reporter/score.js";
 import { renderMarkdownReport } from "./reporter/json.js";
+import { renderSarifReport } from "./reporter/sarif.js";
 import type { Finding, Severity } from "./types.js";
 
 // ─── GitHub Actions Helpers ──────────────────────────────────
@@ -92,6 +94,7 @@ async function run(): Promise<void> {
   const format = getInput("format", "terminal");
   const baselinePath = getInput("baseline", "");
   const saveBaselinePath = getInput("save-baseline", "");
+  const sarifOutput = getInput("sarif-output", "agentshield-results.sarif");
 
   // Resolve and validate path
   const workspace = process.env.GITHUB_WORKSPACE ?? process.cwd();
@@ -129,6 +132,14 @@ async function run(): Promise<void> {
   setOutput("grade", report.score.grade);
   setOutput("total-findings", String(report.summary.totalFindings));
   setOutput("critical-count", String(report.summary.critical));
+
+  if (format === "sarif") {
+    const sarifPath = resolve(workspace, sarifOutput);
+    mkdirSync(dirname(sarifPath), { recursive: true });
+    writeFileSync(sarifPath, renderSarifReport(report));
+    setOutput("sarif-path", sarifPath);
+    console.log(`SARIF written to: ${sarifPath}`);
+  }
 
   // Write job summary as markdown
   const markdownSummary = renderMarkdownReport(report);

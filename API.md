@@ -73,7 +73,8 @@ agentshield miniclaw start [options]
 ```
 
 High-value `scan` options:
-- `--format terminal|json|markdown|html`
+- `--format terminal|json|markdown|html|sarif`
+- `--output <path>` for writing the selected report format to a file
 - `--fix`
 - `--opus`
 - `--stream`

@@ -20,9 +20,13 @@ inputs:
     required: false
     default: "true"
   format:
-    description: "Output format: terminal, json, markdown"
+    description: "Output format: terminal, json, markdown, sarif"
     required: false
     default: "terminal"
+  sarif-output:
+    description: "Path to write SARIF results when format is sarif"
+    required: false
+    default: "agentshield-results.sarif"
 
 outputs:
   score:
@@ -33,6 +37,8 @@ outputs:
     description: "Total number of findings"
   critical-count:
     description: "Number of critical findings"
+  sarif-path:
+    description: "Path to the generated SARIF file when format is sarif"
 
 runs:
   using: "node20"

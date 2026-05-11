@@ -2,12 +2,14 @@
 
 import { Command } from "commander";
 import { resolve } from "node:path";
+import { dirname } from "node:path";
 import { existsSync, writeFileSync, appendFileSync, mkdirSync } from "node:fs";
 import { scan } from "./scanner/index.js";
 import { calculateScore } from "./reporter/score.js";
 import { renderTerminalReport } from "./reporter/terminal.js";
 import { renderJsonReport, renderMarkdownReport } from "./reporter/json.js";
 import { renderHtmlReport } from "./reporter/html.js";
+import { renderSarifReport } from "./reporter/sarif.js";
 import { runOpusPipeline, renderOpusAnalysis } from "./opus/index.js";
 import { applyFixes, renderFixSummary } from "./fixer/index.js";
 import { runInit, renderInitSummary } from "./init/index.js";
@@ -197,11 +199,24 @@ program
   .description("Security auditor for AI agent configurations")
   .version("1.4.0");
 
+function emitReportOutput(output: string, outputPath: string | undefined): void {
+  if (!outputPath) {
+    console.log(output);
+    return;
+  }
+
+  const resolvedOutput = resolve(outputPath);
+  mkdirSync(dirname(resolvedOutput), { recursive: true });
+  writeFileSync(resolvedOutput, output);
+  console.log(`Report written to: ${resolvedOutput}`);
+}
+
 program
   .command("scan")
   .description("Scan a Claude Code configuration directory for security issues")
   .option("-p, --path <path>", "Path to scan (default: ~/.claude or current dir)")
-  .option("-f, --format <format>", "Output format: terminal, json, markdown, html", "terminal")
+  .option("-f, --format <format>", "Output format: terminal, json, markdown, html, sarif", "terminal")
+  .option("-o, --output <path>", "Write the primary report output to a file")
   .option("--fix", "Auto-apply safe fixes", false)
   .option("--opus", "Enable Opus 4.6 multi-agent deep analysis", false)
   .option("--stream", "Stream Opus analysis in real-time", false)
@@ -262,19 +277,24 @@ program
     });
 
     // Output static scan
+    let renderedReport: string;
     switch (options.format) {
       case "json":
-        console.log(renderJsonReport(report));
+        renderedReport = renderJsonReport(report);
         break;
       case "markdown":
-        console.log(renderMarkdownReport(report));
+        renderedReport = renderMarkdownReport(report);
         break;
       case "html":
-        console.log(renderHtmlReport(report));
+        renderedReport = renderHtmlReport(report);
+        break;
+      case "sarif":
+        renderedReport = renderSarifReport(report);
         break;
       default:
-        console.log(renderTerminalReport(report));
+        renderedReport = renderTerminalReport(report);
     }
+    emitReportOutput(renderedReport, options.output);
 
     // ── Phase 1b: Baseline save/compare ───────────────────
     if (options.saveBaseline) {

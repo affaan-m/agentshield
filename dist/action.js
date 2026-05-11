@@ -206,8 +206,9 @@ var init_baseline = __esm({
 
 // src/action.ts
 import { resolve as resolve2 } from "path";
+import { dirname as dirname3 } from "path";
 import { existsSync as existsSync3 } from "fs";
-import { appendFileSync } from "fs";
+import { appendFileSync, mkdirSync as mkdirSync2, writeFileSync as writeFileSync2 } from "fs";
 
 // src/scanner/discovery.ts
 import { readFileSync, existsSync, readdirSync, statSync } from "fs";
@@ -8553,6 +8554,146 @@ function renderMarkdownReport(report) {
   return lines.join("\n");
 }
 
+// src/reporter/sarif.ts
+var SARIF_SCHEMA = "https://json.schemastore.org/sarif-2.1.0.json";
+function renderSarifReport(report) {
+  const rules = buildRules(report.findings);
+  const ruleIndexes = new Map(rules.map((rule, index) => [rule.id, index]));
+  return JSON.stringify(
+    {
+      version: "2.1.0",
+      $schema: SARIF_SCHEMA,
+      runs: [
+        {
+          tool: {
+            driver: {
+              name: "AgentShield",
+              informationUri: "https://github.com/affaan-m/agentshield",
+              rules
+            }
+          },
+          automationDetails: {
+            id: "agentshield/security-scan"
+          },
+          invocations: [
+            {
+              executionSuccessful: true,
+              endTimeUtc: report.timestamp,
+              workingDirectory: {
+                uri: normalizeUri(report.targetPath)
+              }
+            }
+          ],
+          properties: {
+            score: report.score.numericScore,
+            grade: report.score.grade,
+            filesScanned: report.summary.filesScanned
+          },
+          results: report.findings.map(
+            (finding) => renderSarifResult(finding, ruleIndexes.get(finding.id) ?? 0)
+          )
+        }
+      ]
+    },
+    null,
+    2
+  );
+}
+function buildRules(findings) {
+  const rules = /* @__PURE__ */ new Map();
+  for (const finding of findings) {
+    if (rules.has(finding.id)) continue;
+    rules.set(finding.id, {
+      id: finding.id,
+      name: finding.title,
+      shortDescription: { text: finding.title },
+      fullDescription: { text: finding.description },
+      help: finding.fix ? { text: `${finding.description}
+
+Recommended fix: ${finding.fix.description}` } : { text: finding.description },
+      defaultConfiguration: {
+        level: severityToLevel(finding.severity)
+      },
+      properties: {
+        category: finding.category,
+        severity: finding.severity,
+        "security-severity": severityToSecurityScore(finding.severity),
+        tags: ["security", "agent-config", finding.category],
+        precision: precisionForFinding(finding)
+      }
+    });
+  }
+  return [...rules.values()];
+}
+function renderSarifResult(finding, ruleIndex) {
+  return {
+    ruleId: finding.id,
+    ruleIndex,
+    level: severityToLevel(finding.severity),
+    message: {
+      text: finding.description
+    },
+    locations: [
+      {
+        physicalLocation: {
+          artifactLocation: {
+            uri: normalizeUri(finding.file)
+          },
+          ...finding.line ? {
+            region: {
+              startLine: Math.max(1, finding.line)
+            }
+          } : {}
+        }
+      }
+    ],
+    properties: {
+      title: finding.title,
+      category: finding.category,
+      severity: finding.severity,
+      runtimeConfidence: finding.runtimeConfidence,
+      evidence: finding.evidence,
+      fix: finding.fix?.description
+    }
+  };
+}
+function severityToLevel(severity) {
+  switch (severity) {
+    case "critical":
+    case "high":
+      return "error";
+    case "medium":
+      return "warning";
+    case "low":
+    case "info":
+      return "note";
+  }
+}
+function severityToSecurityScore(severity) {
+  switch (severity) {
+    case "critical":
+      return "9.5";
+    case "high":
+      return "8.0";
+    case "medium":
+      return "5.0";
+    case "low":
+      return "2.5";
+    case "info":
+      return "1.0";
+  }
+}
+function precisionForFinding(finding) {
+  if (finding.runtimeConfidence === "active-runtime") return "very-high";
+  if (finding.runtimeConfidence === "template-example" || finding.runtimeConfidence === "docs-example") {
+    return "medium";
+  }
+  return "high";
+}
+function normalizeUri(uri) {
+  return uri.replace(/\\/g, "/");
+}
+
 // src/action.ts
 function getInput(name, fallback) {
   const envKey = `INPUT_${name.replace(/ /g, "_").toUpperCase()}`;
@@ -8609,6 +8750,7 @@ async function run() {
   const format = getInput("format", "terminal");
   const baselinePath = getInput("baseline", "");
   const saveBaselinePath = getInput("save-baseline", "");
+  const sarifOutput = getInput("sarif-output", "agentshield-results.sarif");
   const workspace = process.env.GITHUB_WORKSPACE ?? process.cwd();
   const targetPath = resolve2(workspace, inputPath);
   if (!existsSync3(targetPath)) {
@@ -8632,6 +8774,13 @@ async function run() {
   setOutput("grade", report.score.grade);
   setOutput("total-findings", String(report.summary.totalFindings));
   setOutput("critical-count", String(report.summary.critical));
+  if (format === "sarif") {
+    const sarifPath = resolve2(workspace, sarifOutput);
+    mkdirSync2(dirname3(sarifPath), { recursive: true });
+    writeFileSync2(sarifPath, renderSarifReport(report));
+    setOutput("sarif-path", sarifPath);
+    console.log(`SARIF written to: ${sarifPath}`);
+  }
   const markdownSummary = renderMarkdownReport(report);
   writeJobSummary(markdownSummary);
   console.log(`Score: ${report.score.numericScore}/100 (Grade: ${report.score.grade})`);

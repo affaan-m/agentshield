@@ -12202,6 +12202,7 @@ var init_supply_chain = __esm({
 init_scanner();
 import { Command } from "commander";
 import { resolve as resolve8 } from "path";
+import { dirname as dirname5 } from "path";
 import { existsSync as existsSync10, writeFileSync as writeFileSync5, appendFileSync as appendFileSync2, mkdirSync as mkdirSync5 } from "fs";
 
 // src/reporter/score.ts
@@ -13144,6 +13145,146 @@ function inlineStyles() {
       }
     }
   `;
+}
+
+// src/reporter/sarif.ts
+var SARIF_SCHEMA = "https://json.schemastore.org/sarif-2.1.0.json";
+function renderSarifReport(report) {
+  const rules = buildRules(report.findings);
+  const ruleIndexes = new Map(rules.map((rule, index) => [rule.id, index]));
+  return JSON.stringify(
+    {
+      version: "2.1.0",
+      $schema: SARIF_SCHEMA,
+      runs: [
+        {
+          tool: {
+            driver: {
+              name: "AgentShield",
+              informationUri: "https://github.com/affaan-m/agentshield",
+              rules
+            }
+          },
+          automationDetails: {
+            id: "agentshield/security-scan"
+          },
+          invocations: [
+            {
+              executionSuccessful: true,
+              endTimeUtc: report.timestamp,
+              workingDirectory: {
+                uri: normalizeUri(report.targetPath)
+              }
+            }
+          ],
+          properties: {
+            score: report.score.numericScore,
+            grade: report.score.grade,
+            filesScanned: report.summary.filesScanned
+          },
+          results: report.findings.map(
+            (finding) => renderSarifResult(finding, ruleIndexes.get(finding.id) ?? 0)
+          )
+        }
+      ]
+    },
+    null,
+    2
+  );
+}
+function buildRules(findings) {
+  const rules = /* @__PURE__ */ new Map();
+  for (const finding of findings) {
+    if (rules.has(finding.id)) continue;
+    rules.set(finding.id, {
+      id: finding.id,
+      name: finding.title,
+      shortDescription: { text: finding.title },
+      fullDescription: { text: finding.description },
+      help: finding.fix ? { text: `${finding.description}
+
+Recommended fix: ${finding.fix.description}` } : { text: finding.description },
+      defaultConfiguration: {
+        level: severityToLevel(finding.severity)
+      },
+      properties: {
+        category: finding.category,
+        severity: finding.severity,
+        "security-severity": severityToSecurityScore(finding.severity),
+        tags: ["security", "agent-config", finding.category],
+        precision: precisionForFinding(finding)
+      }
+    });
+  }
+  return [...rules.values()];
+}
+function renderSarifResult(finding, ruleIndex) {
+  return {
+    ruleId: finding.id,
+    ruleIndex,
+    level: severityToLevel(finding.severity),
+    message: {
+      text: finding.description
+    },
+    locations: [
+      {
+        physicalLocation: {
+          artifactLocation: {
+            uri: normalizeUri(finding.file)
+          },
+          ...finding.line ? {
+            region: {
+              startLine: Math.max(1, finding.line)
+            }
+          } : {}
+        }
+      }
+    ],
+    properties: {
+      title: finding.title,
+      category: finding.category,
+      severity: finding.severity,
+      runtimeConfidence: finding.runtimeConfidence,
+      evidence: finding.evidence,
+      fix: finding.fix?.description
+    }
+  };
+}
+function severityToLevel(severity) {
+  switch (severity) {
+    case "critical":
+    case "high":
+      return "error";
+    case "medium":
+      return "warning";
+    case "low":
+    case "info":
+      return "note";
+  }
+}
+function severityToSecurityScore(severity) {
+  switch (severity) {
+    case "critical":
+      return "9.5";
+    case "high":
+      return "8.0";
+    case "medium":
+      return "5.0";
+    case "low":
+      return "2.5";
+    case "info":
+      return "1.0";
+  }
+}
+function precisionForFinding(finding) {
+  if (finding.runtimeConfidence === "active-runtime") return "very-high";
+  if (finding.runtimeConfidence === "template-example" || finding.runtimeConfidence === "docs-example") {
+    return "medium";
+  }
+  return "high";
+}
+function normalizeUri(uri) {
+  return uri.replace(/\\/g, "/");
 }
 
 // src/opus/pipeline.ts
@@ -15618,7 +15759,17 @@ function createScanLogger(logPath, logFormat) {
 }
 var program = new Command();
 program.name("agentshield").description("Security auditor for AI agent configurations").version("1.4.0");
-program.command("scan").description("Scan a Claude Code configuration directory for security issues").option("-p, --path <path>", "Path to scan (default: ~/.claude or current dir)").option("-f, --format <format>", "Output format: terminal, json, markdown, html", "terminal").option("--fix", "Auto-apply safe fixes", false).option("--opus", "Enable Opus 4.6 multi-agent deep analysis", false).option("--stream", "Stream Opus analysis in real-time", false).option("--injection", "Run active prompt injection testing against the config", false).option("--sandbox", "Execute hooks in sandbox and observe behavior", false).option("--taint", "Run taint analysis (data flow tracking)", false).option("--deep", "Run ALL analysis (injection + sandbox + taint + opus)", false).option("--log <path>", "Write structured scan log to file").option("--log-format <format>", "Log format: ndjson (default) or json", "ndjson").option("--corpus", "Run scanner validation against built-in attack corpus", false).option("--baseline <path>", "Compare against a baseline file and report regressions").option("--save-baseline <path>", "Save current scan results as a baseline file").option("--gate", "Fail if new critical/high findings or score drops (use with --baseline)", false).option("--supply-chain", "Verify MCP npm packages against known-bad list and typosquatting", false).option("--supply-chain-online", "Also query npm registry for metadata (requires network)", false).option("--policy <path>", "Validate against an organization policy file").option("--min-severity <severity>", "Minimum severity to report: critical, high, medium, low, info", "info").option("-v, --verbose", "Show detailed output", false).action(async (options) => {
+function emitReportOutput(output, outputPath) {
+  if (!outputPath) {
+    console.log(output);
+    return;
+  }
+  const resolvedOutput = resolve8(outputPath);
+  mkdirSync5(dirname5(resolvedOutput), { recursive: true });
+  writeFileSync5(resolvedOutput, output);
+  console.log(`Report written to: ${resolvedOutput}`);
+}
+program.command("scan").description("Scan a Claude Code configuration directory for security issues").option("-p, --path <path>", "Path to scan (default: ~/.claude or current dir)").option("-f, --format <format>", "Output format: terminal, json, markdown, html, sarif", "terminal").option("-o, --output <path>", "Write the primary report output to a file").option("--fix", "Auto-apply safe fixes", false).option("--opus", "Enable Opus 4.6 multi-agent deep analysis", false).option("--stream", "Stream Opus analysis in real-time", false).option("--injection", "Run active prompt injection testing against the config", false).option("--sandbox", "Execute hooks in sandbox and observe behavior", false).option("--taint", "Run taint analysis (data flow tracking)", false).option("--deep", "Run ALL analysis (injection + sandbox + taint + opus)", false).option("--log <path>", "Write structured scan log to file").option("--log-format <format>", "Log format: ndjson (default) or json", "ndjson").option("--corpus", "Run scanner validation against built-in attack corpus", false).option("--baseline <path>", "Compare against a baseline file and report regressions").option("--save-baseline <path>", "Save current scan results as a baseline file").option("--gate", "Fail if new critical/high findings or score drops (use with --baseline)", false).option("--supply-chain", "Verify MCP npm packages against known-bad list and typosquatting", false).option("--supply-chain-online", "Also query npm registry for metadata (requires network)", false).option("--policy <path>", "Validate against an organization policy file").option("--min-severity <severity>", "Minimum severity to report: critical, high, medium, low, info", "info").option("-v, --verbose", "Show detailed output", false).action(async (options) => {
   const targetPath = resolveTargetPath(options.path);
   if (!existsSync10(targetPath)) {
     console.error(`Error: Path does not exist: ${targetPath}`);
@@ -15647,19 +15798,24 @@ program.command("scan").description("Scan a Claude Code configuration directory 
     message: `Static analysis complete: ${report.summary.totalFindings} findings`,
     data: { grade: report.score.grade, score: report.score.numericScore }
   });
+  let renderedReport;
   switch (options.format) {
     case "json":
-      console.log(renderJsonReport(report));
+      renderedReport = renderJsonReport(report);
       break;
     case "markdown":
-      console.log(renderMarkdownReport(report));
+      renderedReport = renderMarkdownReport(report);
       break;
     case "html":
-      console.log(renderHtmlReport(report));
+      renderedReport = renderHtmlReport(report);
+      break;
+    case "sarif":
+      renderedReport = renderSarifReport(report);
       break;
     default:
-      console.log(renderTerminalReport(report));
+      renderedReport = renderTerminalReport(report);
   }
+  emitReportOutput(renderedReport, options.output);
   if (options.saveBaseline) {
     const { saveBaseline: saveBaseline2 } = await Promise.resolve().then(() => (init_baseline(), baseline_exports));
     saveBaseline2(filteredResult.findings, report.score, options.saveBaseline);

@@ -438,7 +438,7 @@ Notes:
 AgentShield currently has three distinct automation surfaces:
 
 - CLI: `agentshield scan`, `agentshield init`, and `agentshield miniclaw start`
-- Scanner report JSON: `agentshield scan --format json`
+- Scanner report JSON/SARIF: `agentshield scan --format json` or `agentshield scan --format sarif --output agentshield.sarif`
 - MiniClaw package + HTTP API: `ecc-agentshield/miniclaw`
 
 Important packaging note:
@@ -466,18 +466,20 @@ Detailed request/response and schema notes live in [`API.md`](./API.md).
 | `path` | `.` | Path to scan |
 | `min-severity` | `medium` | Minimum severity: critical, high, medium, low, info |
 | `fail-on-findings` | `true` | Fail the action if findings meet severity threshold |
-| `format` | `terminal` | Output format |
+| `format` | `terminal` | Output format: terminal, json, markdown, sarif |
+| `sarif-output` | `agentshield-results.sarif` | SARIF output path when `format` is `sarif` |
 
-**Outputs:** `score` (0–100), `grade` (A–F), `total-findings`, `critical-count`
+**Outputs:** `score` (0–100), `grade` (A–F), `total-findings`, `critical-count`, `sarif-path`
 
-The action writes a markdown job summary and emits GitHub annotations inline on affected files.
+The action writes a markdown job summary and emits GitHub annotations inline on affected files. When `format: sarif` is set, it also writes a SARIF 2.1.0 report that can be uploaded to GitHub code scanning with `github/codeql-action/upload-sarif`.
 
 ## CLI Reference
 
 ```
 agentshield scan [options]         Scan configuration directory
   -p, --path <path>                Path to scan (default: ~/.claude or cwd)
-  -f, --format <format>            Output: terminal, json, markdown, html
+  -f, --format <format>            Output: terminal, json, markdown, html, sarif
+  -o, --output <path>              Write the primary report output to a file
   --fix                            Auto-apply safe fixes
   --opus                           Enable Opus 4.6 multi-agent analysis
   --stream                         Stream Opus analysis in real-time
