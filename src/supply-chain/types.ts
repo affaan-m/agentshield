@@ -28,9 +28,18 @@ export interface NpmRegistryMeta {
 
 export interface PackageVerification {
   readonly package: ExtractedPackage;
+  readonly provenance: PackageProvenance;
   readonly registry?: NpmRegistryMeta;
   readonly risks: ReadonlyArray<PackageRisk>;
   readonly overallSeverity: Severity;
+}
+
+export interface PackageProvenance {
+  readonly ecosystem: "npm" | "git";
+  readonly locator: string;
+  readonly pinned: boolean;
+  readonly knownGood: boolean;
+  readonly metadataSource: "offline" | "npm-registry" | "git-url";
 }
 
 export interface PackageRisk {
@@ -59,6 +68,16 @@ export interface SupplyChainReport {
   readonly riskyPackages: number;
   readonly criticalCount: number;
   readonly highCount: number;
+  readonly provenance: SupplyChainProvenanceSummary;
+}
+
+export interface SupplyChainProvenanceSummary {
+  readonly npmPackages: number;
+  readonly gitPackages: number;
+  readonly pinnedPackages: number;
+  readonly unpinnedPackages: number;
+  readonly knownGoodPackages: number;
+  readonly registryMetadataPackages: number;
 }
 
 // ─── Known Good Packages ────────────────────────────────────

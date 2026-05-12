@@ -17,6 +17,11 @@ export function renderSupplyChainReport(report: SupplyChainReport): string {
   lines.push("");
   lines.push(`  Packages analyzed: ${report.totalPackages}`);
   lines.push(`  Risky packages:    ${report.riskyPackages}`);
+  lines.push(
+    `  Provenance:        npm: ${report.provenance.npmPackages}, git: ${report.provenance.gitPackages}, ` +
+      `pinned: ${report.provenance.pinnedPackages}, unpinned: ${report.provenance.unpinnedPackages}, ` +
+      `known-good: ${report.provenance.knownGoodPackages}, registry-backed: ${report.provenance.registryMetadataPackages}`
+  );
 
   if (report.criticalCount > 0) {
     lines.push(`  Critical:          ${report.criticalCount}`);

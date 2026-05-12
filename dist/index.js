@@ -12203,6 +12203,7 @@ async function verifyPackages(packages, options = {}) {
     ).severity : "info";
     verifications.push({
       package: pkg,
+      provenance: buildPackageProvenance(pkg, registry),
       registry,
       risks,
       overallSeverity
@@ -12214,7 +12215,8 @@ async function verifyPackages(packages, options = {}) {
     totalPackages: verifications.length,
     riskyPackages: riskyPackages.length,
     criticalCount: riskyPackages.filter((v) => v.overallSeverity === "critical").length,
-    highCount: riskyPackages.filter((v) => v.overallSeverity === "high").length
+    highCount: riskyPackages.filter((v) => v.overallSeverity === "high").length,
+    provenance: summarizePackageProvenance(verifications)
   };
 }
 function checkTyposquatting(packageName) {
@@ -12236,6 +12238,47 @@ function checkTyposquatting(packageName) {
 }
 function hasPinnedGitCommit(gitRef) {
   return !!gitRef && GIT_COMMIT_HASH.test(gitRef);
+}
+function buildPackageProvenance(pkg, registry) {
+  if (pkg.source === "git") {
+    return {
+      ecosystem: "git",
+      locator: pkg.gitUrl ?? pkg.name,
+      pinned: hasPinnedGitCommit(pkg.gitRef),
+      knownGood: false,
+      metadataSource: "git-url"
+    };
+  }
+  return {
+    ecosystem: "npm",
+    locator: `${pkg.name}@${pkg.version ?? "latest"}`,
+    pinned: isPinnedNpmVersion(pkg.version),
+    knownGood: KNOWN_GOOD_PACKAGES.includes(pkg.name),
+    metadataSource: registry ? "npm-registry" : "offline"
+  };
+}
+function summarizePackageProvenance(verifications) {
+  return verifications.reduce(
+    (summary, verification) => ({
+      npmPackages: summary.npmPackages + (verification.provenance.ecosystem === "npm" ? 1 : 0),
+      gitPackages: summary.gitPackages + (verification.provenance.ecosystem === "git" ? 1 : 0),
+      pinnedPackages: summary.pinnedPackages + (verification.provenance.pinned ? 1 : 0),
+      unpinnedPackages: summary.unpinnedPackages + (verification.provenance.pinned ? 0 : 1),
+      knownGoodPackages: summary.knownGoodPackages + (verification.provenance.knownGood ? 1 : 0),
+      registryMetadataPackages: summary.registryMetadataPackages + (verification.provenance.metadataSource === "npm-registry" ? 1 : 0)
+    }),
+    {
+      npmPackages: 0,
+      gitPackages: 0,
+      pinnedPackages: 0,
+      unpinnedPackages: 0,
+      knownGoodPackages: 0,
+      registryMetadataPackages: 0
+    }
+  );
+}
+function isPinnedNpmVersion(version) {
+  return !!version && EXACT_NPM_VERSION.test(version);
 }
 function levenshteinDistance(a, b) {
   const m = a.length;
@@ -12347,7 +12390,7 @@ function assessRegistryRisks(meta) {
   }
   return risks;
 }
-var SEVERITY_ORDER3, GIT_COMMIT_HASH;
+var SEVERITY_ORDER3, GIT_COMMIT_HASH, EXACT_NPM_VERSION;
 var init_verify = __esm({
   "src/supply-chain/verify.ts"() {
     "use strict";
@@ -12361,6 +12404,7 @@ var init_verify = __esm({
       info: 4
     };
     GIT_COMMIT_HASH = /^[0-9a-f]{7,40}$/i;
+    EXACT_NPM_VERSION = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/;
   }
 });
 
@@ -12375,6 +12419,9 @@ function renderSupplyChainReport(report) {
   lines.push("");
   lines.push(`  Packages analyzed: ${report.totalPackages}`);
   lines.push(`  Risky packages:    ${report.riskyPackages}`);
+  lines.push(
+    `  Provenance:        npm: ${report.provenance.npmPackages}, git: ${report.provenance.gitPackages}, pinned: ${report.provenance.pinnedPackages}, unpinned: ${report.provenance.unpinnedPackages}, known-good: ${report.provenance.knownGoodPackages}, registry-backed: ${report.provenance.registryMetadataPackages}`
+  );
   if (report.criticalCount > 0) {
     lines.push(`  Critical:          ${report.criticalCount}`);
   }

@@ -157,6 +157,12 @@ JSON reports now expose `findings[].runtimeConfidence` when AgentShield can dist
 | Auto-approve | `autoApprove` settings that skip user confirmation for tool calls |
 | Missing timeouts | High-risk servers without timeout — resource exhaustion risk |
 
+Supply-chain verification (`agentshield scan --supply-chain`) extracts MCP
+package references and reports provenance counts for npm vs git, pinned vs
+unpinned, known-good packages, and npm-registry-backed metadata. Add
+`--supply-chain-online` to query npm for downloads, maintainers, postinstall
+scripts, deprecation, and package age.
+
 #### MCP Confidence Notes
 
 AgentShield scans both active MCP config and repository-shipped MCP templates.
@@ -493,6 +499,8 @@ agentshield scan [options]         Scan configuration directory
   --log <path>                     Write structured scan logs to a file
   --log-format <format>            Log format: ndjson or json
   --corpus                         Run built-in attack corpus validation
+  --supply-chain                   Verify MCP package provenance and risk
+  --supply-chain-online            Include npm registry metadata
   --policy <path>                  Validate against an organization policy
   --min-severity <severity>        Filter: critical, high, medium, low, info
   -v, --verbose                    Show detailed output

@@ -83,6 +83,8 @@ High-value `scan` options:
 - `--taint`
 - `--deep`
 - `--corpus`
+- `--supply-chain`
+- `--supply-chain-online`
 - `--policy <path>`
 - `--min-severity critical|high|medium|low|info`
 - `--log <path>`

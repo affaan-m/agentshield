@@ -94,6 +94,21 @@ describe("verifyPackages", () => {
 
     expect(report.totalPackages).toBe(1);
     expect(report.riskyPackages).toBe(0);
+    expect(report.provenance).toMatchObject({
+      npmPackages: 1,
+      gitPackages: 0,
+      pinnedPackages: 0,
+      unpinnedPackages: 1,
+      knownGoodPackages: 1,
+      registryMetadataPackages: 0,
+    });
+    expect(report.packages[0].provenance).toEqual({
+      ecosystem: "npm",
+      locator: "@modelcontextprotocol/server-github@latest",
+      pinned: false,
+      knownGood: true,
+      metadataSource: "offline",
+    });
   });
 
   it("detects known malicious packages", async () => {
@@ -157,6 +172,13 @@ describe("verifyPackages", () => {
 
     const pkg = report.packages[0];
     expect(pkg.risks.some((r) => r.type === "unpinned-git")).toBe(false);
+    expect(pkg.provenance).toEqual({
+      ecosystem: "git",
+      locator: "https://github.com/org/custom-server#0123456789abcdef0123456789abcdef01234567",
+      pinned: true,
+      knownGood: false,
+      metadataSource: "git-url",
+    });
   });
 
   it("flags branch refs as unpinned git URLs", async () => {
@@ -241,6 +263,12 @@ describe("verifyPackages", () => {
       latestVersion: "1.2.3",
       deprecated: true,
     });
+    expect(verifiedPackage.provenance).toMatchObject({
+      ecosystem: "npm",
+      locator: "very-rare-package@latest",
+      metadataSource: "npm-registry",
+    });
+    expect(report.provenance.registryMetadataPackages).toBe(1);
     expect(verifiedPackage.risks.map((risk) => risk.type)).toEqual(
       expect.arrayContaining([
         "deprecated",
@@ -303,5 +331,58 @@ describe("verifyPackages", () => {
     expect(report.packages[0].registry).toBeUndefined();
     expect(report.packages[0].risks).toEqual([]);
     expect(report.packages[0].overallSeverity).toBe("info");
+  });
+
+  it("treats only exact npm versions as pinned provenance", async () => {
+    const report = await verifyPackages([
+      makePackage({ name: "exact-server", version: "1.2.3", serverName: "exact" }),
+      makePackage({ name: "range-server", version: "^1.2.3", serverName: "range" }),
+      makePackage({ name: "major-server", version: "1.x", serverName: "major" }),
+      makePackage({ name: "latest-server", version: "latest", serverName: "latest" }),
+    ]);
+
+    expect(report.provenance).toMatchObject({
+      npmPackages: 4,
+      pinnedPackages: 1,
+      unpinnedPackages: 3,
+    });
+    expect(report.packages.map((pkg) => pkg.provenance.pinned)).toEqual([
+      true,
+      false,
+      false,
+      false,
+    ]);
+  });
+
+  it("summarizes mixed npm and git provenance", async () => {
+    const report = await verifyPackages([
+      makePackage({
+        name: "@modelcontextprotocol/server-github",
+        version: "1.2.3",
+        serverName: "github",
+      }),
+      makePackage({
+        name: "org/custom-server",
+        source: "git",
+        serverName: "custom",
+        gitUrl: "https://github.com/org/custom-server",
+      }),
+      makePackage({
+        name: "org/pinned-server",
+        source: "git",
+        serverName: "pinned",
+        gitUrl: "https://github.com/org/pinned-server#0123456789abcdef0123456789abcdef01234567",
+        gitRef: "0123456789abcdef0123456789abcdef01234567",
+      }),
+    ]);
+
+    expect(report.provenance).toEqual({
+      npmPackages: 1,
+      gitPackages: 2,
+      pinnedPackages: 2,
+      unpinnedPackages: 1,
+      knownGoodPackages: 1,
+      registryMetadataPackages: 0,
+    });
   });
 });

@@ -1,4 +1,12 @@
-import type { ExtractedPackage, PackageVerification, PackageRisk, NpmRegistryMeta, SupplyChainReport } from "./types.js";
+import type {
+  ExtractedPackage,
+  PackageProvenance,
+  PackageVerification,
+  PackageRisk,
+  NpmRegistryMeta,
+  SupplyChainReport,
+  SupplyChainProvenanceSummary,
+} from "./types.js";
 import { KNOWN_GOOD_PACKAGES } from "./types.js";
 import { checkPackageName, checkServerPackage } from "../threat-intel/cve-database.js";
 import type { Severity } from "../types.js";
@@ -7,6 +15,8 @@ const SEVERITY_ORDER: Record<Severity, number> = {
   critical: 0, high: 1, medium: 2, low: 3, info: 4,
 };
 const GIT_COMMIT_HASH = /^[0-9a-f]{7,40}$/i;
+const EXACT_NPM_VERSION =
+  /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/;
 
 /**
  * Verify a list of extracted packages against known-bad lists and optionally the npm registry.
@@ -79,6 +89,7 @@ export async function verifyPackages(
 
     verifications.push({
       package: pkg,
+      provenance: buildPackageProvenance(pkg, registry),
       registry,
       risks,
       overallSeverity,
@@ -92,6 +103,7 @@ export async function verifyPackages(
     riskyPackages: riskyPackages.length,
     criticalCount: riskyPackages.filter((v) => v.overallSeverity === "critical").length,
     highCount: riskyPackages.filter((v) => v.overallSeverity === "high").length,
+    provenance: summarizePackageProvenance(verifications),
   };
 }
 
@@ -123,6 +135,56 @@ export function checkTyposquatting(packageName: string): PackageRisk | null {
 
 function hasPinnedGitCommit(gitRef: string | undefined): boolean {
   return !!gitRef && GIT_COMMIT_HASH.test(gitRef);
+}
+
+function buildPackageProvenance(
+  pkg: ExtractedPackage,
+  registry: NpmRegistryMeta | undefined
+): PackageProvenance {
+  if (pkg.source === "git") {
+    return {
+      ecosystem: "git",
+      locator: pkg.gitUrl ?? pkg.name,
+      pinned: hasPinnedGitCommit(pkg.gitRef),
+      knownGood: false,
+      metadataSource: "git-url",
+    };
+  }
+
+  return {
+    ecosystem: "npm",
+    locator: `${pkg.name}@${pkg.version ?? "latest"}`,
+    pinned: isPinnedNpmVersion(pkg.version),
+    knownGood: KNOWN_GOOD_PACKAGES.includes(pkg.name),
+    metadataSource: registry ? "npm-registry" : "offline",
+  };
+}
+
+function summarizePackageProvenance(
+  verifications: ReadonlyArray<PackageVerification>
+): SupplyChainProvenanceSummary {
+  return verifications.reduce<SupplyChainProvenanceSummary>(
+    (summary, verification) => ({
+      npmPackages: summary.npmPackages + (verification.provenance.ecosystem === "npm" ? 1 : 0),
+      gitPackages: summary.gitPackages + (verification.provenance.ecosystem === "git" ? 1 : 0),
+      pinnedPackages: summary.pinnedPackages + (verification.provenance.pinned ? 1 : 0),
+      unpinnedPackages: summary.unpinnedPackages + (verification.provenance.pinned ? 0 : 1),
+      knownGoodPackages: summary.knownGoodPackages + (verification.provenance.knownGood ? 1 : 0),
+      registryMetadataPackages: summary.registryMetadataPackages + (verification.provenance.metadataSource === "npm-registry" ? 1 : 0),
+    }),
+    {
+      npmPackages: 0,
+      gitPackages: 0,
+      pinnedPackages: 0,
+      unpinnedPackages: 0,
+      knownGoodPackages: 0,
+      registryMetadataPackages: 0,
+    }
+  );
+}
+
+function isPinnedNpmVersion(version: string | undefined): boolean {
+  return !!version && EXACT_NPM_VERSION.test(version);
 }
 
 /**
