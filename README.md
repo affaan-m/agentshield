@@ -559,6 +559,12 @@ MCP/tool surfaces; `high-risk-hooks-mcp` focuses on hook/MCP-heavy repos; and
 }
 ```
 
+Policy evaluation now includes an exception lifecycle audit in terminal output
+and GitHub Action summaries: total exceptions, active exceptions, exceptions
+expiring within seven days, expired exceptions, owners, tickets, scopes, and
+days until expiry. This keeps temporary waivers visible in branch-protection
+evidence instead of letting them become silent permanent bypasses.
+
 Exit codes:
 - `0`: scan completed without critical findings
 - `1`: CLI usage or runtime error

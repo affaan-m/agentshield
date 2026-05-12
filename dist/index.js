@@ -11508,6 +11508,7 @@ function evaluatePolicy(policy, findings, score, files, options = {}) {
     passed: finalViolations.length === 0,
     violations: finalViolations,
     exceptionsApplied: exceptionResult.applied,
+    exceptionSummary: buildExceptionSummary(policy.exceptions ?? [], now),
     score: score.numericScore,
     minScore: policy.min_score
   };
@@ -11631,6 +11632,51 @@ function isExceptionActive(exception, now) {
   if (Number.isNaN(expiresAt.getTime())) return false;
   return expiresAt.getTime() >= now.getTime();
 }
+function buildExceptionSummary(exceptions, now) {
+  const entries = exceptions.map((exception) => buildExceptionAuditEntry(exception, now)).sort(compareExceptionAuditEntries);
+  return {
+    total: entries.length,
+    active: entries.filter(
+      (entry) => entry.status === "active" || entry.status === "expiring_soon"
+    ).length,
+    expiringSoon: entries.filter((entry) => entry.status === "expiring_soon").length,
+    expired: entries.filter((entry) => entry.status === "expired").length,
+    entries
+  };
+}
+function buildExceptionAuditEntry(exception, now) {
+  const expiresAt = new Date(exception.expires_at);
+  const daysUntilExpiry = Number.isNaN(expiresAt.getTime()) ? Number.NEGATIVE_INFINITY : Math.ceil((expiresAt.getTime() - now.getTime()) / MS_PER_DAY);
+  const status = statusForExceptionDays(daysUntilExpiry);
+  return {
+    id: exception.id,
+    rule: exception.rule,
+    owner: exception.owner,
+    reason: exception.reason,
+    expiresAt: exception.expires_at,
+    status,
+    daysUntilExpiry,
+    ...exception.scope ? { scope: exception.scope } : {},
+    ...exception.ticket ? { ticket: exception.ticket } : {}
+  };
+}
+function statusForExceptionDays(daysUntilExpiry) {
+  if (daysUntilExpiry < 0) return "expired";
+  if (daysUntilExpiry <= EXPIRING_SOON_DAYS) return "expiring_soon";
+  return "active";
+}
+function compareExceptionAuditEntries(a, b) {
+  const statusRank = {
+    expiring_soon: 0,
+    active: 1,
+    expired: 2
+  };
+  const statusDelta = statusRank[a.status] - statusRank[b.status];
+  if (statusDelta !== 0) return statusDelta;
+  const dayDelta = a.daysUntilExpiry - b.daysUntilExpiry;
+  if (dayDelta !== 0) return dayDelta;
+  return a.id.localeCompare(b.id);
+}
 function exceptionMatchesViolation(exception, violation) {
   if (exception.rule !== violation.rule) return false;
   if (exception.severity && exception.severity !== violation.severity) {
@@ -11686,9 +11732,31 @@ function renderPolicyEvaluation(evaluation) {
     }
     lines.push("");
   }
+  if (evaluation.exceptionSummary && evaluation.exceptionSummary.total > 0) {
+    const summary = evaluation.exceptionSummary;
+    lines.push("  EXCEPTION AUDIT:");
+    lines.push(
+      `    total=${summary.total} active=${summary.active} expiring_soon=${summary.expiringSoon} expired=${summary.expired}`
+    );
+    for (const exception of summary.entries) {
+      const details = [
+        `status=${exception.status}`,
+        `owner=${exception.owner}`,
+        `expires=${exception.expiresAt}`,
+        `days=${formatExceptionDays(exception.daysUntilExpiry)}`,
+        ...exception.scope ? [`scope=${exception.scope}`] : [],
+        ...exception.ticket ? [`ticket=${exception.ticket}`] : []
+      ];
+      lines.push(`    ${exception.id} (${exception.rule}) ${details.join(" ")}`);
+    }
+    lines.push("");
+  }
   lines.push(`  ${divider}`);
   lines.push("");
   return lines.join("\n");
+}
+function formatExceptionDays(daysUntilExpiry) {
+  return Number.isFinite(daysUntilExpiry) ? String(daysUntilExpiry) : "invalid";
 }
 function generateExamplePolicy(pack = "enterprise", options = {}) {
   const policy = generatePolicyPack(pack, {
@@ -11711,7 +11779,7 @@ function generateExamplePolicy(pack = "enterprise", options = {}) {
   };
   return JSON.stringify(example, null, 2);
 }
-var SEVERITY_ORDER2;
+var SEVERITY_ORDER2, EXPIRING_SOON_DAYS, MS_PER_DAY;
 var init_evaluate = __esm({
   "src/policy/evaluate.ts"() {
     "use strict";
@@ -11724,6 +11792,8 @@ var init_evaluate = __esm({
       low: 3,
       info: 4
     };
+    EXPIRING_SOON_DAYS = 7;
+    MS_PER_DAY = 24 * 60 * 60 * 1e3;
   }
 });
 

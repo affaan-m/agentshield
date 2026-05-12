@@ -92,6 +92,7 @@ export interface PolicyEvaluation {
   readonly passed: boolean;
   readonly violations: ReadonlyArray<PolicyViolation>;
   readonly exceptionsApplied?: ReadonlyArray<AppliedPolicyException>;
+  readonly exceptionSummary?: PolicyExceptionSummary;
   readonly score: number;
   readonly minScore: number;
 }
@@ -103,4 +104,29 @@ export interface AppliedPolicyException {
   readonly reason: string;
   readonly expiresAt: string;
   readonly violation: string;
+}
+
+export type PolicyExceptionLifecycleStatus =
+  | "active"
+  | "expiring_soon"
+  | "expired";
+
+export interface PolicyExceptionAuditEntry {
+  readonly id: string;
+  readonly rule: string;
+  readonly owner: string;
+  readonly reason: string;
+  readonly expiresAt: string;
+  readonly status: PolicyExceptionLifecycleStatus;
+  readonly daysUntilExpiry: number;
+  readonly scope?: string;
+  readonly ticket?: string;
+}
+
+export interface PolicyExceptionSummary {
+  readonly total: number;
+  readonly active: number;
+  readonly expiringSoon: number;
+  readonly expired: number;
+  readonly entries: ReadonlyArray<PolicyExceptionAuditEntry>;
 }

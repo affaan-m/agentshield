@@ -346,6 +346,65 @@ describe("evaluatePolicy", () => {
     expect(result.exceptionsApplied).toHaveLength(0);
     expect(result.violations.some((v) => v.rule === "banned_mcp_servers")).toBe(true);
   });
+
+  it("summarizes policy exception lifecycle for audit review", () => {
+    const policy = makePolicy({
+      exceptions: [
+        {
+          id: "AS-EX-ACTIVE",
+          rule: "required_hooks",
+          owner: "platform@example.com",
+          reason: "Long migration window",
+          expires_at: "2026-06-30T00:00:00.000Z",
+          ticket: "SEC-101",
+        },
+        {
+          id: "AS-EX-SOON",
+          rule: "min_score",
+          owner: "security@example.com",
+          reason: "Needs follow-up this week",
+          expires_at: "2026-05-15T00:00:00.000Z",
+          scope: "score",
+        },
+        {
+          id: "AS-EX-OLD",
+          rule: "banned_tools",
+          owner: "security@example.com",
+          reason: "Expired exception",
+          expires_at: "2026-05-01T00:00:00.000Z",
+        },
+      ],
+    });
+    const result = evaluatePolicy(policy, [], makeScore(90), [], {
+      now: new Date("2026-05-12T00:00:00.000Z"),
+    });
+
+    expect(result.exceptionSummary).toMatchObject({
+      total: 3,
+      active: 2,
+      expiringSoon: 1,
+      expired: 1,
+    });
+    expect(result.exceptionSummary?.entries).toEqual([
+      expect.objectContaining({
+        id: "AS-EX-SOON",
+        status: "expiring_soon",
+        daysUntilExpiry: 3,
+        owner: "security@example.com",
+      }),
+      expect.objectContaining({
+        id: "AS-EX-ACTIVE",
+        status: "active",
+        daysUntilExpiry: 49,
+        ticket: "SEC-101",
+      }),
+      expect.objectContaining({
+        id: "AS-EX-OLD",
+        status: "expired",
+        daysUntilExpiry: -11,
+      }),
+    ]);
+  });
 });
 
 describe("renderPolicyEvaluation", () => {
@@ -410,6 +469,51 @@ describe("renderPolicyEvaluation", () => {
     expect(output).toContain("COMPLIANT (WITH EXCEPTIONS)");
     expect(output).toContain("AS-EX-001");
     expect(output).toContain("Migration window");
+  });
+
+  it("renders policy exception lifecycle audit details", () => {
+    const output = renderPolicyEvaluation({
+      policyName: "Exception Lifecycle Policy",
+      passed: false,
+      violations: [],
+      exceptionSummary: {
+        total: 2,
+        active: 1,
+        expiringSoon: 1,
+        expired: 0,
+        entries: [
+          {
+            id: "AS-EX-SOON",
+            rule: "min_score",
+            owner: "security@example.com",
+            reason: "Short migration window",
+            expiresAt: "2026-05-15T00:00:00.000Z",
+            status: "expiring_soon",
+            daysUntilExpiry: 3,
+            scope: "score",
+            ticket: "SEC-123",
+          },
+          {
+            id: "AS-EX-ACTIVE",
+            rule: "required_hooks",
+            owner: "platform@example.com",
+            reason: "Long migration window",
+            expiresAt: "2026-06-30T00:00:00.000Z",
+            status: "active",
+            daysUntilExpiry: 49,
+          },
+        ],
+      },
+      score: 80,
+      minScore: 90,
+    });
+
+    expect(output).toContain("EXCEPTION AUDIT");
+    expect(output).toContain("total=2 active=1 expiring_soon=1 expired=0");
+    expect(output).toContain("AS-EX-SOON");
+    expect(output).toContain("status=expiring_soon");
+    expect(output).toContain("days=3");
+    expect(output).toContain("ticket=SEC-123");
   });
 });
 

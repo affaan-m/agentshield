@@ -4,6 +4,9 @@ import { generatePolicyPack } from "./presets.js";
 import type {
   AppliedPolicyException,
   OrgPolicy,
+  PolicyExceptionAuditEntry,
+  PolicyExceptionLifecycleStatus,
+  PolicyExceptionSummary,
   PolicyException,
   PolicyPack,
   PolicyViolation,
@@ -14,6 +17,8 @@ import type { Finding, SecurityScore, ConfigFile, Severity } from "../types.js";
 const SEVERITY_ORDER: Record<Severity, number> = {
   critical: 0, high: 1, medium: 2, low: 3, info: 4,
 };
+const EXPIRING_SOON_DAYS = 7;
+const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
 export type LoadPolicyResult =
   | { readonly success: true; readonly policy: OrgPolicy }
@@ -165,6 +170,7 @@ export function evaluatePolicy(
     passed: finalViolations.length === 0,
     violations: finalViolations,
     exceptionsApplied: exceptionResult.applied,
+    exceptionSummary: buildExceptionSummary(policy.exceptions ?? [], now),
     score: score.numericScore,
     minScore: policy.min_score,
   };
@@ -357,6 +363,70 @@ function isExceptionActive(exception: PolicyException, now: Date): boolean {
   return expiresAt.getTime() >= now.getTime();
 }
 
+function buildExceptionSummary(
+  exceptions: ReadonlyArray<PolicyException>,
+  now: Date
+): PolicyExceptionSummary {
+  const entries = exceptions
+    .map((exception) => buildExceptionAuditEntry(exception, now))
+    .sort(compareExceptionAuditEntries);
+
+  return {
+    total: entries.length,
+    active: entries.filter((entry) =>
+      entry.status === "active" || entry.status === "expiring_soon"
+    ).length,
+    expiringSoon: entries.filter((entry) => entry.status === "expiring_soon").length,
+    expired: entries.filter((entry) => entry.status === "expired").length,
+    entries,
+  };
+}
+
+function buildExceptionAuditEntry(
+  exception: PolicyException,
+  now: Date
+): PolicyExceptionAuditEntry {
+  const expiresAt = new Date(exception.expires_at);
+  const daysUntilExpiry = Number.isNaN(expiresAt.getTime())
+    ? Number.NEGATIVE_INFINITY
+    : Math.ceil((expiresAt.getTime() - now.getTime()) / MS_PER_DAY);
+  const status = statusForExceptionDays(daysUntilExpiry);
+
+  return {
+    id: exception.id,
+    rule: exception.rule,
+    owner: exception.owner,
+    reason: exception.reason,
+    expiresAt: exception.expires_at,
+    status,
+    daysUntilExpiry,
+    ...(exception.scope ? { scope: exception.scope } : {}),
+    ...(exception.ticket ? { ticket: exception.ticket } : {}),
+  };
+}
+
+function statusForExceptionDays(daysUntilExpiry: number): PolicyExceptionLifecycleStatus {
+  if (daysUntilExpiry < 0) return "expired";
+  if (daysUntilExpiry <= EXPIRING_SOON_DAYS) return "expiring_soon";
+  return "active";
+}
+
+function compareExceptionAuditEntries(
+  a: PolicyExceptionAuditEntry,
+  b: PolicyExceptionAuditEntry
+): number {
+  const statusRank: Record<PolicyExceptionLifecycleStatus, number> = {
+    expiring_soon: 0,
+    active: 1,
+    expired: 2,
+  };
+  const statusDelta = statusRank[a.status] - statusRank[b.status];
+  if (statusDelta !== 0) return statusDelta;
+  const dayDelta = a.daysUntilExpiry - b.daysUntilExpiry;
+  if (dayDelta !== 0) return dayDelta;
+  return a.id.localeCompare(b.id);
+}
+
 function exceptionMatchesViolation(
   exception: PolicyException,
   violation: PolicyViolation
@@ -429,10 +499,34 @@ export function renderPolicyEvaluation(evaluation: PolicyEvaluation): string {
     lines.push("");
   }
 
+  if (evaluation.exceptionSummary && evaluation.exceptionSummary.total > 0) {
+    const summary = evaluation.exceptionSummary;
+    lines.push("  EXCEPTION AUDIT:");
+    lines.push(
+      `    total=${summary.total} active=${summary.active} expiring_soon=${summary.expiringSoon} expired=${summary.expired}`
+    );
+    for (const exception of summary.entries) {
+      const details = [
+        `status=${exception.status}`,
+        `owner=${exception.owner}`,
+        `expires=${exception.expiresAt}`,
+        `days=${formatExceptionDays(exception.daysUntilExpiry)}`,
+        ...(exception.scope ? [`scope=${exception.scope}`] : []),
+        ...(exception.ticket ? [`ticket=${exception.ticket}`] : []),
+      ];
+      lines.push(`    ${exception.id} (${exception.rule}) ${details.join(" ")}`);
+    }
+    lines.push("");
+  }
+
   lines.push(`  ${divider}`);
   lines.push("");
 
   return lines.join("\n");
+}
+
+function formatExceptionDays(daysUntilExpiry: number): string {
+  return Number.isFinite(daysUntilExpiry) ? String(daysUntilExpiry) : "invalid";
 }
 
 /**
