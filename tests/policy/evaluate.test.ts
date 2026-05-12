@@ -76,6 +76,9 @@ function makePolicy(overrides: Partial<OrgPolicy> = {}): OrgPolicy {
   return {
     version: 1,
     name: "Test Policy",
+    policy_pack: "team",
+    owners: [],
+    exceptions: [],
     required_deny_list: [],
     banned_mcp_servers: [],
     min_score: 60,
@@ -100,6 +103,7 @@ describe("loadPolicy", () => {
     expect(result.success).toBe(true);
     if (result.success) {
       expect(result.policy.min_score).toBe(80);
+      expect(result.policy.policy_pack).toBe("team");
     }
   });
 
@@ -266,12 +270,90 @@ describe("evaluatePolicy", () => {
     expect(result.passed).toBe(false);
     expect(result.violations.length).toBeGreaterThanOrEqual(3);
   });
+
+  it("applies active enterprise exceptions to matching violations", () => {
+    const policy = makePolicy({
+      min_score: 90,
+      owners: ["security@example.com"],
+      exceptions: [
+        {
+          id: "AS-EX-001",
+          rule: "min_score",
+          owner: "security@example.com",
+          reason: "Migration window for a newly acquired team",
+          expires_at: "2026-12-31T23:59:59.000Z",
+          ticket: "SEC-100",
+        },
+      ],
+    });
+    const result = evaluatePolicy(policy, [], makeScore(50), [], {
+      now: new Date("2026-05-12T00:00:00.000Z"),
+    });
+
+    expect(result.passed).toBe(true);
+    expect(result.violations).toHaveLength(0);
+    expect(result.exceptionsApplied).toHaveLength(1);
+    expect(result.exceptionsApplied?.[0]).toMatchObject({
+      id: "AS-EX-001",
+      rule: "min_score",
+      owner: "security@example.com",
+    });
+  });
+
+  it("does not apply expired exceptions and reports them", () => {
+    const policy = makePolicy({
+      min_score: 90,
+      exceptions: [
+        {
+          id: "AS-EX-OLD",
+          rule: "min_score",
+          owner: "security@example.com",
+          reason: "Expired migration window",
+          expires_at: "2026-01-01T00:00:00.000Z",
+        },
+      ],
+    });
+    const result = evaluatePolicy(policy, [], makeScore(50), [], {
+      now: new Date("2026-05-12T00:00:00.000Z"),
+    });
+
+    expect(result.passed).toBe(false);
+    expect(result.exceptionsApplied).toHaveLength(0);
+    expect(result.violations.some((v) => v.rule === "min_score")).toBe(true);
+    expect(result.violations.some((v) => v.rule === "expired_exception")).toBe(true);
+  });
+
+  it("honors exception scope before suppressing a violation", () => {
+    const policy = makePolicy({
+      banned_mcp_servers: ["shell"],
+      exceptions: [
+        {
+          id: "AS-EX-SCOPED",
+          rule: "banned_mcp_servers",
+          owner: "security@example.com",
+          reason: "Allows a different server only",
+          expires_at: "2026-12-31T23:59:59.000Z",
+          scope: "sandbox-shell",
+        },
+      ],
+    });
+    const files = [makeMcpConfig({ shell: { command: "sh" } })];
+    const result = evaluatePolicy(policy, [], makeScore(80), files, {
+      now: new Date("2026-05-12T00:00:00.000Z"),
+    });
+
+    expect(result.passed).toBe(false);
+    expect(result.exceptionsApplied).toHaveLength(0);
+    expect(result.violations.some((v) => v.rule === "banned_mcp_servers")).toBe(true);
+  });
 });
 
 describe("renderPolicyEvaluation", () => {
   it("renders compliant evaluation", () => {
     const output = renderPolicyEvaluation({
       policyName: "My Policy",
+      policyPack: "enterprise",
+      owners: ["security@example.com"],
       passed: true,
       violations: [],
       score: 85,
@@ -279,6 +361,8 @@ describe("renderPolicyEvaluation", () => {
     });
 
     expect(output).toContain("My Policy");
+    expect(output).toContain("enterprise");
+    expect(output).toContain("security@example.com");
     expect(output).toContain("COMPLIANT");
   });
 
@@ -303,6 +387,30 @@ describe("renderPolicyEvaluation", () => {
     expect(output).toContain("min_score");
     expect(output).toContain("Score too low");
   });
+
+  it("renders applied exceptions", () => {
+    const output = renderPolicyEvaluation({
+      policyName: "Exception Policy",
+      passed: true,
+      violations: [],
+      exceptionsApplied: [
+        {
+          id: "AS-EX-001",
+          rule: "min_score",
+          owner: "security@example.com",
+          reason: "Migration window",
+          expiresAt: "2026-12-31T23:59:59.000Z",
+          violation: "Score too low",
+        },
+      ],
+      score: 50,
+      minScore: 90,
+    });
+
+    expect(output).toContain("COMPLIANT (WITH EXCEPTIONS)");
+    expect(output).toContain("AS-EX-001");
+    expect(output).toContain("Migration window");
+  });
 });
 
 describe("generateExamplePolicy", () => {
@@ -311,10 +419,13 @@ describe("generateExamplePolicy", () => {
     const parsed = JSON.parse(json);
     expect(parsed.version).toBe(1);
     expect(parsed.name).toBeTruthy();
+    expect(parsed.policy_pack).toBe("enterprise");
   });
 
   it("includes all policy fields", () => {
     const parsed = JSON.parse(generateExamplePolicy());
+    expect(parsed.owners).toBeDefined();
+    expect(parsed.exceptions).toBeDefined();
     expect(parsed.required_deny_list).toBeDefined();
     expect(parsed.banned_mcp_servers).toBeDefined();
     expect(parsed.min_score).toBeDefined();

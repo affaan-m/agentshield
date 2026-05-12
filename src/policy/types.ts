@@ -14,10 +14,35 @@ type DeepReadonly<T> =
 
 // ─── Organization Policy Schema ─────────────────────────────
 
+const SeveritySchema = z.enum(["critical", "high", "medium", "low", "info"]);
+
+export const PolicyPackSchema = z.enum([
+  "oss",
+  "team",
+  "enterprise",
+  "regulated",
+  "high-risk-hooks-mcp",
+  "ci-enforcement",
+]);
+
+export const PolicyExceptionSchema = z.object({
+  id: z.string().min(1),
+  rule: z.string().min(1),
+  owner: z.string().min(1),
+  reason: z.string().min(1),
+  expires_at: z.string().datetime(),
+  scope: z.string().optional(),
+  severity: SeveritySchema.optional(),
+  ticket: z.string().optional(),
+});
+
 export const OrgPolicySchema = z.object({
   version: z.literal(1),
   name: z.string().optional(),
   description: z.string().optional(),
+  policy_pack: PolicyPackSchema.default("team"),
+  owners: z.array(z.string()).default([]),
+  exceptions: z.array(PolicyExceptionSchema).default([]),
 
   /** Items that MUST appear in the permissions.deny list */
   required_deny_list: z.array(z.string()).default([]),
@@ -29,7 +54,7 @@ export const OrgPolicySchema = z.object({
   min_score: z.number().int().min(0).max(100).default(60),
 
   /** Maximum allowed severity for any single finding */
-  max_severity: z.enum(["critical", "high", "medium", "low", "info"]).default("critical"),
+  max_severity: SeveritySchema.default("critical"),
 
   /** Hook patterns that must be present in settings */
   required_hooks: z.array(
@@ -44,6 +69,8 @@ export const OrgPolicySchema = z.object({
   banned_tools: z.array(z.string()).default([]),
 });
 
+export type PolicyPack = DeepReadonly<z.infer<typeof PolicyPackSchema>>;
+export type PolicyException = DeepReadonly<z.infer<typeof PolicyExceptionSchema>>;
 export type OrgPolicy = DeepReadonly<z.infer<typeof OrgPolicySchema>>;
 
 // ─── Policy Violation ───────────────────────────────────────
@@ -60,8 +87,20 @@ export interface PolicyViolation {
 
 export interface PolicyEvaluation {
   readonly policyName: string;
+  readonly policyPack?: PolicyPack;
+  readonly owners?: ReadonlyArray<string>;
   readonly passed: boolean;
   readonly violations: ReadonlyArray<PolicyViolation>;
+  readonly exceptionsApplied?: ReadonlyArray<AppliedPolicyException>;
   readonly score: number;
   readonly minScore: number;
+}
+
+export interface AppliedPolicyException {
+  readonly id: string;
+  readonly rule: string;
+  readonly owner: string;
+  readonly reason: string;
+  readonly expiresAt: string;
+  readonly violation: string;
 }

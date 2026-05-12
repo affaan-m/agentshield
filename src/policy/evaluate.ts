@@ -1,6 +1,12 @@
 import { readFileSync, existsSync } from "node:fs";
 import { OrgPolicySchema } from "./types.js";
-import type { OrgPolicy, PolicyViolation, PolicyEvaluation } from "./types.js";
+import type {
+  AppliedPolicyException,
+  OrgPolicy,
+  PolicyException,
+  PolicyViolation,
+  PolicyEvaluation,
+} from "./types.js";
 import type { Finding, SecurityScore, ConfigFile, Severity } from "../types.js";
 
 const SEVERITY_ORDER: Record<Severity, number> = {
@@ -10,6 +16,10 @@ const SEVERITY_ORDER: Record<Severity, number> = {
 export type LoadPolicyResult =
   | { readonly success: true; readonly policy: OrgPolicy }
   | { readonly success: false; readonly error: string };
+
+export interface EvaluatePolicyOptions {
+  readonly now?: Date;
+}
 
 /**
  * Load and validate an organization policy file.
@@ -36,9 +46,11 @@ export function evaluatePolicy(
   policy: OrgPolicy,
   findings: ReadonlyArray<Finding>,
   score: SecurityScore,
-  files: ReadonlyArray<ConfigFile>
+  files: ReadonlyArray<ConfigFile>,
+  options: EvaluatePolicyOptions = {}
 ): PolicyEvaluation {
   const violations: PolicyViolation[] = [];
+  const now = options.now ?? new Date();
 
   // 1. Check min score
   if (score.numericScore < policy.min_score) {
@@ -130,10 +142,27 @@ export function evaluatePolicy(
     }
   }
 
+  const exceptionResult = applyPolicyExceptions(
+    violations,
+    policy.exceptions ?? [],
+    now
+  );
+  const expiredExceptionViolations = buildExpiredExceptionViolations(
+    policy.exceptions ?? [],
+    now
+  );
+  const finalViolations = [
+    ...exceptionResult.violations,
+    ...expiredExceptionViolations,
+  ];
+
   return {
     policyName: policy.name ?? "Organization Policy",
-    passed: violations.length === 0,
-    violations,
+    policyPack: policy.policy_pack,
+    owners: policy.owners ?? [],
+    passed: finalViolations.length === 0,
+    violations: finalViolations,
+    exceptionsApplied: exceptionResult.applied,
     score: score.numericScore,
     minScore: policy.min_score,
   };
@@ -268,6 +297,85 @@ function matchesBanned(serverName: string, banned: string): boolean {
   return false;
 }
 
+function applyPolicyExceptions(
+  violations: ReadonlyArray<PolicyViolation>,
+  exceptions: ReadonlyArray<PolicyException>,
+  now: Date
+): {
+  readonly violations: ReadonlyArray<PolicyViolation>;
+  readonly applied: ReadonlyArray<AppliedPolicyException>;
+} {
+  const applied: AppliedPolicyException[] = [];
+  const remaining: PolicyViolation[] = [];
+  const activeExceptions = exceptions.filter((exception) =>
+    isExceptionActive(exception, now)
+  );
+
+  for (const violation of violations) {
+    const exception = activeExceptions.find((candidate) =>
+      exceptionMatchesViolation(candidate, violation)
+    );
+
+    if (!exception) {
+      remaining.push(violation);
+      continue;
+    }
+
+    applied.push({
+      id: exception.id,
+      rule: exception.rule,
+      owner: exception.owner,
+      reason: exception.reason,
+      expiresAt: exception.expires_at,
+      violation: violation.description,
+    });
+  }
+
+  return { violations: remaining, applied };
+}
+
+function buildExpiredExceptionViolations(
+  exceptions: ReadonlyArray<PolicyException>,
+  now: Date
+): ReadonlyArray<PolicyViolation> {
+  return exceptions
+    .filter((exception) => !isExceptionActive(exception, now))
+    .map((exception) => ({
+      rule: "expired_exception",
+      severity: "high" as const,
+      description: `Policy exception "${exception.id}" for rule "${exception.rule}" has expired.`,
+      expected: "Exception must have a future expires_at timestamp or be removed",
+      actual: `Expired at ${exception.expires_at}`,
+    }));
+}
+
+function isExceptionActive(exception: PolicyException, now: Date): boolean {
+  const expiresAt = new Date(exception.expires_at);
+  if (Number.isNaN(expiresAt.getTime())) return false;
+  return expiresAt.getTime() >= now.getTime();
+}
+
+function exceptionMatchesViolation(
+  exception: PolicyException,
+  violation: PolicyViolation
+): boolean {
+  if (exception.rule !== violation.rule) return false;
+  if (exception.severity && exception.severity !== violation.severity) {
+    return false;
+  }
+
+  if (!exception.scope) return true;
+
+  const scope = exception.scope.toLowerCase();
+  const haystack = [
+    violation.description,
+    violation.expected,
+    violation.actual,
+  ].join("\n").toLowerCase();
+
+  return haystack.includes(scope);
+}
+
 /**
  * Render policy evaluation results.
  */
@@ -281,8 +389,17 @@ export function renderPolicyEvaluation(evaluation: PolicyEvaluation): string {
   lines.push(`  ${divider}`);
   lines.push("");
 
+  if (evaluation.policyPack) {
+    lines.push(`  Policy Pack: ${evaluation.policyPack}`);
+  }
+  if (evaluation.owners && evaluation.owners.length > 0) {
+    lines.push(`  Owners: ${evaluation.owners.join(", ")}`);
+  }
+  lines.push("");
+
   if (evaluation.passed) {
-    lines.push("  Status: COMPLIANT");
+    const hasExceptions = (evaluation.exceptionsApplied?.length ?? 0) > 0;
+    lines.push(`  Status: ${hasExceptions ? "COMPLIANT (WITH EXCEPTIONS)" : "COMPLIANT"}`);
   } else {
     lines.push("  Status: NON-COMPLIANT");
     lines.push(`  Violations: ${evaluation.violations.length}`);
@@ -301,6 +418,15 @@ export function renderPolicyEvaluation(evaluation: PolicyEvaluation): string {
     lines.push("");
   }
 
+  if (evaluation.exceptionsApplied && evaluation.exceptionsApplied.length > 0) {
+    lines.push("  EXCEPTIONS APPLIED:");
+    for (const exception of evaluation.exceptionsApplied) {
+      lines.push(`    ${exception.id} (${exception.rule}) owner=${exception.owner} expires=${exception.expiresAt}`);
+      lines.push(`               Reason: ${exception.reason}`);
+    }
+    lines.push("");
+  }
+
   lines.push(`  ${divider}`);
   lines.push("");
 
@@ -315,6 +441,19 @@ export function generateExamplePolicy(): string {
     version: 1,
     name: "Acme Corp Security Policy",
     description: "Organization-wide Claude Code security requirements",
+    policy_pack: "enterprise",
+    owners: ["security-platform@acme.example"],
+    exceptions: [
+      {
+        id: "AS-EX-001",
+        rule: "required_hooks",
+        owner: "security-platform@acme.example",
+        reason: "Legacy repository migration window",
+        expires_at: "2026-06-30T23:59:59.000Z",
+        scope: "agentshield",
+        ticket: "SEC-1234",
+      },
+    ],
     required_deny_list: ["Bash(rm -rf", "Bash(curl.*|.*sh"],
     banned_mcp_servers: ["shell", "terminal"],
     min_score: 75,

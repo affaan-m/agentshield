@@ -439,6 +439,7 @@ AgentShield currently has three distinct automation surfaces:
 
 - CLI: `agentshield scan`, `agentshield init`, and `agentshield miniclaw start`
 - Scanner report JSON/SARIF: `agentshield scan --format json` or `agentshield scan --format sarif --output agentshield.sarif`
+- Organization policy gate: `agentshield scan --policy agentshield-policy.json`
 - MiniClaw package + HTTP API: `ecc-agentshield/miniclaw`
 
 Important packaging note:
@@ -490,6 +491,7 @@ agentshield scan [options]         Scan configuration directory
   --log <path>                     Write structured scan logs to a file
   --log-format <format>            Log format: ndjson or json
   --corpus                         Run built-in attack corpus validation
+  --policy <path>                  Validate against an organization policy
   --min-severity <severity>        Filter: critical, high, medium, low, info
   -v, --verbose                    Show detailed output
 
@@ -507,6 +509,31 @@ agentshield runtime status --check
 
 # Back up invalid runtime files and restore a healthy install
 agentshield runtime repair
+```
+
+Organization policy files support enterprise metadata and temporary exceptions:
+
+```json
+{
+  "version": 1,
+  "name": "Acme Corp Security Policy",
+  "policy_pack": "enterprise",
+  "owners": ["security-platform@acme.example"],
+  "min_score": 85,
+  "max_severity": "high",
+  "required_deny_list": ["Bash(rm -rf"],
+  "exceptions": [
+    {
+      "id": "AS-EX-001",
+      "rule": "required_hooks",
+      "owner": "security-platform@acme.example",
+      "reason": "Legacy repository migration window",
+      "expires_at": "2026-06-30T23:59:59.000Z",
+      "scope": "agentshield",
+      "ticket": "SEC-1234"
+    }
+  ]
+}
 ```
 
 Exit codes:

@@ -11357,14 +11357,36 @@ var init_baseline = __esm({
 
 // src/policy/types.ts
 import { z as z2 } from "zod";
-var OrgPolicySchema;
+var SeveritySchema, PolicyPackSchema, PolicyExceptionSchema, OrgPolicySchema;
 var init_types2 = __esm({
   "src/policy/types.ts"() {
     "use strict";
+    SeveritySchema = z2.enum(["critical", "high", "medium", "low", "info"]);
+    PolicyPackSchema = z2.enum([
+      "oss",
+      "team",
+      "enterprise",
+      "regulated",
+      "high-risk-hooks-mcp",
+      "ci-enforcement"
+    ]);
+    PolicyExceptionSchema = z2.object({
+      id: z2.string().min(1),
+      rule: z2.string().min(1),
+      owner: z2.string().min(1),
+      reason: z2.string().min(1),
+      expires_at: z2.string().datetime(),
+      scope: z2.string().optional(),
+      severity: SeveritySchema.optional(),
+      ticket: z2.string().optional()
+    });
     OrgPolicySchema = z2.object({
       version: z2.literal(1),
       name: z2.string().optional(),
       description: z2.string().optional(),
+      policy_pack: PolicyPackSchema.default("team"),
+      owners: z2.array(z2.string()).default([]),
+      exceptions: z2.array(PolicyExceptionSchema).default([]),
       /** Items that MUST appear in the permissions.deny list */
       required_deny_list: z2.array(z2.string()).default([]),
       /** MCP servers that are banned from use */
@@ -11372,7 +11394,7 @@ var init_types2 = __esm({
       /** Minimum acceptable security score (0-100) */
       min_score: z2.number().int().min(0).max(100).default(60),
       /** Maximum allowed severity for any single finding */
-      max_severity: z2.enum(["critical", "high", "medium", "low", "info"]).default("critical"),
+      max_severity: SeveritySchema.default("critical"),
       /** Hook patterns that must be present in settings */
       required_hooks: z2.array(
         z2.object({
@@ -11402,8 +11424,9 @@ function loadPolicy2(policyPath) {
     return { success: false, error: message };
   }
 }
-function evaluatePolicy(policy, findings, score, files) {
+function evaluatePolicy(policy, findings, score, files, options = {}) {
   const violations = [];
+  const now = options.now ?? /* @__PURE__ */ new Date();
   if (score.numericScore < policy.min_score) {
     violations.push({
       rule: "min_score",
@@ -11479,10 +11502,26 @@ function evaluatePolicy(policy, findings, score, files) {
       });
     }
   }
+  const exceptionResult = applyPolicyExceptions(
+    violations,
+    policy.exceptions ?? [],
+    now
+  );
+  const expiredExceptionViolations = buildExpiredExceptionViolations(
+    policy.exceptions ?? [],
+    now
+  );
+  const finalViolations = [
+    ...exceptionResult.violations,
+    ...expiredExceptionViolations
+  ];
   return {
     policyName: policy.name ?? "Organization Policy",
-    passed: violations.length === 0,
-    violations,
+    policyPack: policy.policy_pack,
+    owners: policy.owners ?? [],
+    passed: finalViolations.length === 0,
+    violations: finalViolations,
+    exceptionsApplied: exceptionResult.applied,
     score: score.numericScore,
     minScore: policy.min_score
   };
@@ -11567,6 +11606,59 @@ function matchesBanned(serverName, banned) {
   }
   return false;
 }
+function applyPolicyExceptions(violations, exceptions, now) {
+  const applied = [];
+  const remaining = [];
+  const activeExceptions = exceptions.filter(
+    (exception) => isExceptionActive(exception, now)
+  );
+  for (const violation of violations) {
+    const exception = activeExceptions.find(
+      (candidate) => exceptionMatchesViolation(candidate, violation)
+    );
+    if (!exception) {
+      remaining.push(violation);
+      continue;
+    }
+    applied.push({
+      id: exception.id,
+      rule: exception.rule,
+      owner: exception.owner,
+      reason: exception.reason,
+      expiresAt: exception.expires_at,
+      violation: violation.description
+    });
+  }
+  return { violations: remaining, applied };
+}
+function buildExpiredExceptionViolations(exceptions, now) {
+  return exceptions.filter((exception) => !isExceptionActive(exception, now)).map((exception) => ({
+    rule: "expired_exception",
+    severity: "high",
+    description: `Policy exception "${exception.id}" for rule "${exception.rule}" has expired.`,
+    expected: "Exception must have a future expires_at timestamp or be removed",
+    actual: `Expired at ${exception.expires_at}`
+  }));
+}
+function isExceptionActive(exception, now) {
+  const expiresAt = new Date(exception.expires_at);
+  if (Number.isNaN(expiresAt.getTime())) return false;
+  return expiresAt.getTime() >= now.getTime();
+}
+function exceptionMatchesViolation(exception, violation) {
+  if (exception.rule !== violation.rule) return false;
+  if (exception.severity && exception.severity !== violation.severity) {
+    return false;
+  }
+  if (!exception.scope) return true;
+  const scope = exception.scope.toLowerCase();
+  const haystack = [
+    violation.description,
+    violation.expected,
+    violation.actual
+  ].join("\n").toLowerCase();
+  return haystack.includes(scope);
+}
 function renderPolicyEvaluation(evaluation) {
   const lines = [];
   const divider = "\u2500".repeat(60);
@@ -11575,8 +11667,16 @@ function renderPolicyEvaluation(evaluation) {
   lines.push(`  Organization Policy: ${evaluation.policyName}`);
   lines.push(`  ${divider}`);
   lines.push("");
+  if (evaluation.policyPack) {
+    lines.push(`  Policy Pack: ${evaluation.policyPack}`);
+  }
+  if (evaluation.owners && evaluation.owners.length > 0) {
+    lines.push(`  Owners: ${evaluation.owners.join(", ")}`);
+  }
+  lines.push("");
   if (evaluation.passed) {
-    lines.push("  Status: COMPLIANT");
+    const hasExceptions = (evaluation.exceptionsApplied?.length ?? 0) > 0;
+    lines.push(`  Status: ${hasExceptions ? "COMPLIANT (WITH EXCEPTIONS)" : "COMPLIANT"}`);
   } else {
     lines.push("  Status: NON-COMPLIANT");
     lines.push(`  Violations: ${evaluation.violations.length}`);
@@ -11592,6 +11692,14 @@ function renderPolicyEvaluation(evaluation) {
     }
     lines.push("");
   }
+  if (evaluation.exceptionsApplied && evaluation.exceptionsApplied.length > 0) {
+    lines.push("  EXCEPTIONS APPLIED:");
+    for (const exception of evaluation.exceptionsApplied) {
+      lines.push(`    ${exception.id} (${exception.rule}) owner=${exception.owner} expires=${exception.expiresAt}`);
+      lines.push(`               Reason: ${exception.reason}`);
+    }
+    lines.push("");
+  }
   lines.push(`  ${divider}`);
   lines.push("");
   return lines.join("\n");
@@ -11601,6 +11709,19 @@ function generateExamplePolicy() {
     version: 1,
     name: "Acme Corp Security Policy",
     description: "Organization-wide Claude Code security requirements",
+    policy_pack: "enterprise",
+    owners: ["security-platform@acme.example"],
+    exceptions: [
+      {
+        id: "AS-EX-001",
+        rule: "required_hooks",
+        owner: "security-platform@acme.example",
+        reason: "Legacy repository migration window",
+        expires_at: "2026-06-30T23:59:59.000Z",
+        scope: "agentshield",
+        ticket: "SEC-1234"
+      }
+    ],
     required_deny_list: ["Bash(rm -rf", "Bash(curl.*|.*sh"],
     banned_mcp_servers: ["shell", "terminal"],
     min_score: 75,
@@ -11635,6 +11756,8 @@ var init_evaluate = __esm({
 var policy_exports = {};
 __export(policy_exports, {
   OrgPolicySchema: () => OrgPolicySchema,
+  PolicyExceptionSchema: () => PolicyExceptionSchema,
+  PolicyPackSchema: () => PolicyPackSchema,
   evaluatePolicy: () => evaluatePolicy,
   generateExamplePolicy: () => generateExamplePolicy,
   loadPolicy: () => loadPolicy2,

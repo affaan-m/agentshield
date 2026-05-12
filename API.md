@@ -83,9 +83,23 @@ High-value `scan` options:
 - `--taint`
 - `--deep`
 - `--corpus`
+- `--policy <path>`
 - `--min-severity critical|high|medium|low|info`
 - `--log <path>`
 - `--log-format ndjson|json`
+
+Policy files use schema version `1`. Enterprise policy metadata is optional but
+recommended for CI gates:
+
+- `policy_pack`: `oss`, `team`, `enterprise`, `regulated`,
+  `high-risk-hooks-mcp`, or `ci-enforcement`
+- `owners`: policy owner identifiers for audit and escalation
+- `exceptions`: temporary rule exceptions with `id`, `rule`, `owner`,
+  `reason`, `expires_at`, optional `scope`, optional `severity`, and optional
+  `ticket`
+
+Expired exceptions are reported as policy violations. Active exceptions suppress
+only matching policy violations and are printed in the policy evaluation output.
 
 Exit codes:
 - `0`: scan completed without critical findings
