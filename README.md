@@ -403,7 +403,10 @@ token-shaped strings; use `--no-evidence-redact` only for private internal
 bundles.
 
 Remediation plans write a JSON queue of findings with stable hashed
-fingerprints, severity, file, fixability, and the recommended next command.
+fingerprints, severity, file, fixability, ordered workflow phases, and the
+recommended next command. The workflow phases route safe auto-fixes first,
+manual-review findings second, and verification last so maintainers can attach
+the plan to CI tickets without turning every finding into a separate thread.
 They intentionally omit raw evidence and fix before/after values so teams can
 attach the plan to tickets without copying token-shaped strings.
 

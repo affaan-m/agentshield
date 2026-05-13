@@ -87,6 +87,34 @@ describe("buildRemediationPlan", () => {
       "secrets-hardcoded",
       "permissions-no-deny-list",
     ]);
+    expect(plan.workflow.phases.map((phase) => phase.id)).toEqual([
+      "auto-fix",
+      "manual-review",
+      "verify",
+    ]);
+    expect(plan.workflow.phases[0]).toMatchObject({
+      id: "auto-fix",
+      command: "agentshield scan --fix",
+      findingCount: 1,
+      blocking: false,
+    });
+    expect(plan.workflow.phases[0].findingFingerprints).toEqual([
+      expect.stringMatching(
+        /^secrets-hardcoded::\.claude\/settings\.json::sha256:[a-f0-9]{16}$/
+      ),
+    ]);
+    expect(plan.workflow.phases[1]).toMatchObject({
+      id: "manual-review",
+      command: "Review finding-specific remediation notes in source control.",
+      findingCount: 1,
+      blocking: true,
+    });
+    expect(plan.workflow.phases[2]).toMatchObject({
+      id: "verify",
+      command: "agentshield scan --gate",
+      findingCount: 2,
+      blocking: true,
+    });
     expect(plan.findings[0]).toMatchObject({
       fingerprint: expect.stringMatching(
         /^secrets-hardcoded::\.claude\/settings\.json::sha256:[a-f0-9]{16}$/
@@ -102,6 +130,37 @@ describe("buildRemediationPlan", () => {
     expect(plan.findings[0].fix).not.toHaveProperty("before");
     expect(JSON.stringify(plan)).not.toContain("sk-test-sensitive-value");
     expect(JSON.stringify(plan)).not.toContain("${OPENAI_API_KEY}");
+  });
+
+  it("omits empty workflow phases when only manual remediation is available", () => {
+    const report = makeReport([
+      makeFinding({
+        severity: "high",
+        fix: {
+          description: "Add explicit deny rules for destructive shell commands.",
+          before: "",
+          after: "",
+          auto: false,
+        },
+      }),
+    ]);
+
+    const plan = buildRemediationPlan(report, {
+      generatedAt: "2026-05-13T09:13:00.000Z",
+    });
+
+    expect(plan.workflow.phases.map((phase) => phase.id)).toEqual([
+      "manual-review",
+      "verify",
+    ]);
+    expect(plan.workflow.phases[0]).toMatchObject({
+      findingCount: 1,
+      blocking: true,
+    });
+    expect(plan.workflow.phases[1]).toMatchObject({
+      findingCount: 1,
+      blocking: true,
+    });
   });
 });
 

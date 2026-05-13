@@ -9021,6 +9021,7 @@ function buildRemediationPlan(report, options = {}) {
       manualReview: findings.filter((finding) => finding.action === "manual-review").length,
       bySeverity: countBySeverity(report.findings)
     },
+    workflow: buildWorkflow(findings),
     findings
   };
 }
@@ -9064,6 +9065,45 @@ function countBySeverity(findings) {
     counts[finding.severity] += 1;
   }
   return counts;
+}
+function buildWorkflow(findings) {
+  const autoFixable = findings.filter((finding) => finding.action === "auto-fix");
+  const manualReview = findings.filter((finding) => finding.action === "manual-review");
+  const phases = [];
+  if (autoFixable.length > 0) {
+    phases.push({
+      id: "auto-fix",
+      title: "Apply safe auto-fixes",
+      description: "Run the fix engine first for findings explicitly marked auto-fixable, then review the diff before committing.",
+      command: "agentshield scan --fix",
+      findingCount: autoFixable.length,
+      findingFingerprints: autoFixable.map((finding) => finding.fingerprint),
+      blocking: false
+    });
+  }
+  if (manualReview.length > 0) {
+    phases.push({
+      id: "manual-review",
+      title: "Resolve manual findings",
+      description: "Apply the finding-specific remediation notes in source control for items that require maintainer judgment.",
+      command: "Review finding-specific remediation notes in source control.",
+      findingCount: manualReview.length,
+      findingFingerprints: manualReview.map((finding) => finding.fingerprint),
+      blocking: true
+    });
+  }
+  if (findings.length > 0) {
+    phases.push({
+      id: "verify",
+      title: "Verify clean scan",
+      description: "Re-run AgentShield after remediation and gate on the updated result before merging or publishing.",
+      command: "agentshield scan --gate",
+      findingCount: findings.length,
+      findingFingerprints: findings.map((finding) => finding.fingerprint),
+      blocking: true
+    });
+  }
+  return { phases };
 }
 function compareFindings(left, right) {
   return SEVERITY_RANK[left.severity] - SEVERITY_RANK[right.severity] || left.file.localeCompare(right.file) || left.id.localeCompare(right.id) || (left.evidence ?? "").localeCompare(right.evidence ?? "");
