@@ -29,6 +29,7 @@
     "test:coverage": "vitest --coverage",
     "lint": "eslint src/",
     "typecheck": "tsc --noEmit",
+    "corpus:gate": "node dist/index.js scan --path .github --corpus-gate",
     "scan": "tsx src/index.ts scan",
     "scan:demo": "tsx src/index.ts scan --path examples/vulnerable"
   },

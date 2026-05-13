@@ -44,6 +44,9 @@ jobs:
       - name: Build
         run: npm run build
 
+      - name: Corpus accuracy gate
+        run: npm run corpus:gate
+
       - name: Run tests
         run: npm test
 
