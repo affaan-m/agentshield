@@ -183,6 +183,66 @@ describe("writeEvidencePack", () => {
     expect(sarifJson).not.toContain(targetPath);
   });
 
+  it("redacts common enterprise credential families from evidence packs", () => {
+    const targetPath = mkdtempSync(join(tmpdir(), "agentshield-enterprise-secrets-"));
+    const outputDir = mkdtempSync(join(tmpdir(), "agentshield-evidence-pack-"));
+    const report = makeReport(targetPath);
+    const stripeToken = ["sk", "live", "1234567890abcdefghijklmnop"].join("_");
+    const githubToken = ["github", "pat", "11AAVERYLONGTOKENVALUE", "abcdefghijklmnopqrstuvwxyz0123456789"].join("_");
+    const npmToken = ["npm", "abcdefghijklmnopqrstuvwxyz1234567890"].join("_");
+    const linearToken = ["lin", "api", "abcdefghijklmnopqrstuvwxyz123456"].join("_");
+    const googleToken = ["AI", "zaSyA1234567890abcdefghijklmnopqr"].join("");
+    const jwtToken = [
+      ["eyJ", "hbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9"].join(""),
+      "eyJzdWIiOiIxMjM0NTY3ODkwIn0",
+      "signature123456789",
+    ].join(".");
+    report.findings = [
+      {
+        id: "secrets-enterprise-token",
+        severity: "critical",
+        category: "secrets",
+        title: "Enterprise token exposure",
+        description: [
+          `Stripe ${stripeToken}`,
+          `GitHub ${githubToken}`,
+          `npm ${npmToken}`,
+          `Linear ${linearToken}`,
+          `Google ${googleToken}`,
+          `JWT ${jwtToken}`,
+        ].join(" "),
+        file: join(targetPath, ".claude", "settings.json"),
+        evidence: [
+          stripeToken,
+          githubToken,
+          npmToken,
+          linearToken,
+          googleToken,
+          jwtToken,
+        ].join("\n"),
+      },
+    ];
+
+    writeEvidencePack({
+      outputDir,
+      report,
+      supplyChainReport: makeSupplyChainReport(),
+    });
+
+    const reportJson = readFileSync(join(outputDir, "agentshield-report.json"), "utf-8");
+    const sarifJson = readFileSync(join(outputDir, "agentshield-results.sarif"), "utf-8");
+
+    for (const artifact of [reportJson, sarifJson]) {
+      expect(artifact).not.toContain(stripeToken);
+      expect(artifact).not.toContain(githubToken);
+      expect(artifact).not.toContain(npmToken);
+      expect(artifact).not.toContain(linearToken);
+      expect(artifact).not.toContain(googleToken);
+      expect(artifact).not.toContain(jwtToken.split(".")[0]);
+      expect(artifact).toContain("<redacted-token>");
+    }
+  });
+
   it("writes explicit not-run markers for absent optional evidence", () => {
     const targetPath = mkdtempSync(join(tmpdir(), "agentshield-no-optional-target-"));
     const outputDir = mkdtempSync(join(tmpdir(), "agentshield-evidence-pack-"));

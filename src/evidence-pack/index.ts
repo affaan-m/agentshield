@@ -239,6 +239,16 @@ function buildReplacements(targetPath: string): ReadonlyArray<[RegExp, string]> 
   const tokenReplacements: ReadonlyArray<[RegExp, string]> = [
     [/\bsk-[A-Za-z0-9_-]{12,}\b/g, "sk-<redacted>"],
     [/\b(?:ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9_]{12,}\b/g, "gh_<redacted>"],
+    [/github_pat_[A-Za-z0-9_]{20,}\b/g, "<redacted-token>"],
+    [/glpat-[A-Za-z0-9_-]{12,}\b/g, "<redacted-token>"],
+    [/npm_[A-Za-z0-9]{20,}\b/g, "<redacted-token>"],
+    [/lin_api_[A-Za-z0-9]{20,}\b/g, "<redacted-token>"],
+    [/(?:sk|pk|rk)_(?:live|test)_[A-Za-z0-9]{12,}\b/g, "<redacted-token>"],
+    [/AIza[0-9A-Za-z_-]{20,}\b/g, "<redacted-token>"],
+    [/hf_[A-Za-z0-9]{20,}\b/g, "<redacted-token>"],
+    [/vercel_[A-Za-z0-9]{20,}\b/g, "<redacted-token>"],
+    [/AKIA[0-9A-Z]{16}\b/g, "<redacted-token>"],
+    [/eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\b/g, "<redacted-token>"],
     [/\b(?:xox[baprs]|slack)-[A-Za-z0-9-]{12,}\b/g, "<redacted-token>"],
     [/\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/g, "<redacted-email>"],
   ];
