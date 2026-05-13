@@ -11345,6 +11345,7 @@ var init_vulnerable_configs = __esm({
 var corpus_exports = {};
 __export(corpus_exports, {
   defaultRuleScanFn: () => defaultRuleScanFn,
+  evaluateCorpusGate: () => evaluateCorpusGate,
   getCorpusConfig: () => getCorpusConfig,
   getCorpusConfigs: () => getCorpusConfigs,
   validateCorpus: () => validateCorpus,
@@ -11367,6 +11368,33 @@ function validateCorpus(ruleScanFn, rules) {
     readyForRegressionGate: failed === 0,
     categoryBreakdown: buildCategoryBreakdown(results),
     results
+  };
+}
+function evaluateCorpusGate(validation, options = {}) {
+  const minDetectionRate = options.minDetectionRate ?? 1;
+  const failedConfigs = validation.results.filter((result) => !result.passed);
+  const failedCategories = validation.categoryBreakdown.filter((category) => category.missed > 0);
+  const reasons = [];
+  if (validation.detectionRate < minDetectionRate) {
+    reasons.push(
+      `Detection rate ${formatRate(validation.detectionRate)} is below required ${formatRate(minDetectionRate)}.`
+    );
+  }
+  if (!validation.readyForRegressionGate) {
+    reasons.push(`Missed ${failedConfigs.length} corpus configs.`);
+  }
+  for (const category of failedCategories) {
+    reasons.push(
+      `Category "${category.category}" missed ${category.missed}/${category.totalConfigs} configs.`
+    );
+  }
+  return {
+    passed: reasons.length === 0,
+    minDetectionRate,
+    detectionRate: validation.detectionRate,
+    failedConfigs,
+    failedCategories,
+    reasons
   };
 }
 function validateSingleConfig(config, ruleScanFn, rules) {
@@ -11428,6 +11456,9 @@ function buildCategoryBreakdown(results) {
       detectionRate: counts.total > 0 ? counts.detected / counts.total : 1
     };
   });
+}
+function formatRate(rate) {
+  return `${(rate * 100).toFixed(1)}%`;
 }
 function getCorpusConfigs() {
   return vulnerableConfigs;
@@ -17054,7 +17085,7 @@ function emptySupplyChainReport() {
     }
   };
 }
-program.command("scan").description("Scan a Claude Code configuration directory for security issues").option("-p, --path <path>", "Path to scan (default: ~/.claude or current dir)").option("-f, --format <format>", "Output format: terminal, json, markdown, html, sarif", "terminal").option("-o, --output <path>", "Write the primary report output to a file").option("--fix", "Auto-apply safe fixes", false).option("--opus", "Enable Opus 4.6 multi-agent deep analysis", false).option("--stream", "Stream Opus analysis in real-time", false).option("--injection", "Run active prompt injection testing against the config", false).option("--sandbox", "Execute hooks in sandbox and observe behavior", false).option("--taint", "Run taint analysis (data flow tracking)", false).option("--deep", "Run ALL analysis (injection + sandbox + taint + opus)", false).option("--log <path>", "Write structured scan log to file").option("--log-format <format>", "Log format: ndjson (default) or json", "ndjson").option("--corpus", "Run scanner validation against built-in attack corpus", false).option("--baseline <path>", "Compare against a baseline file and report regressions").option("--save-baseline <path>", "Save current scan results as a baseline file").option("--gate", "Fail if new critical/high findings or score drops (use with --baseline)", false).option("--supply-chain", "Verify MCP npm packages against known-bad list and typosquatting", false).option("--supply-chain-online", "Also query npm registry for metadata (requires network)", false).option("--policy <path>", "Validate against an organization policy file").option("--evidence-pack <dir>", "Write a portable evidence bundle for audits and security reviews").option("--no-evidence-redact", "Disable evidence-pack redaction of local paths, usernames, emails, and token-shaped strings").option("--min-severity <severity>", "Minimum severity to report: critical, high, medium, low, info", "info").option("-v, --verbose", "Show detailed output", false).action(async (options) => {
+program.command("scan").description("Scan a Claude Code configuration directory for security issues").option("-p, --path <path>", "Path to scan (default: ~/.claude or current dir)").option("-f, --format <format>", "Output format: terminal, json, markdown, html, sarif", "terminal").option("-o, --output <path>", "Write the primary report output to a file").option("--fix", "Auto-apply safe fixes", false).option("--opus", "Enable Opus 4.6 multi-agent deep analysis", false).option("--stream", "Stream Opus analysis in real-time", false).option("--injection", "Run active prompt injection testing against the config", false).option("--sandbox", "Execute hooks in sandbox and observe behavior", false).option("--taint", "Run taint analysis (data flow tracking)", false).option("--deep", "Run ALL analysis (injection + sandbox + taint + opus)", false).option("--log <path>", "Write structured scan log to file").option("--log-format <format>", "Log format: ndjson (default) or json", "ndjson").option("--corpus", "Run scanner validation against built-in attack corpus", false).option("--corpus-gate", "Run built-in attack corpus and fail if scanner accuracy regresses", false).option("--baseline <path>", "Compare against a baseline file and report regressions").option("--save-baseline <path>", "Save current scan results as a baseline file").option("--gate", "Fail if new critical/high findings or score drops (use with --baseline)", false).option("--supply-chain", "Verify MCP npm packages against known-bad list and typosquatting", false).option("--supply-chain-online", "Also query npm registry for metadata (requires network)", false).option("--policy <path>", "Validate against an organization policy file").option("--evidence-pack <dir>", "Write a portable evidence bundle for audits and security reviews").option("--no-evidence-redact", "Disable evidence-pack redaction of local paths, usernames, emails, and token-shaped strings").option("--min-severity <severity>", "Minimum severity to report: critical, high, medium, low, info", "info").option("-v, --verbose", "Show detailed output", false).action(async (options) => {
   const targetPath = resolveTargetPath(options.path);
   if (!existsSync11(targetPath)) {
     console.error(`Error: Path does not exist: ${targetPath}`);
@@ -17314,7 +17345,7 @@ Opus analysis failed: ${message}`);
     }
   }
   let corpusResult = null;
-  if (options.corpus) {
+  if (options.corpus || options.corpusGate) {
     logger.log({ level: "info", phase: "corpus", message: "Running corpus validation" });
     corpusResult = await runCorpusValidation(targetPath);
     if (corpusResult) {
@@ -17325,6 +17356,15 @@ Opus analysis failed: ${message}`);
         phase: "corpus",
         message: `Corpus: ${corpusResult.detected}/${corpusResult.totalAttacks} detected (${(corpusResult.detectionRate * 100).toFixed(1)}%)`
       });
+      if (options.corpusGate && !corpusResult.readyForRegressionGate) {
+        const missedAttacks = corpusResult.results.filter((result2) => !result2.detected).map((result2) => result2.attackId).join(", ");
+        const reason = missedAttacks ? `Missed corpus attacks: ${missedAttacks}` : "Corpus validation did not meet the regression gate.";
+        logger.log({ level: "error", phase: "corpus", message: `Gate FAILED: ${reason}` });
+        console.error(`
+  Error: Corpus regression gate failed. ${reason}
+`);
+        process.exit(6);
+      }
     }
   }
   if (options.deep) {

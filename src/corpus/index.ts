@@ -36,6 +36,19 @@ export interface CorpusValidation {
   readonly results: ReadonlyArray<CorpusValidationResult>;
 }
 
+export interface CorpusGateOptions {
+  readonly minDetectionRate?: number;
+}
+
+export interface CorpusGateResult {
+  readonly passed: boolean;
+  readonly minDetectionRate: number;
+  readonly detectionRate: number;
+  readonly failedConfigs: ReadonlyArray<CorpusValidationResult>;
+  readonly failedCategories: ReadonlyArray<CorpusCategoryBreakdown>;
+  readonly reasons: ReadonlyArray<string>;
+}
+
 // ─── Scan Function Types ──────────────────────────────────
 
 /**
@@ -84,6 +97,48 @@ export function validateCorpus(ruleScanFn: RuleScanFn, rules: ReadonlyArray<Rule
     readyForRegressionGate: failed === 0,
     categoryBreakdown: buildCategoryBreakdown(results),
     results,
+  };
+}
+
+/**
+ * Evaluate whether the built-in corpus is strong enough to gate a release/CI run.
+ *
+ * The default is intentionally strict: every corpus config must pass. A lower
+ * threshold can be supplied for temporary migration windows while still keeping
+ * the failed configs/categories visible to automation.
+ */
+export function evaluateCorpusGate(
+  validation: CorpusValidation,
+  options: CorpusGateOptions = {}
+): CorpusGateResult {
+  const minDetectionRate = options.minDetectionRate ?? 1;
+  const failedConfigs = validation.results.filter((result) => !result.passed);
+  const failedCategories = validation.categoryBreakdown.filter((category) => category.missed > 0);
+  const reasons: string[] = [];
+
+  if (validation.detectionRate < minDetectionRate) {
+    reasons.push(
+      `Detection rate ${formatRate(validation.detectionRate)} is below required ${formatRate(minDetectionRate)}.`
+    );
+  }
+
+  if (!validation.readyForRegressionGate) {
+    reasons.push(`Missed ${failedConfigs.length} corpus configs.`);
+  }
+
+  for (const category of failedCategories) {
+    reasons.push(
+      `Category "${category.category}" missed ${category.missed}/${category.totalConfigs} configs.`
+    );
+  }
+
+  return {
+    passed: reasons.length === 0,
+    minDetectionRate,
+    detectionRate: validation.detectionRate,
+    failedConfigs,
+    failedCategories,
+    reasons,
   };
 }
 
@@ -170,6 +225,10 @@ function buildCategoryBreakdown(
         detectionRate: counts.total > 0 ? counts.detected / counts.total : 1,
       };
     });
+}
+
+function formatRate(rate: number): string {
+  return `${(rate * 100).toFixed(1)}%`;
 }
 
 // ─── Helpers ──────────────────────────────────────────────

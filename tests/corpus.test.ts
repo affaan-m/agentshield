@@ -1,8 +1,13 @@
 import { describe, it, expect } from "vitest";
+import { spawnSync } from "node:child_process";
+import { mkdirSync, mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
 
 import {
   vulnerableConfigs,
   validateCorpus,
+  evaluateCorpusGate,
   getCorpusConfig,
   getCorpusConfigs,
   defaultRuleScanFn,
@@ -13,6 +18,7 @@ import { getBuiltinRules } from "../src/rules/index.js";
 
 // ─── Helpers ──────────────────────────────────────────────
 
+const CLI_PATH = resolve(import.meta.dirname, "../dist/index.js");
 const allRules = getBuiltinRules();
 
 /**
@@ -105,6 +111,34 @@ describe("corpus structure", () => {
         expect(file.path.length).toBeGreaterThan(0);
       }
     }
+  });
+});
+
+// ─── Corpus Gate CLI ──────────────────────────────────────
+
+describe("corpus gate CLI", () => {
+  it("lets CI gate scanner accuracy with --corpus-gate", () => {
+    const targetDir = mkdtempSync(join(tmpdir(), "agentshield-corpus-gate-"));
+    mkdirSync(join(targetDir, ".claude"), { recursive: true });
+
+    const result = spawnSync(process.execPath, [
+      CLI_PATH,
+      "scan",
+      "--path",
+      targetDir,
+      "--corpus-gate",
+    ], {
+      encoding: "utf-8",
+      env: {
+        ...process.env,
+        NODE_NO_WARNINGS: "1",
+      },
+    });
+
+    expect(result.status).toBe(0);
+    expect(result.stderr).toBe("");
+    expect(result.stdout).toContain("Corpus Validation");
+    expect(result.stdout).toContain("Regression gate: READY");
   });
 });
 
@@ -249,5 +283,32 @@ describe("validateCorpus", () => {
       expect(result.missingRules.length).toBeGreaterThan(0);
       expect(result.actualFindings).toBe(0);
     }
+  });
+
+  it("passes the corpus gate when every expected finding is covered", () => {
+    const validation = validateCorpus(defaultRuleScanFn, allRules);
+    const gate = evaluateCorpusGate(validation);
+
+    expect(gate.passed).toBe(true);
+    expect(gate.reasons).toEqual([]);
+    expect(gate.failedConfigs).toEqual([]);
+    expect(gate.failedCategories).toEqual([]);
+    expect(gate.detectionRate).toBe(1);
+    expect(gate.minDetectionRate).toBe(1);
+  });
+
+  it("fails the corpus gate with actionable misses when scanner coverage regresses", () => {
+    const emptyFn = () => new Map<string, ReadonlyArray<Finding>>();
+    const validation = validateCorpus(emptyFn, allRules);
+    const gate = evaluateCorpusGate(validation);
+
+    expect(gate.passed).toBe(false);
+    expect(gate.reasons).toContain("Detection rate 0.0% is below required 100.0%.");
+    expect(gate.reasons).toContain(`Missed ${vulnerableConfigs.length} corpus configs.`);
+    expect(gate.failedConfigs.map((config) => config.configId)).toEqual(
+      vulnerableConfigs.map((config) => config.id)
+    );
+    expect(gate.failedCategories.length).toBeGreaterThan(0);
+    expect(gate.failedCategories.every((category) => category.missed > 0)).toBe(true);
   });
 });

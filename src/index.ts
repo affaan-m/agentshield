@@ -272,6 +272,7 @@ program
   .option("--log <path>", "Write structured scan log to file")
   .option("--log-format <format>", "Log format: ndjson (default) or json", "ndjson")
   .option("--corpus", "Run scanner validation against built-in attack corpus", false)
+  .option("--corpus-gate", "Run built-in attack corpus and fail if scanner accuracy regresses", false)
   .option("--baseline <path>", "Compare against a baseline file and report regressions")
   .option("--save-baseline <path>", "Save current scan results as a baseline file")
   .option("--gate", "Fail if new critical/high findings or score drops (use with --baseline)", false)
@@ -575,7 +576,7 @@ program
 
     // ── Phase 7: Corpus validation ──────────────────────────
     let corpusResult: CorpusValidationResult | null = null;
-    if (options.corpus) {
+    if (options.corpus || options.corpusGate) {
       logger.log({ level: "info", phase: "corpus", message: "Running corpus validation" });
       corpusResult = await runCorpusValidation(targetPath);
       if (corpusResult) {
@@ -586,6 +587,19 @@ program
           phase: "corpus",
           message: `Corpus: ${corpusResult.detected}/${corpusResult.totalAttacks} detected (${(corpusResult.detectionRate * 100).toFixed(1)}%)`,
         });
+
+        if (options.corpusGate && !corpusResult.readyForRegressionGate) {
+          const missedAttacks = corpusResult.results
+            .filter((result) => !result.detected)
+            .map((result) => result.attackId)
+            .join(", ");
+          const reason = missedAttacks
+            ? `Missed corpus attacks: ${missedAttacks}`
+            : "Corpus validation did not meet the regression gate.";
+          logger.log({ level: "error", phase: "corpus", message: `Gate FAILED: ${reason}` });
+          console.error(`\n  Error: Corpus regression gate failed. ${reason}\n`);
+          process.exit(6);
+        }
       }
     }
 

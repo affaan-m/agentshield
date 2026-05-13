@@ -280,6 +280,7 @@ Rule-design guidelines:
 When you change rule accuracy, update both:
 - [`false-positive-audit.md`](./false-positive-audit.md) with the new baseline and remaining gaps
 - the targeted regression tests for the specific rule family you changed
+- `agentshield scan --corpus-gate` in CI so the built-in attack corpus must stay fully detected
 - if you are filing a scanner-noise bug, start from the audit doc's [`False-Positive Issue Template`](./false-positive-audit.md#false-positive-issue-template)
 
 #### Reducing False Positives In Practice
@@ -527,6 +528,7 @@ agentshield scan [options]         Scan configuration directory
   --log <path>                     Write structured scan logs to a file
   --log-format <format>            Log format: ndjson or json
   --corpus                         Run built-in attack corpus benchmark
+  --corpus-gate                    Fail if the built-in attack corpus regresses
   --baseline <path>                Compare against a baseline file
   --save-baseline <path>           Save current scan results as a baseline file
   --gate                           Fail on new critical/high findings or score drop
