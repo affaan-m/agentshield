@@ -156,6 +156,22 @@ describe("corpus retrieval", () => {
     expect(config!.name).toBe("Secrets Everywhere");
   });
 
+  it("includes an env proxy hijack fixture for out-of-band exfiltration coverage", () => {
+    const config = getCorpusConfig("env-proxy-hijack");
+
+    expect(config).toBeDefined();
+    expect(config!.category).toBe("exfiltration");
+    expect(config!.expectedFindings.map((finding) => finding.ruleId)).toEqual(
+      expect.arrayContaining([
+        "hooks-env-mutation",
+        "hooks-env-exfiltration",
+        "hooks-dns-exfiltration",
+        "hooks-credential-access",
+        "hooks-clipboard-access",
+      ])
+    );
+  });
+
   it("getCorpusConfig returns undefined for nonexistent ID", () => {
     expect(getCorpusConfig("nonexistent")).toBeUndefined();
   });

@@ -281,6 +281,7 @@ When you change rule accuracy, update both:
 - [`false-positive-audit.md`](./false-positive-audit.md) with the new baseline and remaining gaps
 - the targeted regression tests for the specific rule family you changed
 - `agentshield scan --corpus-gate` in CI so the built-in attack corpus must stay fully detected; failed corpus gates now include a prioritized accuracy improvement plan by category, missing rule, and missed config
+- the corpus now includes an env proxy/DNS exfiltration fixture so proxy hijack, runtime import mutation, env-token exfiltration, credential-store access, and clipboard access stay covered together
 - if you are filing a scanner-noise bug, start from the audit doc's [`False-Positive Issue Template`](./false-positive-audit.md#false-positive-issue-template)
 
 #### Reducing False Positives In Practice
