@@ -127,6 +127,7 @@ describe("writeEvidencePack", () => {
       "policy-evaluation.json",
       "baseline-comparison.json",
       "supply-chain.json",
+      "remediation-plan.json",
     ]);
     expect(readdirSync(outputDir).sort()).toEqual([...result.files].sort());
     for (const file of result.files) {
@@ -147,6 +148,14 @@ describe("writeEvidencePack", () => {
     expect(readme).toContain("# AgentShield Evidence Pack");
     expect(readme).toContain("Policy: failed");
     expect(readme).toContain("Baseline: regressed");
+    expect(readme).toContain("Remediation plan");
+
+    const remediationPlan = JSON.parse(readFileSync(join(outputDir, "remediation-plan.json"), "utf-8"));
+    expect(remediationPlan.summary.totalFindings).toBe(1);
+    expect(remediationPlan.findings[0].fingerprint).toMatch(
+      /^secrets-hardcoded-api-key::<target-path>\/\.claude\/settings\.json::sha256:[a-f0-9]{16}$/
+    );
+    expect(JSON.stringify(remediationPlan)).not.toContain("sk-1234567890abcdef");
   });
 
   it("redacts local paths, emails, and token-shaped strings by default", () => {
@@ -165,6 +174,7 @@ describe("writeEvidencePack", () => {
     const reportHtml = readFileSync(join(outputDir, "agentshield-report.html"), "utf-8");
     const policyJson = readFileSync(join(outputDir, "policy-evaluation.json"), "utf-8");
     const sarifJson = readFileSync(join(outputDir, "agentshield-results.sarif"), "utf-8");
+    const remediationPlanJson = readFileSync(join(outputDir, "remediation-plan.json"), "utf-8");
 
     expect(reportJson).not.toContain(targetPath);
     expect(reportJson).not.toContain("sk-1234567890abcdef");
@@ -181,6 +191,8 @@ describe("writeEvidencePack", () => {
     expect(policyJson).not.toContain("security-owner@example.com");
     expect(policyJson).toContain("<redacted-email>");
     expect(sarifJson).not.toContain(targetPath);
+    expect(remediationPlanJson).not.toContain(targetPath);
+    expect(remediationPlanJson).not.toContain("sk-1234567890abcdef");
   });
 
   it("redacts common enterprise credential families from evidence packs", () => {
@@ -231,16 +243,18 @@ describe("writeEvidencePack", () => {
 
     const reportJson = readFileSync(join(outputDir, "agentshield-report.json"), "utf-8");
     const sarifJson = readFileSync(join(outputDir, "agentshield-results.sarif"), "utf-8");
+    const remediationPlanJson = readFileSync(join(outputDir, "remediation-plan.json"), "utf-8");
 
-    for (const artifact of [reportJson, sarifJson]) {
+    for (const artifact of [reportJson, sarifJson, remediationPlanJson]) {
       expect(artifact).not.toContain(stripeToken);
       expect(artifact).not.toContain(githubToken);
       expect(artifact).not.toContain(npmToken);
       expect(artifact).not.toContain(linearToken);
       expect(artifact).not.toContain(googleToken);
       expect(artifact).not.toContain(jwtToken.split(".")[0]);
-      expect(artifact).toContain("<redacted-token>");
     }
+    expect(reportJson).toContain("<redacted-token>");
+    expect(sarifJson).toContain("<redacted-token>");
   });
 
   it("writes explicit not-run markers for absent optional evidence", () => {

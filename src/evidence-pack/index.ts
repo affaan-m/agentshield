@@ -3,6 +3,7 @@ import { basename, resolve } from "node:path";
 import { homedir } from "node:os";
 import type { BaselineComparison } from "../baseline/index.js";
 import type { PolicyEvaluation } from "../policy/index.js";
+import { buildRemediationPlan } from "../remediation/index.js";
 import { renderHtmlReport } from "../reporter/html.js";
 import { renderJsonReport } from "../reporter/json.js";
 import { renderSarifReport } from "../reporter/sarif.js";
@@ -80,6 +81,11 @@ const ARTIFACTS = [
     kind: "supply-chain",
     description: "MCP package provenance and supply-chain verification summary.",
   },
+  {
+    file: "remediation-plan.json",
+    kind: "remediation",
+    description: "Stable-fingerprint remediation queue for ticketing and CI handoffs.",
+  },
 ] as const;
 
 export function writeEvidencePack(options: EvidencePackOptions): EvidencePackResult {
@@ -101,6 +107,7 @@ export function writeEvidencePack(options: EvidencePackOptions): EvidencePackRes
         reason: "No --baseline file was provided for this scan.",
       };
   const supplyChainReport = redactor.value(options.supplyChainReport);
+  const remediationPlan = buildRemediationPlan(report, { generatedAt });
   const manifest: EvidencePackManifest = {
     schemaVersion: 1,
     generatedAt,
@@ -127,6 +134,7 @@ export function writeEvidencePack(options: EvidencePackOptions): EvidencePackRes
   writeText(outputDir, "policy-evaluation.json", redactor.json(policyEvaluation));
   writeText(outputDir, "baseline-comparison.json", redactor.json(baselineComparison));
   writeText(outputDir, "supply-chain.json", redactor.json(supplyChainReport));
+  writeText(outputDir, "remediation-plan.json", redactor.json(remediationPlan));
 
   return {
     outputDir,
@@ -166,6 +174,7 @@ function renderReadme(
     `- Baseline: ${baselineStatus}`,
     `- Supply-chain packages: ${options.supplyChainReport.totalPackages}`,
     `- Risky packages: ${options.supplyChainReport.riskyPackages}`,
+    "- Remediation plan: included",
     "",
     "## Artifacts",
     "",
@@ -180,6 +189,7 @@ function renderReadme(
     "- Use `policy-evaluation.json` to confirm organization-policy status.",
     "- Use `baseline-comparison.json` to review drift from the accepted baseline.",
     "- Use `supply-chain.json` to review MCP package provenance and package risk.",
+    "- Use `remediation-plan.json` for stable-fingerprint fix queues and ticket handoffs.",
     "",
     "This bundle is designed for audit handoffs, buyer security reviews, and CI artifacts.",
   ].join("\n");

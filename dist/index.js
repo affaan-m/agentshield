@@ -8957,6 +8957,103 @@ var init_terminal = __esm({
   }
 });
 
+// src/remediation/index.ts
+var remediation_exports = {};
+__export(remediation_exports, {
+  buildRemediationPlan: () => buildRemediationPlan,
+  writeRemediationPlan: () => writeRemediationPlan
+});
+import { mkdirSync, writeFileSync } from "fs";
+import { createHash } from "crypto";
+import { dirname as dirname2, resolve as resolve2 } from "path";
+function buildRemediationPlan(report, options = {}) {
+  const findings = [...report.findings].sort(compareFindings).map((finding) => toPlanFinding(finding));
+  return {
+    schemaVersion: 1,
+    generatedAt: options.generatedAt ?? (/* @__PURE__ */ new Date()).toISOString(),
+    targetPath: report.targetPath,
+    score: {
+      grade: report.score.grade,
+      numericScore: report.score.numericScore
+    },
+    summary: {
+      totalFindings: findings.length,
+      autoFixable: findings.filter((finding) => finding.action === "auto-fix").length,
+      manualReview: findings.filter((finding) => finding.action === "manual-review").length,
+      bySeverity: countBySeverity(report.findings)
+    },
+    findings
+  };
+}
+function writeRemediationPlan(options) {
+  const outputPath = resolve2(options.outputPath);
+  const plan = buildRemediationPlan(options.report, {
+    generatedAt: options.generatedAt
+  });
+  mkdirSync(dirname2(outputPath), { recursive: true });
+  writeFileSync(outputPath, `${JSON.stringify(plan, null, 2)}
+`, "utf-8");
+  return {
+    outputPath,
+    plan
+  };
+}
+function toPlanFinding(finding) {
+  const autoFixable = finding.fix?.auto === true;
+  return {
+    fingerprint: fingerprintFindingForPlan(finding),
+    id: finding.id,
+    severity: finding.severity,
+    category: finding.category,
+    title: finding.title,
+    description: finding.description,
+    file: finding.file,
+    line: finding.line,
+    runtimeConfidence: finding.runtimeConfidence,
+    hasEvidence: Boolean(finding.evidence),
+    action: autoFixable ? "auto-fix" : "manual-review",
+    recommendedCommand: autoFixable ? "agentshield scan --fix" : "Review finding and apply the remediation in source control.",
+    fix: finding.fix ? {
+      description: finding.fix.description,
+      auto: finding.fix.auto
+    } : void 0
+  };
+}
+function fingerprintFindingForPlan(finding) {
+  const evidenceHash = finding.evidence ? createHash("sha256").update(finding.evidence).digest("hex").slice(0, 16) : "no-evidence";
+  return `${finding.id}::${finding.file}::sha256:${evidenceHash}`;
+}
+function countBySeverity(findings) {
+  const counts = { ...ZERO_BY_SEVERITY };
+  for (const finding of findings) {
+    counts[finding.severity] += 1;
+  }
+  return counts;
+}
+function compareFindings(left, right) {
+  return SEVERITY_RANK[left.severity] - SEVERITY_RANK[right.severity] || left.file.localeCompare(right.file) || left.id.localeCompare(right.id) || (left.evidence ?? "").localeCompare(right.evidence ?? "");
+}
+var ZERO_BY_SEVERITY, SEVERITY_RANK;
+var init_remediation = __esm({
+  "src/remediation/index.ts"() {
+    "use strict";
+    ZERO_BY_SEVERITY = {
+      critical: 0,
+      high: 0,
+      medium: 0,
+      low: 0,
+      info: 0
+    };
+    SEVERITY_RANK = {
+      critical: 0,
+      high: 1,
+      medium: 2,
+      low: 3,
+      info: 4
+    };
+  }
+});
+
 // src/injection/payloads.ts
 function getPayloadsByCategory(category) {
   return INJECTION_PAYLOADS.filter((p) => p.category === category);
@@ -12107,103 +12204,6 @@ var init_policy = __esm({
   }
 });
 
-// src/remediation/index.ts
-var remediation_exports = {};
-__export(remediation_exports, {
-  buildRemediationPlan: () => buildRemediationPlan,
-  writeRemediationPlan: () => writeRemediationPlan
-});
-import { mkdirSync as mkdirSync5, writeFileSync as writeFileSync5 } from "fs";
-import { createHash } from "crypto";
-import { dirname as dirname4, resolve as resolve9 } from "path";
-function buildRemediationPlan(report, options = {}) {
-  const findings = [...report.findings].sort(compareFindings).map((finding) => toPlanFinding(finding));
-  return {
-    schemaVersion: 1,
-    generatedAt: options.generatedAt ?? (/* @__PURE__ */ new Date()).toISOString(),
-    targetPath: report.targetPath,
-    score: {
-      grade: report.score.grade,
-      numericScore: report.score.numericScore
-    },
-    summary: {
-      totalFindings: findings.length,
-      autoFixable: findings.filter((finding) => finding.action === "auto-fix").length,
-      manualReview: findings.filter((finding) => finding.action === "manual-review").length,
-      bySeverity: countBySeverity(report.findings)
-    },
-    findings
-  };
-}
-function writeRemediationPlan(options) {
-  const outputPath = resolve9(options.outputPath);
-  const plan = buildRemediationPlan(options.report, {
-    generatedAt: options.generatedAt
-  });
-  mkdirSync5(dirname4(outputPath), { recursive: true });
-  writeFileSync5(outputPath, `${JSON.stringify(plan, null, 2)}
-`, "utf-8");
-  return {
-    outputPath,
-    plan
-  };
-}
-function toPlanFinding(finding) {
-  const autoFixable = finding.fix?.auto === true;
-  return {
-    fingerprint: fingerprintFindingForPlan(finding),
-    id: finding.id,
-    severity: finding.severity,
-    category: finding.category,
-    title: finding.title,
-    description: finding.description,
-    file: finding.file,
-    line: finding.line,
-    runtimeConfidence: finding.runtimeConfidence,
-    hasEvidence: Boolean(finding.evidence),
-    action: autoFixable ? "auto-fix" : "manual-review",
-    recommendedCommand: autoFixable ? "agentshield scan --fix" : "Review finding and apply the remediation in source control.",
-    fix: finding.fix ? {
-      description: finding.fix.description,
-      auto: finding.fix.auto
-    } : void 0
-  };
-}
-function fingerprintFindingForPlan(finding) {
-  const evidenceHash = finding.evidence ? createHash("sha256").update(finding.evidence).digest("hex").slice(0, 16) : "no-evidence";
-  return `${finding.id}::${finding.file}::sha256:${evidenceHash}`;
-}
-function countBySeverity(findings) {
-  const counts = { ...ZERO_BY_SEVERITY };
-  for (const finding of findings) {
-    counts[finding.severity] += 1;
-  }
-  return counts;
-}
-function compareFindings(left, right) {
-  return SEVERITY_RANK[left.severity] - SEVERITY_RANK[right.severity] || left.file.localeCompare(right.file) || left.id.localeCompare(right.id) || (left.evidence ?? "").localeCompare(right.evidence ?? "");
-}
-var ZERO_BY_SEVERITY, SEVERITY_RANK;
-var init_remediation = __esm({
-  "src/remediation/index.ts"() {
-    "use strict";
-    ZERO_BY_SEVERITY = {
-      critical: 0,
-      high: 0,
-      medium: 0,
-      low: 0,
-      info: 0
-    };
-    SEVERITY_RANK = {
-      critical: 0,
-      high: 1,
-      medium: 2,
-      low: 3,
-      info: 4
-    };
-  }
-});
-
 // src/baseline/types.ts
 var DEFAULT_GATE_CONFIG;
 var init_types2 = __esm({
@@ -14472,8 +14472,9 @@ function normalizeUri(uri) {
 }
 
 // src/evidence-pack/index.ts
-import { mkdirSync, writeFileSync } from "fs";
-import { basename as basename3, resolve as resolve2 } from "path";
+init_remediation();
+import { mkdirSync as mkdirSync2, writeFileSync as writeFileSync2 } from "fs";
+import { basename as basename3, resolve as resolve3 } from "path";
 import { homedir as homedir2 } from "os";
 var ARTIFACTS = [
   {
@@ -14515,10 +14516,15 @@ var ARTIFACTS = [
     file: "supply-chain.json",
     kind: "supply-chain",
     description: "MCP package provenance and supply-chain verification summary."
+  },
+  {
+    file: "remediation-plan.json",
+    kind: "remediation",
+    description: "Stable-fingerprint remediation queue for ticketing and CI handoffs."
   }
 ];
 function writeEvidencePack(options) {
-  const outputDir = resolve2(options.outputDir);
+  const outputDir = resolve3(options.outputDir);
   const generatedAt = options.generatedAt ?? (/* @__PURE__ */ new Date()).toISOString();
   const redacted = options.redact ?? true;
   const redactor = createRedactor(options.report.targetPath, redacted);
@@ -14532,6 +14538,7 @@ function writeEvidencePack(options) {
     reason: "No --baseline file was provided for this scan."
   };
   const supplyChainReport = redactor.value(options.supplyChainReport);
+  const remediationPlan = buildRemediationPlan(report, { generatedAt });
   const manifest = {
     schemaVersion: 1,
     generatedAt,
@@ -14540,7 +14547,7 @@ function writeEvidencePack(options) {
     targetPath: redactor.string(options.report.targetPath),
     artifacts: ARTIFACTS
   };
-  mkdirSync(outputDir, { recursive: true });
+  mkdirSync2(outputDir, { recursive: true });
   writeText(outputDir, "manifest.json", redactor.json(manifest));
   writeText(outputDir, "README.md", renderReadme(manifest, options));
   writeText(outputDir, "agentshield-report.json", renderJsonReport(report));
@@ -14556,13 +14563,14 @@ function writeEvidencePack(options) {
   writeText(outputDir, "policy-evaluation.json", redactor.json(policyEvaluation));
   writeText(outputDir, "baseline-comparison.json", redactor.json(baselineComparison));
   writeText(outputDir, "supply-chain.json", redactor.json(supplyChainReport));
+  writeText(outputDir, "remediation-plan.json", redactor.json(remediationPlan));
   return {
     outputDir,
     files: ARTIFACTS.map((artifact) => artifact.file)
   };
 }
 function writeText(outputDir, fileName, content) {
-  writeFileSync(resolve2(outputDir, fileName), content.endsWith("\n") ? content : `${content}
+  writeFileSync2(resolve3(outputDir, fileName), content.endsWith("\n") ? content : `${content}
 `);
 }
 function renderReadme(manifest, options) {
@@ -14585,6 +14593,7 @@ function renderReadme(manifest, options) {
     `- Baseline: ${baselineStatus}`,
     `- Supply-chain packages: ${options.supplyChainReport.totalPackages}`,
     `- Risky packages: ${options.supplyChainReport.riskyPackages}`,
+    "- Remediation plan: included",
     "",
     "## Artifacts",
     "",
@@ -14599,6 +14608,7 @@ function renderReadme(manifest, options) {
     "- Use `policy-evaluation.json` to confirm organization-policy status.",
     "- Use `baseline-comparison.json` to review drift from the accepted baseline.",
     "- Use `supply-chain.json` to review MCP package provenance and package risk.",
+    "- Use `remediation-plan.json` for stable-fingerprint fix queues and ticket handoffs.",
     "",
     "This bundle is designed for audit handoffs, buyer security reviews, and CI artifacts."
   ].join("\n");
@@ -14627,7 +14637,7 @@ function createRedactor(targetPath, enabled) {
 function buildReplacements(targetPath) {
   const home = homedir2();
   const targetReplacements = targetPath ? [
-    [literalPattern(resolve2(targetPath)), "<target-path>"],
+    [literalPattern(resolve3(targetPath)), "<target-path>"],
     [literalPattern(targetPath), "<target-path>"]
   ] : [];
   const homeReplacements = home && home !== "/" ? [[literalPattern(home), "<home>"]] : [];
@@ -15384,8 +15394,8 @@ function renderInlineScore(score) {
 }
 
 // src/fixer/index.ts
-import { readFileSync as readFileSync2, writeFileSync as writeFileSync2 } from "fs";
-import { resolve as resolve3 } from "path";
+import { readFileSync as readFileSync2, writeFileSync as writeFileSync3 } from "fs";
+import { resolve as resolve4 } from "path";
 
 // src/fixer/transforms.ts
 function replaceHardcodedSecret(content, finding) {
@@ -15465,7 +15475,7 @@ function applyFixes(scanResult) {
   const applied = [];
   const skipped = [];
   for (const [relPath, findings] of grouped) {
-    const filePath = resolve3(scanResult.target.path, relPath);
+    const filePath = resolve4(scanResult.target.path, relPath);
     let content;
     try {
       content = readFileSync2(filePath, "utf-8");
@@ -15508,7 +15518,7 @@ function applyFixes(scanResult) {
       }
     }
     if (fileModified) {
-      writeFileSync2(filePath, updatedContent, "utf-8");
+      writeFileSync3(filePath, updatedContent, "utf-8");
     }
   }
   return {
@@ -15553,8 +15563,8 @@ function renderFixSummary(result) {
 }
 
 // src/init/index.ts
-import { existsSync as existsSync3, mkdirSync as mkdirSync2, writeFileSync as writeFileSync3 } from "fs";
-import { join as join4, resolve as resolve4 } from "path";
+import { existsSync as existsSync3, mkdirSync as mkdirSync3, writeFileSync as writeFileSync4 } from "fs";
+import { join as join4, resolve as resolve5 } from "path";
 function getDefaultSettings() {
   const settings = {
     permissions: {
@@ -15662,17 +15672,17 @@ function safeWriteFile(filePath, content) {
       reason: "File already exists"
     };
   }
-  writeFileSync3(filePath, content, "utf-8");
+  writeFileSync4(filePath, content, "utf-8");
   return {
     path: filePath,
     status: "created"
   };
 }
 function runInit(targetDir) {
-  const baseDir = targetDir ? resolve4(targetDir) : resolve4(process.cwd());
+  const baseDir = targetDir ? resolve5(targetDir) : resolve5(process.cwd());
   const claudeDir = join4(baseDir, ".claude");
   if (!existsSync3(claudeDir)) {
-    mkdirSync2(claudeDir, { recursive: true });
+    mkdirSync3(claudeDir, { recursive: true });
   }
   const files = [];
   files.push(
@@ -15766,7 +15776,7 @@ var DEFAULT_SERVER_CONFIG = {
 
 // src/miniclaw/sandbox.ts
 import { mkdir, rm, stat, realpath, access } from "fs/promises";
-import { join as join5, resolve as resolve5, relative as relative2, extname as extname3 } from "path";
+import { join as join5, resolve as resolve6, relative as relative2, extname as extname3 } from "path";
 import { randomUUID } from "crypto";
 async function createSandbox(config = DEFAULT_SANDBOX_CONFIG, allowedTools = [], maxDuration) {
   const sessionId = randomUUID();
@@ -15783,8 +15793,8 @@ async function createSandbox(config = DEFAULT_SANDBOX_CONFIG, allowedTools = [],
   return session;
 }
 async function destroySandbox(sandboxPath, rootPath) {
-  const normalizedSandbox = resolve5(sandboxPath);
-  const normalizedRoot = resolve5(rootPath);
+  const normalizedSandbox = resolve6(sandboxPath);
+  const normalizedRoot = resolve6(rootPath);
   if (!normalizedSandbox.startsWith(normalizedRoot + "/")) {
     return {
       success: false,
@@ -16365,7 +16375,7 @@ function startMiniClaw(config) {
 // src/watch/watcher.ts
 init_scanner();
 import { watch, existsSync as existsSync4, readdirSync as readdirSync2, statSync as statSync4 } from "fs";
-import { resolve as resolve6 } from "path";
+import { resolve as resolve7 } from "path";
 
 // src/watch/diff.ts
 function fingerprintFinding(finding) {
@@ -16514,7 +16524,7 @@ function startWatcher(config) {
     scanCount = 1;
   }
   for (const watchPath of config.paths) {
-    const resolvedPath = resolve6(watchPath);
+    const resolvedPath = resolve7(watchPath);
     if (!existsSync4(resolvedPath)) continue;
     const isDir = statSync4(resolvedPath).isDirectory();
     if (!isDir) continue;
@@ -16597,7 +16607,7 @@ function collectWatchDirectories(rootPath) {
       if (!entry.isDirectory()) {
         continue;
       }
-      const childPath = resolve6(currentPath, entry.name);
+      const childPath = resolve7(currentPath, entry.name);
       directories.push(childPath);
       queue.push(childPath);
     }
@@ -16658,7 +16668,7 @@ async function handleChange(config, currentBaseline, onResult) {
 
 // src/runtime/policy.ts
 import { readFileSync as readFileSync3, existsSync as existsSync5 } from "fs";
-import { resolve as resolve7 } from "path";
+import { resolve as resolve8 } from "path";
 
 // src/runtime/types.ts
 import { z } from "zod";
@@ -16710,18 +16720,18 @@ function generateDefaultPolicy() {
 }
 
 // src/runtime/evaluator.ts
-import { appendFileSync, existsSync as existsSync6, mkdirSync as mkdirSync3 } from "fs";
-import { dirname as dirname2 } from "path";
+import { appendFileSync, existsSync as existsSync6, mkdirSync as mkdirSync4 } from "fs";
+import { dirname as dirname3 } from "path";
 
 // src/runtime/install.ts
-import { readFileSync as readFileSync5, writeFileSync as writeFileSync4, existsSync as existsSync8, mkdirSync as mkdirSync4, renameSync } from "fs";
-import { join as join7, dirname as dirname3 } from "path";
+import { readFileSync as readFileSync5, writeFileSync as writeFileSync5, existsSync as existsSync8, mkdirSync as mkdirSync5, renameSync } from "fs";
+import { join as join7, dirname as dirname4 } from "path";
 
 // src/runtime/status.ts
 import { existsSync as existsSync7, readFileSync as readFileSync4 } from "fs";
-import { join as join6, resolve as resolve8 } from "path";
+import { join as join6, resolve as resolve9 } from "path";
 function defaultLogPath(targetPath) {
-  return resolve8(targetPath, ".agentshield", "runtime.ndjson");
+  return resolve9(targetPath, ".agentshield", "runtime.ndjson");
 }
 function runtimePolicyPath(targetPath) {
   return join6(targetPath, ".agentshield", "runtime-policy.json");
@@ -16760,7 +16770,7 @@ function getRuntimeStatus(targetPath) {
       if (result.success) {
         policyValid = true;
         const configuredLogPath = result.data.log?.path ?? ".agentshield/runtime.ndjson";
-        logPath = resolve8(targetPath, configuredLogPath);
+        logPath = resolve9(targetPath, configuredLogPath);
       }
     } catch {
       policyValid = false;
@@ -16872,13 +16882,13 @@ function backupFile(filePath) {
 }
 function installRuntimeAtPath(targetPath, settingsPath) {
   const policyPath = runtimePolicyPath2(targetPath);
-  const policyDir = dirname3(policyPath);
+  const policyDir = dirname4(policyPath);
   if (!existsSync8(policyDir)) {
-    mkdirSync4(policyDir, { recursive: true });
+    mkdirSync5(policyDir, { recursive: true });
   }
   let policyCreated = false;
   if (!existsSync8(policyPath)) {
-    writeFileSync4(policyPath, generateDefaultPolicy());
+    writeFileSync5(policyPath, generateDefaultPolicy());
     policyCreated = true;
   }
   const settingsState = readSettingsFile(settingsPath);
@@ -16909,11 +16919,11 @@ function installRuntimeAtPath(targetPath, settingsPath) {
   const updatedPreToolUse = [...preToolUse, HOOK_ENTRY];
   const updatedHooks = { ...hooks, PreToolUse: updatedPreToolUse };
   const updatedSettings = { ...settings, hooks: updatedHooks };
-  const dir = dirname3(settingsPath);
+  const dir = dirname4(settingsPath);
   if (!existsSync8(dir)) {
-    mkdirSync4(dir, { recursive: true });
+    mkdirSync5(dir, { recursive: true });
   }
-  writeFileSync4(settingsPath, JSON.stringify(updatedSettings, null, 2));
+  writeFileSync5(settingsPath, JSON.stringify(updatedSettings, null, 2));
   return {
     hookInstalled: true,
     policyCreated,
@@ -16953,16 +16963,16 @@ function repairRuntime(targetPath) {
   let policyBackupPath;
   const settingsState = readSettingsFile(settingsPath);
   if (settingsState.exists && !settingsState.valid) {
-    const dir = dirname3(settingsPath);
+    const dir = dirname4(settingsPath);
     if (!existsSync8(dir)) {
-      mkdirSync4(dir, { recursive: true });
+      mkdirSync5(dir, { recursive: true });
     }
     settingsBackupPath = backupFile(settingsPath);
   }
   if (existsSync8(policyPath) && !hasValidRuntimePolicy(policyPath)) {
-    const policyDir = dirname3(policyPath);
+    const policyDir = dirname4(policyPath);
     if (!existsSync8(policyDir)) {
-      mkdirSync4(policyDir, { recursive: true });
+      mkdirSync5(policyDir, { recursive: true });
     }
     policyBackupPath = backupFile(policyPath);
   }
@@ -17007,7 +17017,7 @@ function uninstallRuntime(targetPath) {
   }
   const updatedHooks = { ...hooks, PreToolUse: filtered };
   const updatedSettings = { ...settings, hooks: updatedHooks };
-  writeFileSync4(settingsPath, JSON.stringify(updatedSettings, null, 2));
+  writeFileSync5(settingsPath, JSON.stringify(updatedSettings, null, 2));
   return { removed: true, message: "AgentShield runtime hook removed." };
 }
 function resolveSettingsPath(targetPath) {
