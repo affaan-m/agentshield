@@ -280,6 +280,7 @@ program
   .option("--supply-chain-online", "Also query npm registry for metadata (requires network)", false)
   .option("--policy <path>", "Validate against an organization policy file")
   .option("--evidence-pack <dir>", "Write a portable evidence bundle for audits and security reviews")
+  .option("--remediation-plan <path>", "Write a stable-fingerprint JSON remediation plan")
   .option("--no-evidence-redact", "Disable evidence-pack redaction of local paths, usernames, emails, and token-shaped strings")
   .option("--min-severity <severity>", "Minimum severity to report: critical, high, medium, low, info", "info")
   .option("-v, --verbose", "Show detailed output", false)
@@ -397,6 +398,27 @@ program
         renderedReport = renderTerminalReport(report);
     }
     emitReportOutput(renderedReport, options.output);
+
+    if (options.remediationPlan) {
+      try {
+        const { writeRemediationPlan } = await import("./remediation/index.js");
+        const remediationPlan = writeRemediationPlan({
+          outputPath: options.remediationPlan,
+          report,
+        });
+        writeAuxiliaryOutput(`\n  Remediation plan written to: ${remediationPlan.outputPath}\n`);
+        logger.log({
+          level: "info",
+          phase: "remediation",
+          message: `Remediation plan written to ${remediationPlan.outputPath}`,
+        });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        writeAuxiliaryOutput(`\n  Error: Failed to write remediation plan: ${message}\n`);
+        logger.log({ level: "error", phase: "remediation", message: `Failed: ${message}` });
+        process.exit(1);
+      }
+    }
 
     // ── Phase 1b: Baseline save/compare ───────────────────
     if (options.saveBaseline) {

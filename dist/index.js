@@ -10038,7 +10038,7 @@ async function executeHookInSandbox(hookCommand, options = {}) {
     controller.abort();
   }, opts.timeout);
   try {
-    const result = await new Promise((resolve10) => {
+    const result = await new Promise((resolve11) => {
       const stdoutChunks = [];
       const stderrChunks = [];
       const child = spawn(hookCommand, [], {
@@ -10055,7 +10055,7 @@ async function executeHookInSandbox(hookCommand, options = {}) {
         stderrChunks.push(chunk);
       });
       child.on("close", (code) => {
-        resolve10({
+        resolve11({
           exitCode: code,
           stdout: Buffer.concat(stdoutChunks).toString("utf-8"),
           stderr: Buffer.concat(stderrChunks).toString("utf-8")
@@ -10063,13 +10063,13 @@ async function executeHookInSandbox(hookCommand, options = {}) {
       });
       child.on("error", (err) => {
         if (err.code === "ABORT_ERR" || err.name === "AbortError") {
-          resolve10({
+          resolve11({
             exitCode: null,
             stdout: Buffer.concat(stdoutChunks).toString("utf-8"),
             stderr: Buffer.concat(stderrChunks).toString("utf-8")
           });
         } else {
-          resolve10({
+          resolve11({
             exitCode: null,
             stdout: Buffer.concat(stdoutChunks).toString("utf-8"),
             stderr: Buffer.concat(stderrChunks).toString("utf-8") + `
@@ -12107,6 +12107,103 @@ var init_policy = __esm({
   }
 });
 
+// src/remediation/index.ts
+var remediation_exports = {};
+__export(remediation_exports, {
+  buildRemediationPlan: () => buildRemediationPlan,
+  writeRemediationPlan: () => writeRemediationPlan
+});
+import { mkdirSync as mkdirSync5, writeFileSync as writeFileSync5 } from "fs";
+import { createHash } from "crypto";
+import { dirname as dirname4, resolve as resolve9 } from "path";
+function buildRemediationPlan(report, options = {}) {
+  const findings = [...report.findings].sort(compareFindings).map((finding) => toPlanFinding(finding));
+  return {
+    schemaVersion: 1,
+    generatedAt: options.generatedAt ?? (/* @__PURE__ */ new Date()).toISOString(),
+    targetPath: report.targetPath,
+    score: {
+      grade: report.score.grade,
+      numericScore: report.score.numericScore
+    },
+    summary: {
+      totalFindings: findings.length,
+      autoFixable: findings.filter((finding) => finding.action === "auto-fix").length,
+      manualReview: findings.filter((finding) => finding.action === "manual-review").length,
+      bySeverity: countBySeverity(report.findings)
+    },
+    findings
+  };
+}
+function writeRemediationPlan(options) {
+  const outputPath = resolve9(options.outputPath);
+  const plan = buildRemediationPlan(options.report, {
+    generatedAt: options.generatedAt
+  });
+  mkdirSync5(dirname4(outputPath), { recursive: true });
+  writeFileSync5(outputPath, `${JSON.stringify(plan, null, 2)}
+`, "utf-8");
+  return {
+    outputPath,
+    plan
+  };
+}
+function toPlanFinding(finding) {
+  const autoFixable = finding.fix?.auto === true;
+  return {
+    fingerprint: fingerprintFindingForPlan(finding),
+    id: finding.id,
+    severity: finding.severity,
+    category: finding.category,
+    title: finding.title,
+    description: finding.description,
+    file: finding.file,
+    line: finding.line,
+    runtimeConfidence: finding.runtimeConfidence,
+    hasEvidence: Boolean(finding.evidence),
+    action: autoFixable ? "auto-fix" : "manual-review",
+    recommendedCommand: autoFixable ? "agentshield scan --fix" : "Review finding and apply the remediation in source control.",
+    fix: finding.fix ? {
+      description: finding.fix.description,
+      auto: finding.fix.auto
+    } : void 0
+  };
+}
+function fingerprintFindingForPlan(finding) {
+  const evidenceHash = finding.evidence ? createHash("sha256").update(finding.evidence).digest("hex").slice(0, 16) : "no-evidence";
+  return `${finding.id}::${finding.file}::sha256:${evidenceHash}`;
+}
+function countBySeverity(findings) {
+  const counts = { ...ZERO_BY_SEVERITY };
+  for (const finding of findings) {
+    counts[finding.severity] += 1;
+  }
+  return counts;
+}
+function compareFindings(left, right) {
+  return SEVERITY_RANK[left.severity] - SEVERITY_RANK[right.severity] || left.file.localeCompare(right.file) || left.id.localeCompare(right.id) || (left.evidence ?? "").localeCompare(right.evidence ?? "");
+}
+var ZERO_BY_SEVERITY, SEVERITY_RANK;
+var init_remediation = __esm({
+  "src/remediation/index.ts"() {
+    "use strict";
+    ZERO_BY_SEVERITY = {
+      critical: 0,
+      high: 0,
+      medium: 0,
+      low: 0,
+      info: 0
+    };
+    SEVERITY_RANK = {
+      critical: 0,
+      high: 1,
+      medium: 2,
+      low: 3,
+      info: 4
+    };
+  }
+});
+
 // src/baseline/types.ts
 var DEFAULT_GATE_CONFIG;
 var init_types2 = __esm({
@@ -12122,9 +12219,9 @@ var init_types2 = __esm({
 });
 
 // src/baseline/compare.ts
-import { readFileSync as readFileSync7, writeFileSync as writeFileSync5, existsSync as existsSync10 } from "fs";
-import { dirname as dirname4 } from "path";
-import { mkdirSync as mkdirSync5 } from "fs";
+import { readFileSync as readFileSync7, writeFileSync as writeFileSync6, existsSync as existsSync10 } from "fs";
+import { dirname as dirname5 } from "path";
+import { mkdirSync as mkdirSync6 } from "fs";
 function fingerprintFinding2(finding) {
   return `${finding.id}::${finding.file}::${finding.evidence ?? ""}`;
 }
@@ -12143,11 +12240,11 @@ function saveBaseline(findings, score, outputPath) {
       fingerprint: fingerprintFinding2(f)
     }))
   };
-  const dir = dirname4(outputPath);
+  const dir = dirname5(outputPath);
   if (!existsSync10(dir)) {
-    mkdirSync5(dir, { recursive: true });
+    mkdirSync6(dir, { recursive: true });
   }
-  writeFileSync5(outputPath, JSON.stringify(serialized, null, 2));
+  writeFileSync6(outputPath, JSON.stringify(serialized, null, 2));
 }
 function loadBaseline(baselinePath) {
   if (!existsSync10(baselinePath)) return null;
@@ -12930,9 +13027,9 @@ var init_supply_chain = __esm({
 // src/index.ts
 init_scanner();
 import { Command } from "commander";
-import { resolve as resolve9 } from "path";
-import { dirname as dirname5 } from "path";
-import { existsSync as existsSync11, writeFileSync as writeFileSync6, appendFileSync as appendFileSync2, mkdirSync as mkdirSync6 } from "fs";
+import { resolve as resolve10 } from "path";
+import { dirname as dirname6 } from "path";
+import { existsSync as existsSync11, writeFileSync as writeFileSync7, appendFileSync as appendFileSync2, mkdirSync as mkdirSync7 } from "fs";
 
 // src/reporter/score.ts
 var SCORE_DEDUCTIONS = {
@@ -16039,7 +16136,7 @@ function checkRateLimit(ip, maxRequests) {
   return true;
 }
 function readBody(req, maxSize) {
-  return new Promise((resolve10, reject) => {
+  return new Promise((resolve11, reject) => {
     const chunks = [];
     let totalSize = 0;
     req.on("data", (chunk) => {
@@ -16052,7 +16149,7 @@ function readBody(req, maxSize) {
       chunks.push(chunk);
     });
     req.on("end", () => {
-      resolve10(Buffer.concat(chunks).toString("utf-8"));
+      resolve11(Buffer.concat(chunks).toString("utf-8"));
     });
     req.on("error", (err) => {
       reject(err);
@@ -17037,7 +17134,7 @@ function createScanLogger(logPath, logFormat) {
     },
     flush() {
       if (logPath && logFormat === "json") {
-        writeFileSync6(logPath, JSON.stringify(entries, null, 2));
+        writeFileSync7(logPath, JSON.stringify(entries, null, 2));
       }
     }
   };
@@ -17050,9 +17147,9 @@ function emitReportOutput(output, outputPath) {
     console.log(output);
     return;
   }
-  const resolvedOutput = resolve9(outputPath);
-  mkdirSync6(dirname5(resolvedOutput), { recursive: true });
-  writeFileSync6(resolvedOutput, output);
+  const resolvedOutput = resolve10(outputPath);
+  mkdirSync7(dirname6(resolvedOutput), { recursive: true });
+  writeFileSync7(resolvedOutput, output);
   console.log(`Report written to: ${resolvedOutput}`);
 }
 function collectOption(value, previous) {
@@ -17085,7 +17182,7 @@ function emptySupplyChainReport() {
     }
   };
 }
-program.command("scan").description("Scan a Claude Code configuration directory for security issues").option("-p, --path <path>", "Path to scan (default: ~/.claude or current dir)").option("-f, --format <format>", "Output format: terminal, json, markdown, html, sarif", "terminal").option("-o, --output <path>", "Write the primary report output to a file").option("--fix", "Auto-apply safe fixes", false).option("--opus", "Enable Opus 4.6 multi-agent deep analysis", false).option("--stream", "Stream Opus analysis in real-time", false).option("--injection", "Run active prompt injection testing against the config", false).option("--sandbox", "Execute hooks in sandbox and observe behavior", false).option("--taint", "Run taint analysis (data flow tracking)", false).option("--deep", "Run ALL analysis (injection + sandbox + taint + opus)", false).option("--log <path>", "Write structured scan log to file").option("--log-format <format>", "Log format: ndjson (default) or json", "ndjson").option("--corpus", "Run scanner validation against built-in attack corpus", false).option("--corpus-gate", "Run built-in attack corpus and fail if scanner accuracy regresses", false).option("--baseline <path>", "Compare against a baseline file and report regressions").option("--save-baseline <path>", "Save current scan results as a baseline file").option("--gate", "Fail if new critical/high findings or score drops (use with --baseline)", false).option("--supply-chain", "Verify MCP npm packages against known-bad list and typosquatting", false).option("--supply-chain-online", "Also query npm registry for metadata (requires network)", false).option("--policy <path>", "Validate against an organization policy file").option("--evidence-pack <dir>", "Write a portable evidence bundle for audits and security reviews").option("--no-evidence-redact", "Disable evidence-pack redaction of local paths, usernames, emails, and token-shaped strings").option("--min-severity <severity>", "Minimum severity to report: critical, high, medium, low, info", "info").option("-v, --verbose", "Show detailed output", false).action(async (options) => {
+program.command("scan").description("Scan a Claude Code configuration directory for security issues").option("-p, --path <path>", "Path to scan (default: ~/.claude or current dir)").option("-f, --format <format>", "Output format: terminal, json, markdown, html, sarif", "terminal").option("-o, --output <path>", "Write the primary report output to a file").option("--fix", "Auto-apply safe fixes", false).option("--opus", "Enable Opus 4.6 multi-agent deep analysis", false).option("--stream", "Stream Opus analysis in real-time", false).option("--injection", "Run active prompt injection testing against the config", false).option("--sandbox", "Execute hooks in sandbox and observe behavior", false).option("--taint", "Run taint analysis (data flow tracking)", false).option("--deep", "Run ALL analysis (injection + sandbox + taint + opus)", false).option("--log <path>", "Write structured scan log to file").option("--log-format <format>", "Log format: ndjson (default) or json", "ndjson").option("--corpus", "Run scanner validation against built-in attack corpus", false).option("--corpus-gate", "Run built-in attack corpus and fail if scanner accuracy regresses", false).option("--baseline <path>", "Compare against a baseline file and report regressions").option("--save-baseline <path>", "Save current scan results as a baseline file").option("--gate", "Fail if new critical/high findings or score drops (use with --baseline)", false).option("--supply-chain", "Verify MCP npm packages against known-bad list and typosquatting", false).option("--supply-chain-online", "Also query npm registry for metadata (requires network)", false).option("--policy <path>", "Validate against an organization policy file").option("--evidence-pack <dir>", "Write a portable evidence bundle for audits and security reviews").option("--remediation-plan <path>", "Write a stable-fingerprint JSON remediation plan").option("--no-evidence-redact", "Disable evidence-pack redaction of local paths, usernames, emails, and token-shaped strings").option("--min-severity <severity>", "Minimum severity to report: critical, high, medium, low, info", "info").option("-v, --verbose", "Show detailed output", false).action(async (options) => {
   const targetPath = resolveTargetPath(options.path);
   if (!existsSync11(targetPath)) {
     console.error(`Error: Path does not exist: ${targetPath}`);
@@ -17127,7 +17224,7 @@ program.command("scan").description("Scan a Claude Code configuration directory 
     logger.log({ level: "info", phase: "policy", message: "Validating against organization policy" });
     try {
       const { loadPolicy: loadOrgPolicy, evaluatePolicy: evaluatePolicy2, renderPolicyEvaluation: renderPolicyEvaluation2 } = await Promise.resolve().then(() => (init_policy(), policy_exports));
-      const policyResult = loadOrgPolicy(resolve9(options.policy));
+      const policyResult = loadOrgPolicy(resolve10(options.policy));
       if (!policyResult.success) {
         console.error(`
   Error: ${policyResult.error}
@@ -17182,6 +17279,30 @@ program.command("scan").description("Scan a Claude Code configuration directory 
       renderedReport = renderTerminalReport(report);
   }
   emitReportOutput(renderedReport, options.output);
+  if (options.remediationPlan) {
+    try {
+      const { writeRemediationPlan: writeRemediationPlan2 } = await Promise.resolve().then(() => (init_remediation(), remediation_exports));
+      const remediationPlan = writeRemediationPlan2({
+        outputPath: options.remediationPlan,
+        report
+      });
+      writeAuxiliaryOutput(`
+  Remediation plan written to: ${remediationPlan.outputPath}
+`);
+      logger.log({
+        level: "info",
+        phase: "remediation",
+        message: `Remediation plan written to ${remediationPlan.outputPath}`
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      writeAuxiliaryOutput(`
+  Error: Failed to write remediation plan: ${message}
+`);
+      logger.log({ level: "error", phase: "remediation", message: `Failed: ${message}` });
+      process.exit(1);
+    }
+  }
   if (options.saveBaseline) {
     const { saveBaseline: saveBaseline2 } = await Promise.resolve().then(() => (init_baseline(), baseline_exports));
     saveBaseline2(filteredResult.findings, report.score, options.saveBaseline);
@@ -17415,7 +17536,7 @@ baseline.command("write").description("Scan a target and write the current findi
     findings: filterFindingsByMinSeverity(result.findings, options.minSeverity)
   };
   const report = calculateScore(filteredResult);
-  const outputPath = resolve9(options.output);
+  const outputPath = resolve10(options.output);
   saveBaseline2(filteredResult.findings, report.score, outputPath);
   const metadata = {
     baselinePath: outputPath,
@@ -17474,7 +17595,7 @@ program.command("watch").description("Continuously monitor config directories fo
   }
   console.log(`
   Performing initial scan to establish baseline...`);
-  const homeClaude = resolve9(
+  const homeClaude = resolve10(
     process.env.HOME ?? process.env.USERPROFILE ?? ".",
     ".claude"
   );
@@ -17519,7 +17640,7 @@ program.command("watch").description("Continuously monitor config directories fo
 });
 var runtime = program.command("runtime").description("Runtime monitoring \u2014 PreToolUse hook for policy enforcement");
 runtime.command("install").description("Install the AgentShield PreToolUse hook into settings.json").option("-p, --path <path>", "Target directory (default: current directory)", ".").action((options) => {
-  const result = installRuntime(resolve9(options.path));
+  const result = installRuntime(resolve10(options.path));
   console.log(`
   AgentShield Runtime Monitor
 `);
@@ -17535,7 +17656,7 @@ runtime.command("install").description("Install the AgentShield PreToolUse hook 
   console.log();
 });
 runtime.command("uninstall").description("Remove the AgentShield PreToolUse hook from settings.json").option("-p, --path <path>", "Target directory (default: current directory)", ".").action((options) => {
-  const result = uninstallRuntime(resolve9(options.path));
+  const result = uninstallRuntime(resolve10(options.path));
   console.log(`
   AgentShield Runtime Monitor
 `);
@@ -17543,7 +17664,7 @@ runtime.command("uninstall").description("Remove the AgentShield PreToolUse hook
 `);
 });
 runtime.command("status").description("Inspect runtime hook, policy, and logging readiness").option("-p, --path <path>", "Target directory (default: current directory)", ".").option("--json", "Output status as JSON", false).option("--check", "Exit non-zero when runtime monitor is not ready", false).action((options) => {
-  const result = getRuntimeStatus(resolve9(options.path));
+  const result = getRuntimeStatus(resolve10(options.path));
   if (options.json) {
     console.log(JSON.stringify(result, null, 2));
   } else {
@@ -17569,8 +17690,8 @@ runtime.command("status").description("Inspect runtime hook, policy, and logging
   }
 });
 runtime.command("repair").description("Back up invalid runtime files and restore a healthy monitor install").option("-p, --path <path>", "Target directory (default: current directory)", ".").action((options) => {
-  const result = repairRuntime(resolve9(options.path));
-  const status = getRuntimeStatus(resolve9(options.path));
+  const result = repairRuntime(resolve10(options.path));
+  const status = getRuntimeStatus(resolve10(options.path));
   console.log(`
   AgentShield Runtime Monitor
 `);
@@ -17592,7 +17713,7 @@ runtime.command("repair").description("Back up invalid runtime files and restore
 var policyCmd = program.command("policy").description("Organization-wide security policy management");
 policyCmd.command("init").description("Generate an example organization policy file").option("-o, --output <path>", "Output path", ".agentshield/policy.json").option("--pack <pack>", "Policy pack preset: oss, team, enterprise, regulated, high-risk-hooks-mcp, ci-enforcement", "enterprise").option("--owner <owner>", "Policy owner identifier; repeat for multiple owners", collectOption, []).option("--name <name>", "Policy display name").action(async (options) => {
   const { generateExamplePolicy: generateExamplePolicy2, listPolicyPacks: listPolicyPacks2, PolicyPackSchema: PolicyPackSchema2 } = await Promise.resolve().then(() => (init_policy(), policy_exports));
-  const outputPath = resolve9(options.output);
+  const outputPath = resolve10(options.output);
   const packResult = PolicyPackSchema2.safeParse(options.pack);
   if (existsSync11(outputPath)) {
     console.error(`
@@ -17607,11 +17728,11 @@ policyCmd.command("init").description("Generate an example organization policy f
 `);
     process.exit(1);
   }
-  const dir = resolve9(outputPath, "..");
+  const dir = resolve10(outputPath, "..");
   if (!existsSync11(dir)) {
-    mkdirSync6(dir, { recursive: true });
+    mkdirSync7(dir, { recursive: true });
   }
-  writeFileSync6(outputPath, generateExamplePolicy2(packResult.data, {
+  writeFileSync7(outputPath, generateExamplePolicy2(packResult.data, {
     name: options.name,
     owners: options.owner
   }));
@@ -17713,13 +17834,13 @@ miniclaw.command("start").description("Start the MiniClaw server").option("-p, -
 program.parse();
 function resolveTargetPath(pathArg) {
   if (pathArg) {
-    return resolve9(pathArg);
+    return resolve10(pathArg);
   }
-  const localClaude = resolve9(process.cwd(), ".claude");
+  const localClaude = resolve10(process.cwd(), ".claude");
   if (existsSync11(localClaude)) {
     return localClaude;
   }
-  const homeClaude = resolve9(
+  const homeClaude = resolve10(
     process.env.HOME ?? process.env.USERPROFILE ?? ".",
     ".claude"
   );

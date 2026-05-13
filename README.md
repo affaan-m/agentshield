@@ -390,6 +390,7 @@ Requires `ANTHROPIC_API_KEY` environment variable.
 | Markdown | `--format markdown` | Documentation, PRs |
 | HTML | `--format html` | Executive report with risk posture and priorities |
 | Evidence pack | `--evidence-pack <dir>` | Audit and buyer reviews |
+| Remediation plan | `--remediation-plan <path>` | Stable-fingerprint fix queue for CI and ticketing |
 
 Evidence packs write a deterministic directory containing `manifest.json`,
 `README.md`, `agentshield-report.json`, `agentshield-report.html`,
@@ -397,6 +398,11 @@ Evidence packs write a deterministic directory containing `manifest.json`,
 `baseline-comparison.json`, and `supply-chain.json`. Redaction is enabled by
 default for local paths, usernames, emails, and token-shaped strings; use
 `--no-evidence-redact` only for private internal bundles.
+
+Remediation plans write a JSON queue of findings with stable hashed
+fingerprints, severity, file, fixability, and the recommended next command.
+They intentionally omit raw evidence and fix before/after values so teams can
+attach the plan to tickets without copying token-shaped strings.
 
 ### JSON Report Shape
 
@@ -536,6 +542,7 @@ agentshield scan [options]         Scan configuration directory
   --supply-chain-online            Include npm registry metadata
   --policy <path>                  Validate against an organization policy
   --evidence-pack <dir>            Write portable evidence bundle
+  --remediation-plan <path>        Write stable-fingerprint JSON remediation plan
   --no-evidence-redact             Disable evidence-pack redaction
   --min-severity <severity>        Filter: critical, high, medium, low, info
   -v, --verbose                    Show detailed output
