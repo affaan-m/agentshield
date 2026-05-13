@@ -205,9 +205,9 @@ var init_presets = __esm({
 });
 
 // src/policy/evaluate.ts
-import { readFileSync as readFileSync2, existsSync as existsSync2 } from "fs";
+import { readFileSync as readFileSync2, existsSync as existsSync3 } from "fs";
 function loadPolicy(policyPath) {
-  if (!existsSync2(policyPath)) {
+  if (!existsSync3(policyPath)) {
     return { success: false, error: `Policy file not found: ${policyPath}` };
   }
   try {
@@ -643,7 +643,7 @@ var init_types2 = __esm({
 });
 
 // src/baseline/compare.ts
-import { readFileSync as readFileSync3, writeFileSync, existsSync as existsSync3 } from "fs";
+import { readFileSync as readFileSync3, writeFileSync, existsSync as existsSync4 } from "fs";
 import { dirname as dirname2 } from "path";
 import { mkdirSync } from "fs";
 function fingerprintFinding(finding) {
@@ -665,13 +665,13 @@ function saveBaseline(findings, score, outputPath) {
     }))
   };
   const dir = dirname2(outputPath);
-  if (!existsSync3(dir)) {
+  if (!existsSync4(dir)) {
     mkdirSync(dir, { recursive: true });
   }
   writeFileSync(outputPath, JSON.stringify(serialized, null, 2));
 }
 function loadBaseline(baselinePath) {
-  if (!existsSync3(baselinePath)) return null;
+  if (!existsSync4(baselinePath)) return null;
   try {
     const raw = readFileSync3(baselinePath, "utf-8");
     const parsed = JSON.parse(raw);
@@ -827,7 +827,7 @@ var init_baseline = __esm({
 // src/action.ts
 import { resolve as resolve2 } from "path";
 import { dirname as dirname3 } from "path";
-import { existsSync as existsSync4 } from "fs";
+import { existsSync as existsSync5 } from "fs";
 import { appendFileSync, mkdirSync as mkdirSync2, writeFileSync as writeFileSync2 } from "fs";
 
 // src/scanner/discovery.ts
@@ -8870,13 +8870,251 @@ function getBuiltinRules() {
   ];
 }
 
+// src/harness-adapters/index.ts
+import { existsSync as existsSync2, statSync as statSync3 } from "fs";
+import { join as join3 } from "path";
+var ADAPTERS = [
+  {
+    id: "claude-code",
+    name: "Claude Code",
+    description: "Claude Code project rules, permissions, MCP, hooks, agents, skills, and command surfaces.",
+    configPaths: [
+      "CLAUDE.md",
+      ".claude/CLAUDE.md",
+      "settings.json",
+      ".claude/settings.json",
+      "mcp.json",
+      ".claude/mcp.json",
+      ".claude/agents",
+      ".claude/skills",
+      ".claude/hooks"
+    ],
+    permissionConcepts: ["allow/deny permissions", "dangerous shell commands", "project-local overrides"],
+    pluginSurfaces: ["Claude plugins", "hooks manifests", "skills", "slash commands"],
+    mcpConventions: ["mcpServers", ".claude.json", "mcp.json"],
+    historySurfaces: ["Claude transcripts", "session hooks", "tool usage logs"],
+    ciEvidence: ["AgentShield scan", "policy evaluation", "SARIF upload", "evidence pack"],
+    markers: [
+      { path: "CLAUDE.md", kind: "file", strength: "strong" },
+      { path: ".claude/CLAUDE.md", kind: "file", strength: "strong" },
+      { path: "settings.json", kind: "file", strength: "strong" },
+      { path: ".claude/settings.json", kind: "file", strength: "strong" },
+      { path: "mcp.json", kind: "file", strength: "supporting" },
+      { path: ".claude/mcp.json", kind: "file", strength: "supporting" },
+      { path: ".claude/agents", kind: "directory", strength: "supporting" },
+      { path: ".claude/skills", kind: "directory", strength: "supporting" },
+      { path: ".claude/hooks", kind: "directory", strength: "supporting" }
+    ]
+  },
+  {
+    id: "opencode",
+    name: "OpenCode",
+    description: "OpenCode agent, command, provider, plugin, and project configuration surfaces.",
+    configPaths: [
+      "opencode.json",
+      "opencode.jsonc",
+      ".opencode.json",
+      ".opencode/config.json",
+      ".opencode/agents",
+      ".opencode/commands",
+      ".opencode/plugins"
+    ],
+    permissionConcepts: ["provider permissions", "agent modes", "tool scopes"],
+    pluginSurfaces: ["OpenCode plugins", "agents", "commands"],
+    mcpConventions: ["provider/tool configuration", "project-local tool adapters"],
+    historySurfaces: ["sessions", "client/server state", "tool traces"],
+    ciEvidence: ["scan report", "package-surface checks", "policy gate"],
+    markers: [
+      { path: "opencode.json", kind: "file", strength: "strong" },
+      { path: "opencode.jsonc", kind: "file", strength: "strong" },
+      { path: ".opencode.json", kind: "file", strength: "strong" },
+      { path: ".opencode/config.json", kind: "file", strength: "strong" },
+      { path: ".opencode/agents", kind: "directory", strength: "supporting" },
+      { path: ".opencode/commands", kind: "directory", strength: "supporting" },
+      { path: ".opencode/plugins", kind: "directory", strength: "supporting" }
+    ]
+  },
+  {
+    id: "codex",
+    name: "Codex",
+    description: "Codex AGENTS instructions, project config, prompts, and local memory/tooling surfaces.",
+    configPaths: [
+      "AGENTS.md",
+      ".codex/config.toml",
+      ".codex/agents",
+      ".codex/prompts",
+      ".codex/skills"
+    ],
+    permissionConcepts: ["sandbox policy", "approval policy", "agent instructions"],
+    pluginSurfaces: ["skills", "MCP servers", "project AGENTS.md"],
+    mcpConventions: [".codex/config.toml", "MCP server entries"],
+    historySurfaces: ["Codex session logs", "rollout summaries", "local memories"],
+    ciEvidence: ["scan report", "rules conformance", "policy gate"],
+    markers: [
+      { path: "AGENTS.md", kind: "file", strength: "strong" },
+      { path: ".codex/config.toml", kind: "file", strength: "strong" },
+      { path: ".codex/agents", kind: "directory", strength: "supporting" },
+      { path: ".codex/prompts", kind: "directory", strength: "supporting" },
+      { path: ".codex/skills", kind: "directory", strength: "supporting" }
+    ]
+  },
+  {
+    id: "gemini",
+    name: "Gemini CLI",
+    description: "Gemini project instructions, commands, extensions, and MCP configuration surfaces.",
+    configPaths: [
+      "GEMINI.md",
+      ".gemini/settings.json",
+      ".gemini/commands",
+      ".gemini/extensions",
+      ".gemini/mcp.json"
+    ],
+    permissionConcepts: ["tool permissions", "extension scopes", "project rules"],
+    pluginSurfaces: ["commands", "extensions", "MCP adapters"],
+    mcpConventions: [".gemini/mcp.json", "settings tool entries"],
+    historySurfaces: ["terminal transcripts", "command history", "tool traces"],
+    ciEvidence: ["scan report", "policy gate", "extension review"],
+    markers: [
+      { path: "GEMINI.md", kind: "file", strength: "strong" },
+      { path: ".gemini/settings.json", kind: "file", strength: "strong" },
+      { path: ".gemini/mcp.json", kind: "file", strength: "supporting" },
+      { path: ".gemini/commands", kind: "directory", strength: "supporting" },
+      { path: ".gemini/extensions", kind: "directory", strength: "supporting" }
+    ]
+  },
+  {
+    id: "dmux",
+    name: "dmux",
+    description: "dmux multi-agent pane, worktree, launch, and lifecycle hook surfaces.",
+    configPaths: [
+      "dmux.yaml",
+      "dmux.yml",
+      "dmux.json",
+      ".dmux/config.yaml",
+      ".dmux/config.json",
+      ".dmux"
+    ],
+    permissionConcepts: ["pane launch commands", "worktree lifecycle hooks", "merge workflows"],
+    pluginSurfaces: ["launch recipes", "hooks", "agent templates"],
+    mcpConventions: ["per-agent MCP environment", "launch-time tool config"],
+    historySurfaces: ["tmux pane logs", "worktree state", "handoff files"],
+    ciEvidence: ["scan report", "worktree safety review", "merge gate"],
+    markers: [
+      { path: "dmux.yaml", kind: "file", strength: "strong" },
+      { path: "dmux.yml", kind: "file", strength: "strong" },
+      { path: "dmux.json", kind: "file", strength: "strong" },
+      { path: ".dmux/config.yaml", kind: "file", strength: "strong" },
+      { path: ".dmux/config.json", kind: "file", strength: "strong" },
+      { path: ".dmux", kind: "directory", strength: "supporting" }
+    ]
+  },
+  {
+    id: "generic-terminal",
+    name: "Generic Terminal Agent",
+    description: "Terminal-agent launch scripts, command wrappers, and shell-based orchestration surfaces.",
+    configPaths: [
+      "agent.yaml",
+      "agent.yml",
+      ".agents",
+      "agents.yaml",
+      "scripts/agents",
+      "terminal-agents"
+    ],
+    permissionConcepts: ["shell command allowlists", "environment exposure", "working-directory scope"],
+    pluginSurfaces: ["shell wrappers", "agent launch manifests", "local command packs"],
+    mcpConventions: ["environment-provided MCP endpoints", "wrapper-managed tools"],
+    historySurfaces: ["terminal logs", "agent run directories", "handoff files"],
+    ciEvidence: ["scan report", "script review", "policy gate"],
+    markers: [
+      { path: "agent.yaml", kind: "file", strength: "strong" },
+      { path: "agent.yml", kind: "file", strength: "strong" },
+      { path: "agents.yaml", kind: "file", strength: "strong" },
+      { path: ".agents", kind: "directory", strength: "strong" },
+      { path: "scripts/agents", kind: "directory", strength: "supporting" },
+      { path: "terminal-agents", kind: "directory", strength: "supporting" }
+    ]
+  },
+  {
+    id: "project-local-template",
+    name: "Project-local Templates",
+    description: "Repository-local skills, commands, rules, prompts, and reusable agent templates.",
+    configPaths: [
+      "skills",
+      "commands",
+      "rules",
+      "contexts",
+      "prompts",
+      ".claude/commands",
+      ".claude/skills"
+    ],
+    permissionConcepts: ["template guidance", "default tool scopes", "copy-forward examples"],
+    pluginSurfaces: ["skills", "commands", "rules", "contexts", "prompts"],
+    mcpConventions: ["template MCP examples", "copy-forward config snippets"],
+    historySurfaces: ["template changelogs", "skill health history", "example traces"],
+    ciEvidence: ["template scan", "docs-example downgrade evidence", "corpus fixture coverage"],
+    markers: [
+      { path: "skills", kind: "directory", strength: "strong" },
+      { path: "commands", kind: "directory", strength: "strong" },
+      { path: "rules", kind: "directory", strength: "supporting" },
+      { path: "contexts", kind: "directory", strength: "supporting" },
+      { path: "prompts", kind: "directory", strength: "supporting" },
+      { path: ".claude/commands", kind: "directory", strength: "supporting" },
+      { path: ".claude/skills", kind: "directory", strength: "supporting" }
+    ]
+  }
+];
+function getHarnessAdapterRegistry() {
+  return ADAPTERS.map(({ markers: _markers, ...metadata }) => metadata);
+}
+function detectHarnessAdapters(rootPath) {
+  const detections = ADAPTERS.map((adapter) => detectAdapter(rootPath, adapter));
+  const matched = detections.filter((adapter) => adapter.matched).sort((a, b) => a.id.localeCompare(b.id));
+  return {
+    totalRegistered: ADAPTERS.length,
+    totalMatched: matched.length,
+    matched,
+    registered: getHarnessAdapterRegistry()
+  };
+}
+function detectAdapter(rootPath, adapter) {
+  const evidence = adapter.markers.filter((marker) => markerExists(rootPath, marker)).map((marker) => marker.path).sort();
+  const strongMatches = adapter.markers.filter(
+    (marker) => marker.strength === "strong" && evidence.includes(marker.path)
+  ).length;
+  const { markers: _markers, ...metadata } = adapter;
+  return {
+    ...metadata,
+    matched: evidence.length > 0,
+    confidence: strongMatches > 0 ? "strong" : "partial",
+    evidence
+  };
+}
+function markerExists(rootPath, marker) {
+  try {
+    const fullPath = join3(rootPath, marker.path);
+    if (!existsSync2(fullPath)) return false;
+    const stats = statSync3(fullPath);
+    switch (marker.kind) {
+      case "file":
+        return stats.isFile();
+      case "directory":
+        return stats.isDirectory();
+      default:
+        return stats.isFile() || stats.isDirectory();
+    }
+  } catch {
+    return false;
+  }
+}
+
 // src/scanner/index.ts
 function scan(targetPath) {
   const target = discoverConfigFiles(targetPath);
   const rules = getBuiltinRules();
   const findings = runRules(target.files, rules);
   const skillHealth = analyzeSkillHealth(target.files);
-  return { target, findings, skillHealth };
+  const harnessAdapters = detectHarnessAdapters(targetPath);
+  return { target, findings, skillHealth, harnessAdapters };
 }
 function runRules(files, rules) {
   const findings = [];
@@ -8987,7 +9225,7 @@ var SCORE_DEDUCTIONS = {
 };
 var TEMPLATE_EXAMPLE_CATEGORY_CAP = 10;
 function calculateScore(result) {
-  const { findings, target, skillHealth } = result;
+  const { findings, target, skillHealth, harnessAdapters } = result;
   const summary = summarizeFindings(findings, target.files.length);
   const score = computeScore(findings);
   return {
@@ -8996,6 +9234,7 @@ function calculateScore(result) {
     findings,
     score,
     summary,
+    harnessAdapters,
     skillHealth
   };
 }
@@ -9137,6 +9376,23 @@ function renderMarkdownReport(report) {
   lines.push(`| Info | ${s.info} |`);
   lines.push(`| Auto-fixable | ${s.autoFixable} |`);
   lines.push("");
+  if (report.harnessAdapters) {
+    lines.push("## Harness Adapters");
+    lines.push("");
+    lines.push(
+      `Matched ${report.harnessAdapters.totalMatched}/${report.harnessAdapters.totalRegistered} registered adapters.`
+    );
+    lines.push("");
+    if (report.harnessAdapters.matched.length > 0) {
+      lines.push("| Adapter | Confidence | Evidence |");
+      lines.push("|---------|------------|----------|");
+      for (const adapter of report.harnessAdapters.matched) {
+        const evidence = adapter.evidence.map((item) => `\`${item}\``).join(", ");
+        lines.push(`| ${adapter.name} | ${adapter.confidence} | ${evidence} |`);
+      }
+      lines.push("");
+    }
+  }
   if (report.skillHealth && report.skillHealth.totalSkills > 0) {
     lines.push("## Skill Health");
     lines.push("");
@@ -9627,7 +9883,7 @@ async function run() {
   const failOnPolicy = getInput("fail-on-policy", "true") === "true";
   const workspace = process.env.GITHUB_WORKSPACE ?? process.cwd();
   const targetPath = resolve2(workspace, inputPath);
-  if (!existsSync4(targetPath)) {
+  if (!existsSync5(targetPath)) {
     console.log(`::error::AgentShield: Path does not exist: ${targetPath}`);
     process.exitCode = 1;
     return;

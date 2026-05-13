@@ -4,6 +4,7 @@ import type {
   Rule,
   RuntimeConfidence,
   SkillHealthSummary,
+  HarnessAdapterSummary,
   ScanTarget,
   Severity,
 } from "../types.js";
@@ -11,11 +12,13 @@ import { discoverConfigFiles } from "./discovery.js";
 import { getBuiltinRules } from "../rules/index.js";
 import { isExampleLikePath } from "../source-context.js";
 import { analyzeSkillHealth } from "../skills/health.js";
+import { detectHarnessAdapters } from "../harness-adapters/index.js";
 
 export interface ScanResult {
   readonly target: ScanTarget;
   readonly findings: ReadonlyArray<Finding>;
   readonly skillHealth?: SkillHealthSummary;
+  readonly harnessAdapters?: HarnessAdapterSummary;
 }
 
 /**
@@ -26,8 +29,9 @@ export function scan(targetPath: string): ScanResult {
   const rules = getBuiltinRules();
   const findings = runRules(target.files, rules);
   const skillHealth = analyzeSkillHealth(target.files);
+  const harnessAdapters = detectHarnessAdapters(targetPath);
 
-  return { target, findings, skillHealth };
+  return { target, findings, skillHealth, harnessAdapters };
 }
 
 /**

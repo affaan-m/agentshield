@@ -26,6 +26,44 @@ function makeReport(overrides: Partial<SecurityReport> = {}): SecurityReport {
   };
 }
 
+function makeHarnessAdapters(): NonNullable<SecurityReport["harnessAdapters"]> {
+  return {
+    totalRegistered: 7,
+    totalMatched: 2,
+    matched: [
+      {
+        id: "claude-code",
+        name: "Claude Code",
+        description: "Claude config",
+        configPaths: ["CLAUDE.md"],
+        permissionConcepts: ["allow/deny permissions"],
+        pluginSurfaces: ["hooks"],
+        mcpConventions: ["mcpServers"],
+        historySurfaces: ["transcripts"],
+        ciEvidence: ["scan report"],
+        matched: true,
+        confidence: "strong",
+        evidence: ["CLAUDE.md", ".claude/settings.json"],
+      },
+      {
+        id: "codex",
+        name: "Codex",
+        description: "Codex config",
+        configPaths: ["AGENTS.md"],
+        permissionConcepts: ["sandbox policy"],
+        pluginSurfaces: ["skills"],
+        mcpConventions: [".codex/config.toml"],
+        historySurfaces: ["rollouts"],
+        ciEvidence: ["policy gate"],
+        matched: true,
+        confidence: "strong",
+        evidence: ["AGENTS.md"],
+      },
+    ],
+    registered: [],
+  };
+}
+
 describe("renderJsonReport", () => {
   it("returns valid JSON", () => {
     const output = renderJsonReport(makeReport());
@@ -41,6 +79,16 @@ describe("renderJsonReport", () => {
     expect(parsed).toHaveProperty("findings");
     expect(parsed).toHaveProperty("score");
     expect(parsed).toHaveProperty("summary");
+  });
+
+  it("preserves harness adapter evidence in JSON output", () => {
+    const parsed = JSON.parse(renderJsonReport(makeReport({
+      harnessAdapters: makeHarnessAdapters(),
+    })));
+
+    expect(parsed.harnessAdapters.totalMatched).toBe(2);
+    expect(parsed.harnessAdapters.matched[0].id).toBe("claude-code");
+    expect(parsed.harnessAdapters.matched[0].evidence).toContain(".claude/settings.json");
   });
 
   it("preserves findings in output", () => {
@@ -117,6 +165,16 @@ describe("renderMarkdownReport", () => {
     const output = renderMarkdownReport(makeReport());
     expect(output).toContain("## Summary");
     expect(output).toContain("| Files scanned | 5 |");
+  });
+
+  it("renders harness adapter summary in markdown", () => {
+    const output = renderMarkdownReport(makeReport({
+      harnessAdapters: makeHarnessAdapters(),
+    }));
+
+    expect(output).toContain("## Harness Adapters");
+    expect(output).toContain("Matched 2/7 registered adapters.");
+    expect(output).toContain("| Claude Code | strong | `CLAUDE.md`, `.claude/settings.json` |");
   });
 
   it("includes score breakdown table", () => {

@@ -165,6 +165,12 @@ Baseline comparison output is treated as auxiliary output. When JSON or SARIF is
 written to stdout, baseline save/compare and gate text is written to stderr so
 the primary machine-readable report remains parseable.
 
+Scanner JSON also includes `harnessAdapters` when report generation runs through
+`scan()`. This field records deterministic local marker evidence for supported
+harnesses such as Claude Code, OpenCode, Codex, Gemini, dmux, generic terminal
+agents, and project-local templates. It is local/free scan evidence only; it
+does not call hosted services or require a paid/team entitlement.
+
 Baseline snapshot creation is available as a first-class CLI command:
 
 ```bash

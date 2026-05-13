@@ -102,7 +102,7 @@ agentshield scan --opus --stream
 agentshield init
 ```
 
-JSON reports now expose `findings[].runtimeConfidence` when AgentShield can distinguish active runtime config from project-local settings, template/example inventories, declarative plugin manifests, and manifest-resolved non-shell hook implementations.
+JSON reports now expose `findings[].runtimeConfidence` when AgentShield can distinguish active runtime config from project-local settings, template/example inventories, declarative plugin manifests, and manifest-resolved non-shell hook implementations. Reports also include local harness adapter evidence for Claude Code, OpenCode, Codex, Gemini, dmux, terminal-agent wrappers, and project-local templates when matching markers are present.
 
 ## What It Catches
 
@@ -442,6 +442,8 @@ default for local paths, usernames, emails, and token-shaped strings; use
 
 Notes:
 - `runtimeConfidence` is emitted for active runtime config, `settings.local.json`, docs/examples, plugin manifests, and manifest-resolved non-shell hook code.
+- `harnessAdapters` is local marker evidence only. It does not call external services or imply a hosted/team entitlement.
+- Adapter `confidence` is `strong` when a primary harness marker exists, and `partial` when only supporting directories or secondary markers are present.
 - `active-runtime` means active config such as `mcp.json`, `.claude/mcp.json`, `.claude.json`, or active `settings.json`.
 - `project-local-optional` means project-local settings such as `settings.local.json`.
 - `template-example` means template/catalog files such as `mcp-configs/` or `config/mcp/`.

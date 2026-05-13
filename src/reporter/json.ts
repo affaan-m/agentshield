@@ -55,6 +55,25 @@ export function renderMarkdownReport(report: SecurityReport): string {
   lines.push(`| Auto-fixable | ${s.autoFixable} |`);
   lines.push("");
 
+  if (report.harnessAdapters) {
+    lines.push("## Harness Adapters");
+    lines.push("");
+    lines.push(
+      `Matched ${report.harnessAdapters.totalMatched}/${report.harnessAdapters.totalRegistered} registered adapters.`
+    );
+    lines.push("");
+
+    if (report.harnessAdapters.matched.length > 0) {
+      lines.push("| Adapter | Confidence | Evidence |");
+      lines.push("|---------|------------|----------|");
+      for (const adapter of report.harnessAdapters.matched) {
+        const evidence = adapter.evidence.map((item) => `\`${item}\``).join(", ");
+        lines.push(`| ${adapter.name} | ${adapter.confidence} | ${evidence} |`);
+      }
+      lines.push("");
+    }
+  }
+
   if (report.skillHealth && report.skillHealth.totalSkills > 0) {
     lines.push("## Skill Health");
     lines.push("");

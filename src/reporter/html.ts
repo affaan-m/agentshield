@@ -72,6 +72,18 @@ export function renderHtmlReport(report: SecurityReport): string {
       </div>
     </section>
 
+    ${report.harnessAdapters
+      ? `<section class="section">
+      <h2 class="section-title">Harness Adapters</h2>
+      <p class="executive-copy">Matched ${report.harnessAdapters.totalMatched}/${report.harnessAdapters.totalRegistered} registered adapters.</p>
+      <div>
+        ${report.harnessAdapters.matched.length === 0
+          ? '<p class="executive-copy muted">No harness-specific markers were detected.</p>'
+          : report.harnessAdapters.matched.map((adapter) => renderHarnessAdapterCard(adapter)).join("")}
+      </div>
+    </section>`
+      : ""}
+
     ${report.skillHealth && report.skillHealth.totalSkills > 0
       ? `<section class="section">
       <h2 class="section-title">Skill Health</h2>
@@ -475,6 +487,29 @@ function renderSkillHealthCard(skill: SkillHealth): string {
         <span class="finding-location">${escapeHtml(skill.file)}</span>
       </div>
       <p class="finding-description">${escapeHtml(`${score} — ${detail}`)}</p>
+    </div>`;
+}
+
+function renderHarnessAdapterCard(
+  adapter: NonNullable<SecurityReport["harnessAdapters"]>["matched"][number]
+): string {
+  const evidence = adapter.evidence.length > 0
+    ? adapter.evidence.map((item) => `<code>${escapeHtml(item)}</code>`).join(", ")
+    : "No markers";
+
+  return `
+    <div class="finding-card">
+      <div class="finding-header">
+        <span class="runtime-confidence-badge">${escapeHtml(adapter.confidence)}</span>
+        <span class="finding-title">${escapeHtml(adapter.name)}</span>
+      </div>
+      <div class="finding-meta">
+        <span class="finding-category">harness adapter</span>
+        <span class="finding-location">${evidence}</span>
+      </div>
+      <p class="finding-description">${escapeHtml(adapter.description)}</p>
+      <p class="finding-description"><strong>Permission concepts:</strong> ${escapeHtml(adapter.permissionConcepts.join(", "))}</p>
+      <p class="finding-description"><strong>Plugin surfaces:</strong> ${escapeHtml(adapter.pluginSurfaces.join(", "))}</p>
     </div>`;
 }
 

@@ -37,6 +37,19 @@ export function renderTerminalReport(report: SecurityReport): string {
   lines.push(renderBar("Agents", report.score.breakdown.agents));
   lines.push("");
 
+  if (report.harnessAdapters) {
+    lines.push(chalk.bold("  Harness Adapters"));
+    lines.push(
+      `  Matched: ${report.harnessAdapters.totalMatched}/${report.harnessAdapters.totalRegistered}`
+    );
+    for (const adapter of report.harnessAdapters.matched) {
+      const evidence = adapter.evidence.length > 0 ? adapter.evidence.join(", ") : "no markers";
+      lines.push(`  ${chalk.bold(adapter.name)} (${adapter.confidence})`);
+      lines.push(chalk.dim(`    Evidence: ${evidence}`));
+    }
+    lines.push("");
+  }
+
   if (report.skillHealth && report.skillHealth.totalSkills > 0) {
     lines.push(chalk.bold("  Skill Health"));
     lines.push(`  Skills discovered: ${report.skillHealth.totalSkills}`);

@@ -103,6 +103,7 @@ export interface SecurityReport {
   readonly findings: ReadonlyArray<Finding>;
   readonly score: SecurityScore;
   readonly summary: ReportSummary;
+  readonly harnessAdapters?: HarnessAdapterSummary;
   readonly skillHealth?: SkillHealthSummary;
 }
 
@@ -156,6 +157,42 @@ export interface ReportSummary {
   readonly info: number;
   readonly filesScanned: number;
   readonly autoFixable: number;
+}
+
+// ─── Harness Adapter Discovery ─────────────────────────────
+
+export type HarnessAdapterId =
+  | "claude-code"
+  | "opencode"
+  | "codex"
+  | "gemini"
+  | "dmux"
+  | "generic-terminal"
+  | "project-local-template";
+
+export interface HarnessAdapterMetadata {
+  readonly id: HarnessAdapterId;
+  readonly name: string;
+  readonly description: string;
+  readonly configPaths: ReadonlyArray<string>;
+  readonly permissionConcepts: ReadonlyArray<string>;
+  readonly pluginSurfaces: ReadonlyArray<string>;
+  readonly mcpConventions: ReadonlyArray<string>;
+  readonly historySurfaces: ReadonlyArray<string>;
+  readonly ciEvidence: ReadonlyArray<string>;
+}
+
+export interface HarnessAdapterDetection extends HarnessAdapterMetadata {
+  readonly matched: boolean;
+  readonly confidence: "strong" | "partial";
+  readonly evidence: ReadonlyArray<string>;
+}
+
+export interface HarnessAdapterSummary {
+  readonly totalRegistered: number;
+  readonly totalMatched: number;
+  readonly matched: ReadonlyArray<HarnessAdapterDetection>;
+  readonly registered: ReadonlyArray<HarnessAdapterMetadata>;
 }
 
 // ─── Opus Analysis ─────────────────────────────────────────

@@ -16,7 +16,7 @@ const TEMPLATE_EXAMPLE_CATEGORY_CAP = 10;
  * Score starts at 100 and deducts based on severity.
  */
 export function calculateScore(result: ScanResult): SecurityReport {
-  const { findings, target, skillHealth } = result;
+  const { findings, target, skillHealth, harnessAdapters } = result;
   const summary = summarizeFindings(findings, target.files.length);
   const score = computeScore(findings);
 
@@ -26,6 +26,7 @@ export function calculateScore(result: ScanResult): SecurityReport {
     findings,
     score,
     summary,
+    harnessAdapters,
     skillHealth,
   };
 }
