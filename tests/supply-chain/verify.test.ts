@@ -175,6 +175,16 @@ describe("verifyPackages", () => {
         serverName: "opensearch",
       }),
       makePackage({
+        name: "@tallyui/core",
+        version: "0.2.3",
+        serverName: "tallyui",
+      }),
+      makePackage({
+        name: "lightning",
+        version: "2.6.3",
+        serverName: "lightning",
+      }),
+      makePackage({
         name: "guardrails-ai",
         version: "0.10.1",
         serverName: "guardrails",
@@ -192,7 +202,7 @@ describe("verifyPackages", () => {
     ];
     const report = await verifyPackages(packages);
 
-    expect(report.criticalCount).toBe(5);
+    expect(report.criticalCount).toBe(7);
     expect(report.packages.every((pkg) => pkg.risks.some((r) => r.type === "known-malicious"))).toBe(true);
   });
 
