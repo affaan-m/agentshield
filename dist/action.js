@@ -8,6 +8,322 @@ var __export = (target, all) => {
     __defProp(target, name, { get: all[name], enumerable: true });
 };
 
+// src/threat-intel/cve-database.ts
+function checkPackageName(packageName, version) {
+  const match = MALICIOUS_PACKAGES.find((pkg) => pkg.name === packageName);
+  if (!match) return void 0;
+  if (match.type === "compromised" && match.affectedVersions && version) {
+    const affectedVersionList = match.affectedVersions.split(",").map((v) => v.trim());
+    if (!affectedVersionList.includes(version)) {
+      return void 0;
+    }
+  }
+  return match;
+}
+function checkServerPackage(command, args) {
+  for (const server of VULNERABLE_SERVERS) {
+    if (command === server.packageName || command.endsWith(`/${server.packageName}`)) {
+      return server;
+    }
+  }
+  for (const arg of args) {
+    if (arg.startsWith("-")) continue;
+    for (const server of VULNERABLE_SERVERS) {
+      if (arg === server.packageName || arg.startsWith(`${server.packageName}@`)) {
+        return server;
+      }
+    }
+  }
+  return void 0;
+}
+var TANSTACK_MINI_SHAI_HULUD_PACKAGES, MINI_SHAI_HULUD_ADDITIONAL_PACKAGES, MALICIOUS_PACKAGES, VULNERABLE_SERVERS;
+var init_cve_database = __esm({
+  "src/threat-intel/cve-database.ts"() {
+    "use strict";
+    TANSTACK_MINI_SHAI_HULUD_PACKAGES = [
+      ["@tanstack/arktype-adapter", "1.166.12, 1.166.15"],
+      ["@tanstack/eslint-plugin-router", "1.161.9, 1.161.12"],
+      ["@tanstack/eslint-plugin-start", "0.0.4, 0.0.7"],
+      ["@tanstack/history", "1.161.9, 1.161.12"],
+      ["@tanstack/nitro-v2-vite-plugin", "1.154.12, 1.154.15"],
+      ["@tanstack/react-router", "1.169.5, 1.169.8"],
+      ["@tanstack/react-router-devtools", "1.166.16, 1.166.19"],
+      ["@tanstack/react-router-ssr-query", "1.166.15, 1.166.18"],
+      ["@tanstack/react-start", "1.167.68, 1.167.71"],
+      ["@tanstack/react-start-client", "1.166.51, 1.166.54"],
+      ["@tanstack/react-start-rsc", "0.0.47, 0.0.50"],
+      ["@tanstack/react-start-server", "1.166.55, 1.166.58"],
+      ["@tanstack/router-cli", "1.166.46, 1.166.49"],
+      ["@tanstack/router-core", "1.169.5, 1.169.8"],
+      ["@tanstack/router-devtools", "1.166.16, 1.166.19"],
+      ["@tanstack/router-devtools-core", "1.167.6, 1.167.9"],
+      ["@tanstack/router-generator", "1.166.45, 1.166.48"],
+      ["@tanstack/router-plugin", "1.167.38, 1.167.41"],
+      ["@tanstack/router-ssr-query-core", "1.168.3, 1.168.6"],
+      ["@tanstack/router-utils", "1.161.11, 1.161.14"],
+      ["@tanstack/router-vite-plugin", "1.166.53, 1.166.56"],
+      ["@tanstack/solid-router", "1.169.5, 1.169.8"],
+      ["@tanstack/solid-router-devtools", "1.166.16, 1.166.19"],
+      ["@tanstack/solid-router-ssr-query", "1.166.15, 1.166.18"],
+      ["@tanstack/solid-start", "1.167.65, 1.167.68"],
+      ["@tanstack/solid-start-client", "1.166.50, 1.166.53"],
+      ["@tanstack/solid-start-server", "1.166.54, 1.166.57"],
+      ["@tanstack/start-client-core", "1.168.5, 1.168.8"],
+      ["@tanstack/start-fn-stubs", "1.161.9, 1.161.12"],
+      ["@tanstack/start-plugin-core", "1.169.23, 1.169.26"],
+      ["@tanstack/start-server-core", "1.167.33, 1.167.36"],
+      ["@tanstack/start-static-server-functions", "1.166.44, 1.166.47"],
+      ["@tanstack/start-storage-context", "1.166.38, 1.166.41"],
+      ["@tanstack/valibot-adapter", "1.166.12, 1.166.15"],
+      ["@tanstack/virtual-file-routes", "1.161.10, 1.161.13"],
+      ["@tanstack/vue-router", "1.169.5, 1.169.8"],
+      ["@tanstack/vue-router-devtools", "1.166.16, 1.166.19"],
+      ["@tanstack/vue-router-ssr-query", "1.166.15, 1.166.18"],
+      ["@tanstack/vue-start", "1.167.61, 1.167.64"],
+      ["@tanstack/vue-start-client", "1.166.46, 1.166.49"],
+      ["@tanstack/vue-start-server", "1.166.50, 1.166.53"],
+      ["@tanstack/zod-adapter", "1.166.12, 1.166.15"]
+    ];
+    MINI_SHAI_HULUD_ADDITIONAL_PACKAGES = [
+      [
+        "@beproduct/nestjs-auth",
+        "0.1.2, 0.1.3, 0.1.4, 0.1.5, 0.1.6, 0.1.7, 0.1.8, 0.1.9, 0.1.10, 0.1.11, 0.1.12, 0.1.13, 0.1.14, 0.1.15, 0.1.16, 0.1.17, 0.1.18, 0.1.19"
+      ],
+      ["@cap-js/db-service", "2.10.1"],
+      ["@cap-js/postgres", "2.2.2"],
+      ["@cap-js/sqlite", "2.2.2"],
+      ["@dirigible-ai/sdk", "0.6.2, 0.6.3"],
+      ["@draftauth/client", "0.2.1, 0.2.2"],
+      ["@draftauth/core", "0.13.1, 0.13.2"],
+      ["@draftlab/auth", "0.24.1, 0.24.2"],
+      ["@draftlab/auth-router", "0.5.1, 0.5.2"],
+      ["@draftlab/db", "0.16.1, 0.16.2"],
+      ["@mesadev/rest", "0.28.3"],
+      ["@mesadev/saguaro", "0.4.22"],
+      ["@mesadev/sdk", "0.28.3"],
+      ["@mistralai/mistralai", "2.2.2, 2.2.3, 2.2.4"],
+      ["@mistralai/mistralai-azure", "1.7.1, 1.7.2, 1.7.3"],
+      ["@mistralai/mistralai-gcp", "1.7.1, 1.7.2, 1.7.3"],
+      ["@ml-toolkit-ts/preprocessing", "1.0.2, 1.0.3"],
+      ["@ml-toolkit-ts/xgboost", "1.0.3, 1.0.4"],
+      ["@opensearch-project/opensearch", "3.5.3, 3.6.2, 3.7.0, 3.8.0"],
+      ["@squawk/airport-data", "0.7.4, 0.7.5, 0.7.6, 0.7.7, 0.7.8"],
+      ["@squawk/airports", "0.6.2, 0.6.3, 0.6.4, 0.6.5, 0.6.6"],
+      ["@squawk/airspace", "0.8.1, 0.8.2, 0.8.3, 0.8.4, 0.8.5"],
+      ["@squawk/airspace-data", "0.5.3, 0.5.4, 0.5.5, 0.5.6, 0.5.7"],
+      ["@squawk/airway-data", "0.5.4, 0.5.5, 0.5.6, 0.5.7, 0.5.8"],
+      ["@squawk/airways", "0.4.2, 0.4.3, 0.4.4, 0.4.5, 0.4.6"],
+      ["@squawk/fix-data", "0.6.4, 0.6.5, 0.6.6, 0.6.7, 0.6.8"],
+      ["@squawk/fixes", "0.3.2, 0.3.3, 0.3.4, 0.3.5, 0.3.6"],
+      ["@squawk/flight-math", "0.5.4, 0.5.5, 0.5.6, 0.5.7, 0.5.8"],
+      ["@squawk/flightplan", "0.5.2, 0.5.3, 0.5.4, 0.5.5, 0.5.6"],
+      ["@squawk/geo", "0.4.4, 0.4.5, 0.4.6, 0.4.7, 0.4.8"],
+      ["@squawk/icao-registry", "0.5.2, 0.5.3, 0.5.4, 0.5.5, 0.5.6"],
+      ["@squawk/icao-registry-data", "0.8.4, 0.8.5, 0.8.6, 0.8.7, 0.8.8"],
+      ["@squawk/mcp", "0.9.1, 0.9.2, 0.9.3, 0.9.4, 0.9.5"],
+      ["@squawk/navaid-data", "0.6.4, 0.6.5, 0.6.6, 0.6.7, 0.6.8"],
+      ["@squawk/navaids", "0.4.2, 0.4.3, 0.4.4, 0.4.5, 0.4.6"],
+      ["@squawk/notams", "0.3.6, 0.3.7, 0.3.8, 0.3.9, 0.3.10"],
+      ["@squawk/procedure-data", "0.7.3, 0.7.4, 0.7.5, 0.7.6, 0.7.7"],
+      ["@squawk/procedures", "0.5.2, 0.5.3, 0.5.4, 0.5.5, 0.5.6"],
+      ["@squawk/types", "0.8.1, 0.8.2, 0.8.3, 0.8.4, 0.8.5"],
+      ["@squawk/units", "0.4.3, 0.4.4, 0.4.5, 0.4.6, 0.4.7"],
+      ["@squawk/weather", "0.5.6, 0.5.7, 0.5.8, 0.5.9, 0.5.10"],
+      ["@supersurkhet/cli", "0.0.2, 0.0.3, 0.0.4, 0.0.5, 0.0.6, 0.0.7"],
+      ["@supersurkhet/sdk", "0.0.2, 0.0.3, 0.0.4, 0.0.5, 0.0.6, 0.0.7"],
+      ["@tallyui/components", "1.0.1, 1.0.2, 1.0.3"],
+      ["@tallyui/connector-medusa", "1.0.1, 1.0.2, 1.0.3"],
+      ["@tallyui/connector-shopify", "1.0.1, 1.0.2, 1.0.3"],
+      ["@tallyui/connector-vendure", "1.0.1, 1.0.2, 1.0.3"],
+      ["@tallyui/connector-woocommerce", "1.0.1, 1.0.2, 1.0.3"],
+      ["@tallyui/core", "0.2.1, 0.2.2, 0.2.3"],
+      ["@tallyui/database", "1.0.1, 1.0.2, 1.0.3"],
+      ["@tallyui/pos", "0.1.1, 0.1.2, 0.1.3"],
+      ["@tallyui/storage-sqlite", "0.2.1, 0.2.2, 0.2.3"],
+      ["@tallyui/theme", "0.2.1, 0.2.2, 0.2.3"],
+      ["@taskflow-corp/cli", "0.1.24, 0.1.25, 0.1.26, 0.1.27, 0.1.28, 0.1.29"],
+      ["@tolka/cli", "1.0.2, 1.0.3, 1.0.4, 1.0.5, 1.0.6"],
+      ["@uipath/access-policy-sdk", "0.3.1"],
+      ["@uipath/access-policy-tool", "0.3.1"],
+      ["@uipath/admin-tool", "0.1.1"],
+      ["@uipath/agent-sdk", "1.0.2"],
+      ["@uipath/agent-tool", "1.0.1"],
+      ["@uipath/agent.sdk", "0.0.18"],
+      ["@uipath/aops-policy-tool", "0.3.1"],
+      ["@uipath/ap-chat", "1.5.7"],
+      ["@uipath/api-workflow-tool", "1.0.1"],
+      ["@uipath/apollo-core", "5.9.2"],
+      ["@uipath/apollo-react", "4.24.5"],
+      ["@uipath/apollo-wind", "2.16.2"],
+      ["@uipath/auth", "1.0.1"],
+      ["@uipath/case-tool", "1.0.1"],
+      ["@uipath/cli", "1.0.1"],
+      ["@uipath/codedagent-tool", "1.0.1"],
+      ["@uipath/codedagents-tool", "0.1.12"],
+      ["@uipath/codedapp-tool", "1.0.1"],
+      ["@uipath/common", "1.0.1"],
+      ["@uipath/context-grounding-tool", "0.1.1"],
+      ["@uipath/data-fabric-tool", "1.0.2"],
+      ["@uipath/docsai-tool", "1.0.1"],
+      ["@uipath/filesystem", "1.0.1"],
+      ["@uipath/flow-tool", "1.0.2"],
+      ["@uipath/functions-tool", "1.0.1"],
+      ["@uipath/gov-tool", "0.3.1"],
+      ["@uipath/identity-tool", "0.1.1"],
+      ["@uipath/insights-sdk", "1.0.1"],
+      ["@uipath/insights-tool", "1.0.1"],
+      ["@uipath/integrationservice-sdk", "1.0.2"],
+      ["@uipath/integrationservice-tool", "1.0.2"],
+      ["@uipath/llmgw-tool", "1.0.1"],
+      ["@uipath/maestro-sdk", "1.0.1"],
+      ["@uipath/maestro-tool", "1.0.1"],
+      ["@uipath/orchestrator-tool", "1.0.1"],
+      ["@uipath/packager-tool-apiworkflow", "0.0.19"],
+      ["@uipath/packager-tool-bpmn", "0.0.9"],
+      ["@uipath/packager-tool-case", "0.0.9"],
+      ["@uipath/packager-tool-connector", "0.0.19"],
+      ["@uipath/packager-tool-flow", "0.0.19"],
+      ["@uipath/packager-tool-functions", "0.1.1"],
+      ["@uipath/packager-tool-webapp", "1.0.6"],
+      ["@uipath/packager-tool-workflowcompiler", "0.0.16"],
+      ["@uipath/packager-tool-workflowcompiler-browser", "0.0.34"],
+      ["@uipath/platform-tool", "1.0.1"],
+      ["@uipath/project-packager", "1.1.16"],
+      ["@uipath/resource-tool", "1.0.1"],
+      ["@uipath/resourcecatalog-tool", "0.1.1"],
+      ["@uipath/resources-tool", "0.1.11"],
+      ["@uipath/robot", "1.3.4"],
+      ["@uipath/rpa-legacy-tool", "1.0.1"],
+      ["@uipath/rpa-tool", "0.9.5"],
+      ["@uipath/solution-packager", "0.0.35"],
+      ["@uipath/solution-tool", "1.0.1"],
+      ["@uipath/solutionpackager-sdk", "1.0.11"],
+      ["@uipath/solutionpackager-tool-core", "0.0.34"],
+      ["@uipath/tasks-tool", "1.0.1"],
+      ["@uipath/telemetry", "0.0.7"],
+      ["@uipath/test-manager-tool", "1.0.2"],
+      ["@uipath/tool-workflowcompiler", "0.0.12"],
+      ["@uipath/traces-tool", "1.0.1"],
+      ["@uipath/ui-widgets-multi-file-upload", "1.0.1"],
+      ["@uipath/uipath-python-bridge", "1.0.1"],
+      ["@uipath/vertical-solutions-tool", "1.0.1"],
+      ["@uipath/vss", "0.1.6"],
+      ["@uipath/widget.sdk", "1.2.3"],
+      ["agentwork-cli", "0.1.4, 0.1.5"],
+      ["cmux-agent-mcp", "0.1.3, 0.1.4, 0.1.5, 0.1.6, 0.1.7, 0.1.8"],
+      ["cross-stitch", "1.1.3, 1.1.4, 1.1.5, 1.1.6, 1.1.7"],
+      ["git-branch-selector", "1.3.3, 1.3.4, 1.3.5, 1.3.6, 1.3.7"],
+      ["git-git-git", "1.0.8, 1.0.9, 1.0.10, 1.0.11, 1.0.12"],
+      ["guardrails-ai", "0.10.1"],
+      ["intercom-client", "7.0.4"],
+      ["lightning", "2.6.2, 2.6.3"],
+      ["mbt", "1.2.48"],
+      ["mistralai", "2.4.6"],
+      ["ml-toolkit-ts", "1.0.4, 1.0.5"],
+      ["nextmove-mcp", "0.1.3, 0.1.4, 0.1.5, 0.1.6, 0.1.7"],
+      ["safe-action", "0.8.3, 0.8.4"],
+      ["ts-dna", "3.0.1, 3.0.2, 3.0.3, 3.0.4, 3.0.5"],
+      ["wot-api", "0.8.1, 0.8.2, 0.8.3, 0.8.4"]
+    ];
+    MALICIOUS_PACKAGES = [
+      // SANDWORM_MODE typosquats targeting MCP SDK
+      {
+        name: "@anthropic-ai/model-context-protocol-sdk",
+        type: "typosquat",
+        description: "Typosquat of the official @modelcontextprotocol/sdk. Part of SANDWORM_MODE supply chain campaign targeting MCP developers.",
+        legitimatePackage: "@modelcontextprotocol/sdk"
+      },
+      {
+        name: "anthropic-mcp-sdk",
+        type: "typosquat",
+        description: "Typosquat targeting developers searching for the Anthropic MCP SDK.",
+        legitimatePackage: "@modelcontextprotocol/sdk"
+      },
+      {
+        name: "mcp-sdk-anthropic",
+        type: "typosquat",
+        description: "Typosquat with reversed naming convention targeting MCP SDK users.",
+        legitimatePackage: "@modelcontextprotocol/sdk"
+      },
+      {
+        name: "@anthropic/mcp-server",
+        type: "typosquat",
+        description: "Typosquat using incorrect scope for Anthropic MCP servers (correct scope is @anthropics or @modelcontextprotocol).",
+        legitimatePackage: "@modelcontextprotocol/sdk"
+      },
+      // Compromised legitimate packages
+      {
+        name: "cline",
+        type: "compromised",
+        description: "Clinejection supply chain attack. Compromised npm token used to publish cline@2.3.0 with malicious postinstall script that installed openclaw. ~4,000 downloads in ~8 hour window.",
+        affectedVersions: "2.3.0"
+      },
+      // Known malicious MCP servers
+      {
+        name: "postmark-mcp",
+        type: "malicious",
+        description: "Malicious MCP server impersonating Postmark email service. Version 1.0.16 secretly BCCs every outgoing email to an attacker-controlled domain.",
+        affectedVersions: "1.0.16"
+      },
+      {
+        name: "openclaw",
+        type: "malicious",
+        description: "Malicious package installed by the compromised cline@2.3.0 postinstall script. Part of the Clinejection supply chain attack."
+      },
+      {
+        name: "@tanstack/setup",
+        type: "malicious",
+        description: "Fictitious git dependency used by the May 2026 TanStack/Mini Shai-Hulud npm campaign. Malicious manifests referenced github:tanstack/router#79ac49eedf774dd4b0cfa308722bc463cfe5885c to execute router_init.js during install."
+      },
+      ...TANSTACK_MINI_SHAI_HULUD_PACKAGES.map(([name, affectedVersions]) => ({
+        name,
+        type: "compromised",
+        description: "Compromised @tanstack package version from the May 2026 TanStack/Mini Shai-Hulud npm campaign. Affected versions executed router_init.js at install time, harvested developer/cloud credentials, and attempted npm worm propagation under signed trusted-publisher provenance.",
+        affectedVersions
+      })),
+      ...MINI_SHAI_HULUD_ADDITIONAL_PACKAGES.map(([name, affectedVersions]) => ({
+        name,
+        type: "compromised",
+        description: "Compromised package version from the May 2026 Mini Shai-Hulud supply-chain campaign. Treat any matching lockfile, cache, CI runner, or developer host as potentially compromised and rotate accessible credentials after persistence is removed.",
+        affectedVersions
+      })),
+      // AI-specific typosquats from PyPI/npm campaigns
+      {
+        name: "aliyun-ai-labs-snippets-sdk",
+        type: "malicious",
+        description: "Malicious PyPI package delivering infostealer hidden inside PyTorch model files."
+      },
+      {
+        name: "ai-labs-snippets-sdk",
+        type: "malicious",
+        description: "Malicious PyPI package delivering infostealer hidden inside PyTorch model files."
+      },
+      {
+        name: "aliyun-ai-labs-sdk",
+        type: "malicious",
+        description: "Malicious PyPI package delivering infostealer hidden inside PyTorch model files."
+      }
+    ];
+    VULNERABLE_SERVERS = [
+      {
+        packageName: "@anthropics/mcp-server-git",
+        cveIds: ["CVE-2025-68145", "CVE-2025-68143", "CVE-2025-68144"],
+        description: "Anthropic's official MCP git server has path traversal, unrestricted git_init, and argument injection vulnerabilities."
+      },
+      {
+        packageName: "mcp-server-git",
+        cveIds: ["CVE-2025-68145", "CVE-2025-68143", "CVE-2025-68144"],
+        description: "MCP git server (community package) shares vulnerabilities with the official Anthropic version."
+      },
+      {
+        packageName: "mcp-remote",
+        cveIds: ["CVE-2025-6514"],
+        description: "OS command injection via malicious authorization_endpoint. The authorization URL is passed to the system shell without sanitization."
+      }
+    ];
+  }
+});
+
 // src/fingerprint.ts
 import { createHash } from "crypto";
 function fingerprintFinding(finding) {
@@ -648,9 +964,633 @@ var init_policy = __esm({
   }
 });
 
+// src/supply-chain/extract.ts
+function extractPackages(files) {
+  const packages = [];
+  const seen = /* @__PURE__ */ new Set();
+  for (const file of files) {
+    if (file.type !== "mcp-json" && file.type !== "settings-json") continue;
+    const extracted = extractFromMcpConfig(file.content);
+    for (const pkg of extracted) {
+      const key = buildPackageDedupeKey(pkg);
+      if (!seen.has(key)) {
+        seen.add(key);
+        packages.push(pkg);
+      }
+    }
+  }
+  return packages;
+}
+function extractFromMcpConfig(content) {
+  try {
+    const config = JSON.parse(content);
+    if (!isRecord(config) || !isRecord(config.mcpServers)) {
+      return [];
+    }
+    const servers = config.mcpServers;
+    const packages = [];
+    for (const [serverName, serverConfig] of Object.entries(servers)) {
+      const server = normalizeServerConfig(serverConfig);
+      if (!server) continue;
+      const extracted = extractFromServerConfig(
+        serverName,
+        server.command,
+        server.args ?? []
+      );
+      packages.push(...extracted);
+    }
+    return packages;
+  } catch {
+    return [];
+  }
+}
+function extractFromServerConfig(serverName, command, args) {
+  const packages = [];
+  if (command === "npx" || command.endsWith("/npx")) {
+    packages.push(...extractFromNpxArgs(serverName, args));
+  }
+  if (command === "node" || command.endsWith("/node")) {
+    for (const arg of args) {
+      if (arg.startsWith("-")) continue;
+      const nodeModuleMatch = arg.match(
+        /node_modules\/(@[^/]+\/[^/]+|[^/]+)/
+      );
+      if (nodeModuleMatch) {
+        packages.push({
+          name: nodeModuleMatch[1],
+          source: "args",
+          serverName
+        });
+      }
+    }
+  }
+  if (!command.includes("/") && !command.startsWith(".")) {
+    const parsed = parsePackageSpec(command);
+    if (parsed && looksLikeNpmPackage(parsed.name)) {
+      packages.push({
+        ...parsed,
+        source: "command",
+        serverName
+      });
+    }
+  }
+  for (const arg of args) {
+    const gitInfo = parseGitUrl(arg);
+    if (gitInfo) {
+      packages.push({
+        name: gitInfo.repo,
+        source: "git",
+        serverName,
+        gitUrl: arg,
+        gitRef: gitInfo.ref
+      });
+    }
+  }
+  return packages;
+}
+function buildPackageDedupeKey(pkg) {
+  return [
+    pkg.source,
+    pkg.name,
+    pkg.version ?? "latest",
+    pkg.gitUrl ?? "",
+    pkg.gitRef ?? ""
+  ].join("|");
+}
+function isRecord(value) {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+function normalizeServerConfig(value) {
+  if (!isRecord(value) || typeof value.command !== "string") {
+    return null;
+  }
+  const args = Array.isArray(value.args) ? value.args.filter((arg) => typeof arg === "string") : [];
+  return {
+    command: value.command,
+    args
+  };
+}
+function extractFromNpxArgs(serverName, args) {
+  const packages = [];
+  let sawExplicitPackageFlag = false;
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i];
+    if (arg === "-p" || arg === "--package") {
+      sawExplicitPackageFlag = true;
+      const spec = args[i + 1];
+      const parsed = spec ? parsePackageSpec(spec) : null;
+      if (parsed) {
+        packages.push({
+          ...parsed,
+          source: "npx",
+          serverName
+        });
+      }
+      i += 1;
+      continue;
+    }
+    if (arg.startsWith("--package=")) {
+      sawExplicitPackageFlag = true;
+      const parsed = parsePackageSpec(arg.slice("--package=".length));
+      if (parsed) {
+        packages.push({
+          ...parsed,
+          source: "npx",
+          serverName
+        });
+      }
+    }
+  }
+  if (packages.length > 0 || sawExplicitPackageFlag) {
+    return packages;
+  }
+  for (const arg of args) {
+    if (arg.startsWith("-")) continue;
+    if (parseGitUrl(arg)) continue;
+    const parsed = parsePackageSpec(arg);
+    if (parsed) {
+      packages.push({
+        ...parsed,
+        source: "npx",
+        serverName
+      });
+      break;
+    }
+  }
+  return packages;
+}
+function parsePackageSpec(spec) {
+  if (!spec || spec.startsWith("-") || spec.startsWith(".") || spec.startsWith("/")) {
+    return null;
+  }
+  if (isUrlLikeSpec(spec)) {
+    return null;
+  }
+  if (spec.includes("/") && !spec.startsWith("@")) {
+    return null;
+  }
+  if (spec.startsWith("@")) {
+    const scopeEnd = spec.indexOf("/");
+    if (scopeEnd === -1) return null;
+    const afterScope = spec.slice(scopeEnd + 1);
+    const versionIndex = afterScope.indexOf("@");
+    if (versionIndex === -1) {
+      return { name: spec };
+    }
+    return {
+      name: spec.slice(0, scopeEnd + 1 + versionIndex),
+      version: afterScope.slice(versionIndex + 1)
+    };
+  }
+  const atIndex = spec.indexOf("@");
+  if (atIndex === -1) {
+    return { name: spec };
+  }
+  return {
+    name: spec.slice(0, atIndex),
+    version: spec.slice(atIndex + 1)
+  };
+}
+function isUrlLikeSpec(spec) {
+  return /^(?:[a-z][a-z0-9+.-]*:|git@)/i.test(spec) || spec.includes("://");
+}
+function looksLikeNpmPackage(name) {
+  if (name.startsWith("@")) return true;
+  if (name.includes("-mcp") || name.includes("mcp-")) return true;
+  if (name.includes("-server") || name.includes("server-")) return true;
+  return false;
+}
+function parseGitUrl(url) {
+  const patterns = [
+    /^(?:git\+)?https?:\/\/github\.com\/([^#@]+?)(?:[#@](.+))?$/i,
+    /^git:\/\/github\.com\/([^#@]+?)(?:[#@](.+))?$/i,
+    /^git\+ssh:\/\/git@github\.com\/([^#@]+?)(?:[#@](.+))?$/i,
+    /^git@github\.com:([^#@]+?)(?:[#@](.+))?$/i,
+    /^github:([^#@]+?)(?:[#@](.+))?$/i
+  ];
+  for (const pattern of patterns) {
+    const match = url.match(pattern);
+    if (!match) continue;
+    return {
+      repo: match[1].replace(/\.git$/, ""),
+      ref: match[2]
+    };
+  }
+  return null;
+}
+var init_extract = __esm({
+  "src/supply-chain/extract.ts"() {
+    "use strict";
+  }
+});
+
+// src/supply-chain/types.ts
+var KNOWN_GOOD_PACKAGES;
+var init_types2 = __esm({
+  "src/supply-chain/types.ts"() {
+    "use strict";
+    KNOWN_GOOD_PACKAGES = [
+      "@modelcontextprotocol/sdk",
+      "@modelcontextprotocol/server-filesystem",
+      "@modelcontextprotocol/server-github",
+      "@modelcontextprotocol/server-postgres",
+      "@modelcontextprotocol/server-brave-search",
+      "@modelcontextprotocol/server-memory",
+      "@modelcontextprotocol/server-puppeteer",
+      "@modelcontextprotocol/server-sequential-thinking",
+      "@modelcontextprotocol/server-everything",
+      "@modelcontextprotocol/server-slack",
+      "@anthropics/mcp-server-git",
+      "firecrawl-mcp",
+      "tavily-mcp",
+      "exa-mcp-server",
+      "@supabase/mcp-server-supabase",
+      "@cloudflare/mcp-server-cloudflare",
+      "@playwright/mcp",
+      "context7-mcp"
+    ];
+  }
+});
+
+// src/supply-chain/verify.ts
+async function verifyPackages(packages, options = {}) {
+  const verifications = [];
+  for (const pkg of packages) {
+    const risks = [];
+    let registry;
+    const malicious = checkPackageName(pkg.name, pkg.version);
+    if (malicious) {
+      risks.push({
+        type: "known-malicious",
+        severity: "critical",
+        description: malicious.description,
+        evidence: `Package: ${malicious.name} (${malicious.type})`
+      });
+    }
+    const vulnerable = checkServerPackage(
+      pkg.name,
+      pkg.version ? [`${pkg.name}@${pkg.version}`] : [pkg.name]
+    );
+    if (vulnerable) {
+      risks.push({
+        type: "known-vulnerable",
+        severity: "high",
+        description: vulnerable.description,
+        evidence: `CVEs: ${vulnerable.cveIds.join(", ")}`
+      });
+    }
+    const typosquatRisk = checkTyposquatting(pkg.name);
+    if (typosquatRisk) {
+      risks.push(typosquatRisk);
+    }
+    if (pkg.source === "git" && !hasPinnedGitCommit(pkg.gitRef)) {
+      risks.push({
+        type: "unpinned-git",
+        severity: "high",
+        description: "Git URL without a pinned commit hash. An attacker who compromises the repo can inject malicious code.",
+        evidence: pkg.gitUrl
+      });
+    }
+    if (options.online && pkg.source !== "git") {
+      registry = await fetchRegistryMeta(pkg.name);
+      if (registry) {
+        risks.push(...assessRegistryRisks(registry));
+      }
+    }
+    const overallSeverity = risks.length > 0 ? risks.reduce(
+      (worst, r) => SEVERITY_ORDER2[r.severity] < SEVERITY_ORDER2[worst.severity] ? r : worst
+    ).severity : "info";
+    verifications.push({
+      package: pkg,
+      provenance: buildPackageProvenance(pkg, registry),
+      registry,
+      risks,
+      overallSeverity
+    });
+  }
+  const riskyPackages = verifications.filter((v) => v.risks.length > 0);
+  return {
+    packages: verifications,
+    totalPackages: verifications.length,
+    riskyPackages: riskyPackages.length,
+    criticalCount: riskyPackages.filter((v) => v.overallSeverity === "critical").length,
+    highCount: riskyPackages.filter((v) => v.overallSeverity === "high").length,
+    provenance: summarizePackageProvenance(verifications)
+  };
+}
+function checkTyposquatting(packageName) {
+  if (KNOWN_GOOD_PACKAGES.includes(packageName)) return null;
+  for (const goodPkg of KNOWN_GOOD_PACKAGES) {
+    const distance = levenshteinDistance(packageName, goodPkg);
+    const maxLen = Math.max(packageName.length, goodPkg.length);
+    const similarity = 1 - distance / maxLen;
+    if (similarity > 0.8 && distance > 0 && distance <= 3) {
+      return {
+        type: "typosquat",
+        severity: "high",
+        description: `Package name "${packageName}" is suspiciously similar to known-good package "${goodPkg}" (${Math.round(similarity * 100)}% similarity, edit distance: ${distance}).`,
+        evidence: `Similar to: ${goodPkg}`
+      };
+    }
+  }
+  return null;
+}
+function hasPinnedGitCommit(gitRef) {
+  return !!gitRef && GIT_COMMIT_HASH.test(gitRef);
+}
+function buildPackageProvenance(pkg, registry) {
+  if (pkg.source === "git") {
+    return {
+      ecosystem: "git",
+      locator: pkg.gitUrl ?? pkg.name,
+      pinned: hasPinnedGitCommit(pkg.gitRef),
+      knownGood: false,
+      metadataSource: "git-url"
+    };
+  }
+  return {
+    ecosystem: "npm",
+    locator: `${pkg.name}@${pkg.version ?? "latest"}`,
+    pinned: isPinnedNpmVersion(pkg.version),
+    knownGood: KNOWN_GOOD_PACKAGES.includes(pkg.name),
+    metadataSource: registry ? "npm-registry" : "offline"
+  };
+}
+function summarizePackageProvenance(verifications) {
+  return verifications.reduce(
+    (summary, verification) => ({
+      npmPackages: summary.npmPackages + (verification.provenance.ecosystem === "npm" ? 1 : 0),
+      gitPackages: summary.gitPackages + (verification.provenance.ecosystem === "git" ? 1 : 0),
+      pinnedPackages: summary.pinnedPackages + (verification.provenance.pinned ? 1 : 0),
+      unpinnedPackages: summary.unpinnedPackages + (verification.provenance.pinned ? 0 : 1),
+      knownGoodPackages: summary.knownGoodPackages + (verification.provenance.knownGood ? 1 : 0),
+      registryMetadataPackages: summary.registryMetadataPackages + (verification.provenance.metadataSource === "npm-registry" ? 1 : 0)
+    }),
+    {
+      npmPackages: 0,
+      gitPackages: 0,
+      pinnedPackages: 0,
+      unpinnedPackages: 0,
+      knownGoodPackages: 0,
+      registryMetadataPackages: 0
+    }
+  );
+}
+function isPinnedNpmVersion(version) {
+  return !!version && EXACT_NPM_VERSION.test(version);
+}
+function levenshteinDistance(a, b) {
+  const m = a.length;
+  const n = b.length;
+  let prev = Array.from({ length: n + 1 }, (_, i) => i);
+  let curr = new Array(n + 1);
+  for (let i = 1; i <= m; i++) {
+    curr[0] = i;
+    for (let j = 1; j <= n; j++) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      curr[j] = Math.min(
+        prev[j] + 1,
+        // deletion
+        curr[j - 1] + 1,
+        // insertion
+        prev[j - 1] + cost
+        // substitution
+      );
+    }
+    [prev, curr] = [curr, prev];
+  }
+  return prev[n];
+}
+async function fetchRegistryMeta(packageName) {
+  try {
+    const registryUrl = `https://registry.npmjs.org/${encodeURIComponent(packageName)}`;
+    const response = await fetch(registryUrl, {
+      signal: AbortSignal.timeout(5e3)
+    });
+    if (!response.ok) return void 0;
+    const data = await response.json();
+    const time = data.time;
+    const maintainers = data.maintainers;
+    const distTags = data["dist-tags"];
+    const latestVersion = distTags?.latest;
+    const versions = data.versions;
+    let hasPostinstall = false;
+    if (latestVersion && versions?.[latestVersion]) {
+      const scripts = versions[latestVersion].scripts;
+      hasPostinstall = !!scripts?.postinstall;
+    }
+    let downloadsLastWeek;
+    try {
+      const dlResponse = await fetch(
+        `https://api.npmjs.org/downloads/point/last-week/${encodeURIComponent(packageName)}`,
+        { signal: AbortSignal.timeout(3e3) }
+      );
+      if (dlResponse.ok) {
+        const dlData = await dlResponse.json();
+        downloadsLastWeek = dlData.downloads;
+      }
+    } catch {
+    }
+    return {
+      name: packageName,
+      publishedAt: time?.created,
+      downloadsLastWeek,
+      maintainerCount: maintainers?.length,
+      hasPostinstall,
+      latestVersion,
+      description: data.description,
+      deprecated: !!data.deprecated
+    };
+  } catch {
+    return void 0;
+  }
+}
+function assessRegistryRisks(meta) {
+  const risks = [];
+  if (meta.deprecated) {
+    risks.push({
+      type: "deprecated",
+      severity: "medium",
+      description: `Package "${meta.name}" is deprecated on npm.`
+    });
+  }
+  if (meta.hasPostinstall) {
+    risks.push({
+      type: "has-postinstall",
+      severity: "medium",
+      description: `Package "${meta.name}" has a postinstall script that runs automatically on install.`
+    });
+  }
+  if (meta.maintainerCount !== void 0 && meta.maintainerCount <= 1) {
+    risks.push({
+      type: "single-maintainer",
+      severity: "low",
+      description: `Package "${meta.name}" has only ${meta.maintainerCount} maintainer(s). Single-maintainer packages are higher risk for account compromise.`
+    });
+  }
+  if (meta.downloadsLastWeek !== void 0 && meta.downloadsLastWeek < 100) {
+    risks.push({
+      type: "low-downloads",
+      severity: "medium",
+      description: `Package "${meta.name}" has very low downloads (${meta.downloadsLastWeek}/week). Low-traffic packages are more likely to be malicious.`
+    });
+  }
+  if (meta.publishedAt) {
+    const publishDate = new Date(meta.publishedAt);
+    const threeMonthsAgo = /* @__PURE__ */ new Date();
+    threeMonthsAgo.setMonth(threeMonthsAgo.getMonth() - 3);
+    if (publishDate > threeMonthsAgo) {
+      risks.push({
+        type: "new-package",
+        severity: "low",
+        description: `Package "${meta.name}" was first published recently (${meta.publishedAt}). New packages have less community vetting.`
+      });
+    }
+  }
+  return risks;
+}
+var SEVERITY_ORDER2, GIT_COMMIT_HASH, EXACT_NPM_VERSION;
+var init_verify = __esm({
+  "src/supply-chain/verify.ts"() {
+    "use strict";
+    init_types2();
+    init_cve_database();
+    SEVERITY_ORDER2 = {
+      critical: 0,
+      high: 1,
+      medium: 2,
+      low: 3,
+      info: 4
+    };
+    GIT_COMMIT_HASH = /^[0-9a-f]{7,40}$/i;
+    EXACT_NPM_VERSION = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/;
+  }
+});
+
+// src/supply-chain/render.ts
+function renderSupplyChainReport(report) {
+  const lines = [];
+  const divider = "\u2500".repeat(60);
+  lines.push("");
+  lines.push(`  ${divider}`);
+  lines.push("  Supply Chain Verification Report");
+  lines.push(`  ${divider}`);
+  lines.push("");
+  lines.push(`  Packages analyzed: ${report.totalPackages}`);
+  lines.push(`  Risky packages:    ${report.riskyPackages}`);
+  lines.push(
+    `  Provenance:        npm: ${report.provenance.npmPackages}, git: ${report.provenance.gitPackages}, pinned: ${report.provenance.pinnedPackages}, unpinned: ${report.provenance.unpinnedPackages}, known-good: ${report.provenance.knownGoodPackages}, registry-backed: ${report.provenance.registryMetadataPackages}`
+  );
+  if (report.criticalCount > 0) {
+    lines.push(`  Critical:          ${report.criticalCount}`);
+  }
+  if (report.highCount > 0) {
+    lines.push(`  High:              ${report.highCount}`);
+  }
+  if (report.packages.length === 0) {
+    lines.push("");
+    lines.push("  No MCP packages detected in configuration.");
+    lines.push("");
+    return lines.join("\n");
+  }
+  const risky = report.packages.filter((p) => p.risks.length > 0);
+  const clean = report.packages.filter((p) => p.risks.length === 0);
+  if (risky.length > 0) {
+    lines.push("");
+    lines.push("  RISKY PACKAGES:");
+    for (const pkg of risky) {
+      lines.push(...renderPackage(pkg));
+    }
+  }
+  if (clean.length > 0) {
+    lines.push("");
+    lines.push("  CLEAN PACKAGES:");
+    for (const pkg of clean) {
+      const version = pkg.package.version ? `@${escapeControlChars(pkg.package.version)}` : "";
+      const name = escapeControlChars(pkg.package.name);
+      const serverName = escapeControlChars(pkg.package.serverName);
+      lines.push(`    [OK] ${name}${version} (${serverName})`);
+    }
+  }
+  lines.push("");
+  lines.push(`  ${divider}`);
+  lines.push("");
+  return lines.join("\n");
+}
+function renderPackage(verification) {
+  const lines = [];
+  const pkg = verification.package;
+  const version = pkg.version ? `@${escapeControlChars(pkg.version)}` : "";
+  const sev = verification.overallSeverity.toUpperCase();
+  const name = escapeControlChars(pkg.name);
+  const serverName = escapeControlChars(pkg.serverName);
+  const source = escapeControlChars(pkg.source);
+  lines.push(`    [${sev}] ${name}${version} (server: ${serverName}, via: ${source})`);
+  for (const risk of verification.risks) {
+    lines.push(`      - [${risk.severity.toUpperCase()}] ${escapeControlChars(risk.description)}`);
+    if (risk.evidence) {
+      lines.push(`        Evidence: ${escapeControlChars(risk.evidence)}`);
+    }
+  }
+  if (verification.registry) {
+    const meta = verification.registry;
+    const details = [];
+    if (meta.downloadsLastWeek !== void 0) {
+      details.push(`${meta.downloadsLastWeek} downloads/week`);
+    }
+    if (meta.maintainerCount !== void 0) {
+      details.push(`${meta.maintainerCount} maintainer(s)`);
+    }
+    if (meta.latestVersion) {
+      details.push(`latest: ${escapeControlChars(meta.latestVersion)}`);
+    }
+    if (details.length > 0) {
+      lines.push(`      Registry: ${details.join(", ")}`);
+    }
+  }
+  return lines;
+}
+function renderSupplyChainJson(report) {
+  return JSON.stringify(report, null, 2);
+}
+function escapeControlChars(value) {
+  return value.replace(CONTROL_CHAR_PATTERN, (char) => {
+    const code = char.charCodeAt(0);
+    return code <= 255 ? `\\x${code.toString(16).padStart(2, "0")}` : `\\u${code.toString(16).padStart(4, "0")}`;
+  });
+}
+var CONTROL_CHAR_PATTERN;
+var init_render = __esm({
+  "src/supply-chain/render.ts"() {
+    "use strict";
+    CONTROL_CHAR_PATTERN = /[\u0000-\u001F\u007F-\u009F]/g;
+  }
+});
+
+// src/supply-chain/index.ts
+var supply_chain_exports = {};
+__export(supply_chain_exports, {
+  KNOWN_GOOD_PACKAGES: () => KNOWN_GOOD_PACKAGES,
+  checkTyposquatting: () => checkTyposquatting,
+  extractPackages: () => extractPackages,
+  levenshteinDistance: () => levenshteinDistance,
+  renderSupplyChainJson: () => renderSupplyChainJson,
+  renderSupplyChainReport: () => renderSupplyChainReport,
+  verifyPackages: () => verifyPackages
+});
+var init_supply_chain = __esm({
+  "src/supply-chain/index.ts"() {
+    "use strict";
+    init_extract();
+    init_verify();
+    init_render();
+    init_types2();
+  }
+});
+
 // src/baseline/types.ts
 var DEFAULT_GATE_CONFIG;
-var init_types2 = __esm({
+var init_types3 = __esm({
   "src/baseline/types.ts"() {
     "use strict";
     DEFAULT_GATE_CONFIG = {
@@ -828,7 +1768,7 @@ var init_compare = __esm({
   "src/baseline/compare.ts"() {
     "use strict";
     init_fingerprint();
-    init_types2();
+    init_types3();
     init_fingerprint();
   }
 });
@@ -849,7 +1789,7 @@ var init_baseline = __esm({
   "src/baseline/index.ts"() {
     "use strict";
     init_compare();
-    init_types2();
+    init_types3();
   }
 });
 
@@ -6059,317 +6999,8 @@ var mcpRules = rawMcpRules.map((rule) => ({
   }
 }));
 
-// src/threat-intel/cve-database.ts
-var TANSTACK_MINI_SHAI_HULUD_PACKAGES = [
-  ["@tanstack/arktype-adapter", "1.166.12, 1.166.15"],
-  ["@tanstack/eslint-plugin-router", "1.161.9, 1.161.12"],
-  ["@tanstack/eslint-plugin-start", "0.0.4, 0.0.7"],
-  ["@tanstack/history", "1.161.9, 1.161.12"],
-  ["@tanstack/nitro-v2-vite-plugin", "1.154.12, 1.154.15"],
-  ["@tanstack/react-router", "1.169.5, 1.169.8"],
-  ["@tanstack/react-router-devtools", "1.166.16, 1.166.19"],
-  ["@tanstack/react-router-ssr-query", "1.166.15, 1.166.18"],
-  ["@tanstack/react-start", "1.167.68, 1.167.71"],
-  ["@tanstack/react-start-client", "1.166.51, 1.166.54"],
-  ["@tanstack/react-start-rsc", "0.0.47, 0.0.50"],
-  ["@tanstack/react-start-server", "1.166.55, 1.166.58"],
-  ["@tanstack/router-cli", "1.166.46, 1.166.49"],
-  ["@tanstack/router-core", "1.169.5, 1.169.8"],
-  ["@tanstack/router-devtools", "1.166.16, 1.166.19"],
-  ["@tanstack/router-devtools-core", "1.167.6, 1.167.9"],
-  ["@tanstack/router-generator", "1.166.45, 1.166.48"],
-  ["@tanstack/router-plugin", "1.167.38, 1.167.41"],
-  ["@tanstack/router-ssr-query-core", "1.168.3, 1.168.6"],
-  ["@tanstack/router-utils", "1.161.11, 1.161.14"],
-  ["@tanstack/router-vite-plugin", "1.166.53, 1.166.56"],
-  ["@tanstack/solid-router", "1.169.5, 1.169.8"],
-  ["@tanstack/solid-router-devtools", "1.166.16, 1.166.19"],
-  ["@tanstack/solid-router-ssr-query", "1.166.15, 1.166.18"],
-  ["@tanstack/solid-start", "1.167.65, 1.167.68"],
-  ["@tanstack/solid-start-client", "1.166.50, 1.166.53"],
-  ["@tanstack/solid-start-server", "1.166.54, 1.166.57"],
-  ["@tanstack/start-client-core", "1.168.5, 1.168.8"],
-  ["@tanstack/start-fn-stubs", "1.161.9, 1.161.12"],
-  ["@tanstack/start-plugin-core", "1.169.23, 1.169.26"],
-  ["@tanstack/start-server-core", "1.167.33, 1.167.36"],
-  ["@tanstack/start-static-server-functions", "1.166.44, 1.166.47"],
-  ["@tanstack/start-storage-context", "1.166.38, 1.166.41"],
-  ["@tanstack/valibot-adapter", "1.166.12, 1.166.15"],
-  ["@tanstack/virtual-file-routes", "1.161.10, 1.161.13"],
-  ["@tanstack/vue-router", "1.169.5, 1.169.8"],
-  ["@tanstack/vue-router-devtools", "1.166.16, 1.166.19"],
-  ["@tanstack/vue-router-ssr-query", "1.166.15, 1.166.18"],
-  ["@tanstack/vue-start", "1.167.61, 1.167.64"],
-  ["@tanstack/vue-start-client", "1.166.46, 1.166.49"],
-  ["@tanstack/vue-start-server", "1.166.50, 1.166.53"],
-  ["@tanstack/zod-adapter", "1.166.12, 1.166.15"]
-];
-var MINI_SHAI_HULUD_ADDITIONAL_PACKAGES = [
-  [
-    "@beproduct/nestjs-auth",
-    "0.1.2, 0.1.3, 0.1.4, 0.1.5, 0.1.6, 0.1.7, 0.1.8, 0.1.9, 0.1.10, 0.1.11, 0.1.12, 0.1.13, 0.1.14, 0.1.15, 0.1.16, 0.1.17, 0.1.18, 0.1.19"
-  ],
-  ["@cap-js/db-service", "2.10.1"],
-  ["@cap-js/postgres", "2.2.2"],
-  ["@cap-js/sqlite", "2.2.2"],
-  ["@dirigible-ai/sdk", "0.6.2, 0.6.3"],
-  ["@draftauth/client", "0.2.1, 0.2.2"],
-  ["@draftauth/core", "0.13.1, 0.13.2"],
-  ["@draftlab/auth", "0.24.1, 0.24.2"],
-  ["@draftlab/auth-router", "0.5.1, 0.5.2"],
-  ["@draftlab/db", "0.16.1, 0.16.2"],
-  ["@mesadev/rest", "0.28.3"],
-  ["@mesadev/saguaro", "0.4.22"],
-  ["@mesadev/sdk", "0.28.3"],
-  ["@mistralai/mistralai", "2.2.2, 2.2.3, 2.2.4"],
-  ["@mistralai/mistralai-azure", "1.7.1, 1.7.2, 1.7.3"],
-  ["@mistralai/mistralai-gcp", "1.7.1, 1.7.2, 1.7.3"],
-  ["@ml-toolkit-ts/preprocessing", "1.0.2, 1.0.3"],
-  ["@ml-toolkit-ts/xgboost", "1.0.3, 1.0.4"],
-  ["@opensearch-project/opensearch", "3.5.3, 3.6.2, 3.7.0, 3.8.0"],
-  ["@squawk/airport-data", "0.7.4, 0.7.5, 0.7.6, 0.7.7, 0.7.8"],
-  ["@squawk/airports", "0.6.2, 0.6.3, 0.6.4, 0.6.5, 0.6.6"],
-  ["@squawk/airspace", "0.8.1, 0.8.2, 0.8.3, 0.8.4, 0.8.5"],
-  ["@squawk/airspace-data", "0.5.3, 0.5.4, 0.5.5, 0.5.6, 0.5.7"],
-  ["@squawk/airway-data", "0.5.4, 0.5.5, 0.5.6, 0.5.7, 0.5.8"],
-  ["@squawk/airways", "0.4.2, 0.4.3, 0.4.4, 0.4.5, 0.4.6"],
-  ["@squawk/fix-data", "0.6.4, 0.6.5, 0.6.6, 0.6.7, 0.6.8"],
-  ["@squawk/fixes", "0.3.2, 0.3.3, 0.3.4, 0.3.5, 0.3.6"],
-  ["@squawk/flight-math", "0.5.4, 0.5.5, 0.5.6, 0.5.7, 0.5.8"],
-  ["@squawk/flightplan", "0.5.2, 0.5.3, 0.5.4, 0.5.5, 0.5.6"],
-  ["@squawk/geo", "0.4.4, 0.4.5, 0.4.6, 0.4.7, 0.4.8"],
-  ["@squawk/icao-registry", "0.5.2, 0.5.3, 0.5.4, 0.5.5, 0.5.6"],
-  ["@squawk/icao-registry-data", "0.8.4, 0.8.5, 0.8.6, 0.8.7, 0.8.8"],
-  ["@squawk/mcp", "0.9.1, 0.9.2, 0.9.3, 0.9.4, 0.9.5"],
-  ["@squawk/navaid-data", "0.6.4, 0.6.5, 0.6.6, 0.6.7, 0.6.8"],
-  ["@squawk/navaids", "0.4.2, 0.4.3, 0.4.4, 0.4.5, 0.4.6"],
-  ["@squawk/notams", "0.3.6, 0.3.7, 0.3.8, 0.3.9, 0.3.10"],
-  ["@squawk/procedure-data", "0.7.3, 0.7.4, 0.7.5, 0.7.6, 0.7.7"],
-  ["@squawk/procedures", "0.5.2, 0.5.3, 0.5.4, 0.5.5, 0.5.6"],
-  ["@squawk/types", "0.8.1, 0.8.2, 0.8.3, 0.8.4, 0.8.5"],
-  ["@squawk/units", "0.4.3, 0.4.4, 0.4.5, 0.4.6, 0.4.7"],
-  ["@squawk/weather", "0.5.6, 0.5.7, 0.5.8, 0.5.9, 0.5.10"],
-  ["@supersurkhet/cli", "0.0.2, 0.0.3, 0.0.4, 0.0.5, 0.0.6, 0.0.7"],
-  ["@supersurkhet/sdk", "0.0.2, 0.0.3, 0.0.4, 0.0.5, 0.0.6, 0.0.7"],
-  ["@tallyui/components", "1.0.1, 1.0.2, 1.0.3"],
-  ["@tallyui/connector-medusa", "1.0.1, 1.0.2, 1.0.3"],
-  ["@tallyui/connector-shopify", "1.0.1, 1.0.2, 1.0.3"],
-  ["@tallyui/connector-vendure", "1.0.1, 1.0.2, 1.0.3"],
-  ["@tallyui/connector-woocommerce", "1.0.1, 1.0.2, 1.0.3"],
-  ["@tallyui/core", "0.2.1, 0.2.2, 0.2.3"],
-  ["@tallyui/database", "1.0.1, 1.0.2, 1.0.3"],
-  ["@tallyui/pos", "0.1.1, 0.1.2, 0.1.3"],
-  ["@tallyui/storage-sqlite", "0.2.1, 0.2.2, 0.2.3"],
-  ["@tallyui/theme", "0.2.1, 0.2.2, 0.2.3"],
-  ["@taskflow-corp/cli", "0.1.24, 0.1.25, 0.1.26, 0.1.27, 0.1.28, 0.1.29"],
-  ["@tolka/cli", "1.0.2, 1.0.3, 1.0.4, 1.0.5, 1.0.6"],
-  ["@uipath/access-policy-sdk", "0.3.1"],
-  ["@uipath/access-policy-tool", "0.3.1"],
-  ["@uipath/admin-tool", "0.1.1"],
-  ["@uipath/agent-sdk", "1.0.2"],
-  ["@uipath/agent-tool", "1.0.1"],
-  ["@uipath/agent.sdk", "0.0.18"],
-  ["@uipath/aops-policy-tool", "0.3.1"],
-  ["@uipath/ap-chat", "1.5.7"],
-  ["@uipath/api-workflow-tool", "1.0.1"],
-  ["@uipath/apollo-core", "5.9.2"],
-  ["@uipath/apollo-react", "4.24.5"],
-  ["@uipath/apollo-wind", "2.16.2"],
-  ["@uipath/auth", "1.0.1"],
-  ["@uipath/case-tool", "1.0.1"],
-  ["@uipath/cli", "1.0.1"],
-  ["@uipath/codedagent-tool", "1.0.1"],
-  ["@uipath/codedagents-tool", "0.1.12"],
-  ["@uipath/codedapp-tool", "1.0.1"],
-  ["@uipath/common", "1.0.1"],
-  ["@uipath/context-grounding-tool", "0.1.1"],
-  ["@uipath/data-fabric-tool", "1.0.2"],
-  ["@uipath/docsai-tool", "1.0.1"],
-  ["@uipath/filesystem", "1.0.1"],
-  ["@uipath/flow-tool", "1.0.2"],
-  ["@uipath/functions-tool", "1.0.1"],
-  ["@uipath/gov-tool", "0.3.1"],
-  ["@uipath/identity-tool", "0.1.1"],
-  ["@uipath/insights-sdk", "1.0.1"],
-  ["@uipath/insights-tool", "1.0.1"],
-  ["@uipath/integrationservice-sdk", "1.0.2"],
-  ["@uipath/integrationservice-tool", "1.0.2"],
-  ["@uipath/llmgw-tool", "1.0.1"],
-  ["@uipath/maestro-sdk", "1.0.1"],
-  ["@uipath/maestro-tool", "1.0.1"],
-  ["@uipath/orchestrator-tool", "1.0.1"],
-  ["@uipath/packager-tool-apiworkflow", "0.0.19"],
-  ["@uipath/packager-tool-bpmn", "0.0.9"],
-  ["@uipath/packager-tool-case", "0.0.9"],
-  ["@uipath/packager-tool-connector", "0.0.19"],
-  ["@uipath/packager-tool-flow", "0.0.19"],
-  ["@uipath/packager-tool-functions", "0.1.1"],
-  ["@uipath/packager-tool-webapp", "1.0.6"],
-  ["@uipath/packager-tool-workflowcompiler", "0.0.16"],
-  ["@uipath/packager-tool-workflowcompiler-browser", "0.0.34"],
-  ["@uipath/platform-tool", "1.0.1"],
-  ["@uipath/project-packager", "1.1.16"],
-  ["@uipath/resource-tool", "1.0.1"],
-  ["@uipath/resourcecatalog-tool", "0.1.1"],
-  ["@uipath/resources-tool", "0.1.11"],
-  ["@uipath/robot", "1.3.4"],
-  ["@uipath/rpa-legacy-tool", "1.0.1"],
-  ["@uipath/rpa-tool", "0.9.5"],
-  ["@uipath/solution-packager", "0.0.35"],
-  ["@uipath/solution-tool", "1.0.1"],
-  ["@uipath/solutionpackager-sdk", "1.0.11"],
-  ["@uipath/solutionpackager-tool-core", "0.0.34"],
-  ["@uipath/tasks-tool", "1.0.1"],
-  ["@uipath/telemetry", "0.0.7"],
-  ["@uipath/test-manager-tool", "1.0.2"],
-  ["@uipath/tool-workflowcompiler", "0.0.12"],
-  ["@uipath/traces-tool", "1.0.1"],
-  ["@uipath/ui-widgets-multi-file-upload", "1.0.1"],
-  ["@uipath/uipath-python-bridge", "1.0.1"],
-  ["@uipath/vertical-solutions-tool", "1.0.1"],
-  ["@uipath/vss", "0.1.6"],
-  ["@uipath/widget.sdk", "1.2.3"],
-  ["agentwork-cli", "0.1.4, 0.1.5"],
-  ["cmux-agent-mcp", "0.1.3, 0.1.4, 0.1.5, 0.1.6, 0.1.7, 0.1.8"],
-  ["cross-stitch", "1.1.3, 1.1.4, 1.1.5, 1.1.6, 1.1.7"],
-  ["git-branch-selector", "1.3.3, 1.3.4, 1.3.5, 1.3.6, 1.3.7"],
-  ["git-git-git", "1.0.8, 1.0.9, 1.0.10, 1.0.11, 1.0.12"],
-  ["guardrails-ai", "0.10.1"],
-  ["intercom-client", "7.0.4"],
-  ["lightning", "2.6.2, 2.6.3"],
-  ["mbt", "1.2.48"],
-  ["mistralai", "2.4.6"],
-  ["ml-toolkit-ts", "1.0.4, 1.0.5"],
-  ["nextmove-mcp", "0.1.3, 0.1.4, 0.1.5, 0.1.6, 0.1.7"],
-  ["safe-action", "0.8.3, 0.8.4"],
-  ["ts-dna", "3.0.1, 3.0.2, 3.0.3, 3.0.4, 3.0.5"],
-  ["wot-api", "0.8.1, 0.8.2, 0.8.3, 0.8.4"]
-];
-var MALICIOUS_PACKAGES = [
-  // SANDWORM_MODE typosquats targeting MCP SDK
-  {
-    name: "@anthropic-ai/model-context-protocol-sdk",
-    type: "typosquat",
-    description: "Typosquat of the official @modelcontextprotocol/sdk. Part of SANDWORM_MODE supply chain campaign targeting MCP developers.",
-    legitimatePackage: "@modelcontextprotocol/sdk"
-  },
-  {
-    name: "anthropic-mcp-sdk",
-    type: "typosquat",
-    description: "Typosquat targeting developers searching for the Anthropic MCP SDK.",
-    legitimatePackage: "@modelcontextprotocol/sdk"
-  },
-  {
-    name: "mcp-sdk-anthropic",
-    type: "typosquat",
-    description: "Typosquat with reversed naming convention targeting MCP SDK users.",
-    legitimatePackage: "@modelcontextprotocol/sdk"
-  },
-  {
-    name: "@anthropic/mcp-server",
-    type: "typosquat",
-    description: "Typosquat using incorrect scope for Anthropic MCP servers (correct scope is @anthropics or @modelcontextprotocol).",
-    legitimatePackage: "@modelcontextprotocol/sdk"
-  },
-  // Compromised legitimate packages
-  {
-    name: "cline",
-    type: "compromised",
-    description: "Clinejection supply chain attack. Compromised npm token used to publish cline@2.3.0 with malicious postinstall script that installed openclaw. ~4,000 downloads in ~8 hour window.",
-    affectedVersions: "2.3.0"
-  },
-  // Known malicious MCP servers
-  {
-    name: "postmark-mcp",
-    type: "malicious",
-    description: "Malicious MCP server impersonating Postmark email service. Version 1.0.16 secretly BCCs every outgoing email to an attacker-controlled domain.",
-    affectedVersions: "1.0.16"
-  },
-  {
-    name: "openclaw",
-    type: "malicious",
-    description: "Malicious package installed by the compromised cline@2.3.0 postinstall script. Part of the Clinejection supply chain attack."
-  },
-  {
-    name: "@tanstack/setup",
-    type: "malicious",
-    description: "Fictitious git dependency used by the May 2026 TanStack/Mini Shai-Hulud npm campaign. Malicious manifests referenced github:tanstack/router#79ac49eedf774dd4b0cfa308722bc463cfe5885c to execute router_init.js during install."
-  },
-  ...TANSTACK_MINI_SHAI_HULUD_PACKAGES.map(([name, affectedVersions]) => ({
-    name,
-    type: "compromised",
-    description: "Compromised @tanstack package version from the May 2026 TanStack/Mini Shai-Hulud npm campaign. Affected versions executed router_init.js at install time, harvested developer/cloud credentials, and attempted npm worm propagation under signed trusted-publisher provenance.",
-    affectedVersions
-  })),
-  ...MINI_SHAI_HULUD_ADDITIONAL_PACKAGES.map(([name, affectedVersions]) => ({
-    name,
-    type: "compromised",
-    description: "Compromised package version from the May 2026 Mini Shai-Hulud supply-chain campaign. Treat any matching lockfile, cache, CI runner, or developer host as potentially compromised and rotate accessible credentials after persistence is removed.",
-    affectedVersions
-  })),
-  // AI-specific typosquats from PyPI/npm campaigns
-  {
-    name: "aliyun-ai-labs-snippets-sdk",
-    type: "malicious",
-    description: "Malicious PyPI package delivering infostealer hidden inside PyTorch model files."
-  },
-  {
-    name: "ai-labs-snippets-sdk",
-    type: "malicious",
-    description: "Malicious PyPI package delivering infostealer hidden inside PyTorch model files."
-  },
-  {
-    name: "aliyun-ai-labs-sdk",
-    type: "malicious",
-    description: "Malicious PyPI package delivering infostealer hidden inside PyTorch model files."
-  }
-];
-var VULNERABLE_SERVERS = [
-  {
-    packageName: "@anthropics/mcp-server-git",
-    cveIds: ["CVE-2025-68145", "CVE-2025-68143", "CVE-2025-68144"],
-    description: "Anthropic's official MCP git server has path traversal, unrestricted git_init, and argument injection vulnerabilities."
-  },
-  {
-    packageName: "mcp-server-git",
-    cveIds: ["CVE-2025-68145", "CVE-2025-68143", "CVE-2025-68144"],
-    description: "MCP git server (community package) shares vulnerabilities with the official Anthropic version."
-  },
-  {
-    packageName: "mcp-remote",
-    cveIds: ["CVE-2025-6514"],
-    description: "OS command injection via malicious authorization_endpoint. The authorization URL is passed to the system shell without sanitization."
-  }
-];
-function checkPackageName(packageName, version) {
-  const match = MALICIOUS_PACKAGES.find((pkg) => pkg.name === packageName);
-  if (!match) return void 0;
-  if (match.type === "compromised" && match.affectedVersions && version) {
-    const affectedVersionList = match.affectedVersions.split(",").map((v) => v.trim());
-    if (!affectedVersionList.includes(version)) {
-      return void 0;
-    }
-  }
-  return match;
-}
-function checkServerPackage(command, args) {
-  for (const server of VULNERABLE_SERVERS) {
-    if (command === server.packageName || command.endsWith(`/${server.packageName}`)) {
-      return server;
-    }
-  }
-  for (const arg of args) {
-    if (arg.startsWith("-")) continue;
-    for (const server of VULNERABLE_SERVERS) {
-      if (arg === server.packageName || arg.startsWith(`${server.packageName}@`)) {
-        return server;
-      }
-    }
-  }
-  return void 0;
-}
-
 // src/rules/mcp-cve.ts
+init_cve_database();
 var rawCveMcpRules = [
   {
     id: "mcp-known-vulnerable-server",
@@ -11545,6 +12176,44 @@ function formatScoreDelta(delta) {
   return delta > 0 ? `+${delta}` : String(delta);
 }
 
+// src/action-supply-chain.ts
+function statusForSupplyChainReport(report) {
+  return report.riskyPackages > 0 ? "risky" : "clean";
+}
+function shouldFailForSupplyChain(report, options) {
+  return options.failOnSupplyChain && (report.criticalCount > 0 || report.highCount > 0);
+}
+function renderSupplyChainJobSummary(report, options) {
+  const status = statusForSupplyChainReport(report);
+  const lines = [
+    "",
+    "",
+    "## AgentShield Supply Chain",
+    "",
+    `- Status: ${status}`,
+    `- Mode: ${options.online ? "online registry metadata" : "offline IOC and provenance checks"}`,
+    `- Gate: ${options.failOnSupplyChain ? "fail on critical/high risk" : "collect evidence only"}`,
+    `- Packages: ${report.totalPackages}`,
+    `- Risky packages: ${report.riskyPackages}`,
+    `- Critical packages: ${report.criticalCount}`,
+    `- High packages: ${report.highCount}`,
+    `- Provenance: npm=${report.provenance.npmPackages}, git=${report.provenance.gitPackages}, pinned=${report.provenance.pinnedPackages}, unpinned=${report.provenance.unpinnedPackages}, known-good=${report.provenance.knownGoodPackages}, registry-backed=${report.provenance.registryMetadataPackages}`
+  ];
+  const riskyPackages = report.packages.filter((pkg) => pkg.risks.length > 0);
+  if (riskyPackages.length > 0) {
+    lines.push("", "### Risky Packages");
+    for (const verification of riskyPackages) {
+      const version = verification.package.version ? `@${verification.package.version}` : "";
+      const risks = verification.risks.map((risk) => `${risk.type}/${risk.severity}`).join(", ");
+      lines.push(
+        `- ${verification.package.name}${version} (${verification.package.serverName}) severity=${verification.overallSeverity} risks=${risks}`
+      );
+    }
+  }
+  return `${lines.join("\n")}
+`;
+}
+
 // src/action.ts
 function getInput(name, fallback) {
   const envKey = `INPUT_${name.replace(/ /g, "_").toUpperCase()}`;
@@ -11576,10 +12245,10 @@ function annotateError(file, line, message) {
 function escapeAnnotation(message) {
   return message.replace(/%/g, "%25").replace(/\r/g, "%0D").replace(/\n/g, "%0A");
 }
-var SEVERITY_ORDER2 = ["critical", "high", "medium", "low", "info"];
+var SEVERITY_ORDER3 = ["critical", "high", "medium", "low", "info"];
 function severityIndex(severity) {
-  const idx = SEVERITY_ORDER2.indexOf(severity);
-  return idx === -1 ? SEVERITY_ORDER2.length : idx;
+  const idx = SEVERITY_ORDER3.indexOf(severity);
+  return idx === -1 ? SEVERITY_ORDER3.length : idx;
 }
 function isAtOrAboveSeverity(finding, minSeverity) {
   return severityIndex(finding.severity) <= severityIndex(minSeverity);
@@ -11621,6 +12290,10 @@ async function run() {
   const sarifOutput = getInput("sarif-output", "agentshield-results.sarif");
   const policyPath = getInput("policy", "");
   const failOnPolicy = getInput("fail-on-policy", "true") === "true";
+  const supplyChainRequested = getInput("supply-chain", "true") === "true";
+  const supplyChainOnline = getInput("supply-chain-online", "false") === "true";
+  const failOnSupplyChainInput = getInput("fail-on-supply-chain", "");
+  const failOnSupplyChain = failOnSupplyChainInput ? failOnSupplyChainInput === "true" : failOnFindings;
   const evidencePackPath = getInput("evidence-pack", "");
   const verifyEvidencePackOutput = getInput("verify-evidence-pack", "true") === "true";
   const workspace = process.env.GITHUB_WORKSPACE ?? process.cwd();
@@ -11657,12 +12330,18 @@ async function run() {
   setOutput("score-delta", "0");
   setOutput("policy-status", "not-run");
   setOutput("policy-violations", "0");
+  setOutput("supply-chain-status", "not-run");
+  setOutput("supply-chain-risky-packages", "0");
+  setOutput("supply-chain-critical-count", "0");
+  setOutput("supply-chain-high-count", "0");
   setOutput("evidence-pack-status", "not-run");
   setOutput("evidence-pack-digest", "");
   let policyEvaluation = null;
   let shouldFailOnPolicy = false;
   let baselineComparison = null;
   let shouldFailOnBaseline = false;
+  let supplyChainReport = emptySupplyChainReport();
+  let shouldFailOnSupplyChain = false;
   if (policyPath) {
     const { loadPolicy: loadPolicy2, evaluatePolicy: evaluatePolicy2, renderPolicyEvaluation: renderPolicyEvaluation2 } = await Promise.resolve().then(() => (init_policy(), policy_exports));
     const resolvedPolicyPath = resolve4(workspace, policyPath);
@@ -11731,6 +12410,45 @@ async function run() {
   console.log(`  Medium: ${report.summary.medium}`);
   console.log(`  Low: ${report.summary.low}`);
   console.log(`  Info: ${report.summary.info}`);
+  if (supplyChainRequested || supplyChainOnline || evidencePackPath) {
+    try {
+      const { extractPackages: extractPackages2, renderSupplyChainReport: renderSupplyChainReport2, verifyPackages: verifyPackages2 } = await Promise.resolve().then(() => (init_supply_chain(), supply_chain_exports));
+      const packages = extractPackages2(result.target.files);
+      supplyChainReport = await verifyPackages2(packages, {
+        online: supplyChainOnline
+      });
+      const supplyChainStatus = statusForSupplyChainReport(supplyChainReport);
+      setOutput("supply-chain-status", supplyChainStatus);
+      setOutput("supply-chain-risky-packages", String(supplyChainReport.riskyPackages));
+      setOutput("supply-chain-critical-count", String(supplyChainReport.criticalCount));
+      setOutput("supply-chain-high-count", String(supplyChainReport.highCount));
+      writeJobSummary(renderSupplyChainJobSummary(supplyChainReport, {
+        online: supplyChainOnline,
+        failOnSupplyChain
+      }));
+      if (supplyChainRequested || supplyChainOnline) {
+        console.log(renderSupplyChainReport2(supplyChainReport));
+      } else {
+        console.log(
+          `Supply-chain verification: ${supplyChainStatus.toUpperCase()} (${supplyChainReport.riskyPackages}/${supplyChainReport.totalPackages} risky packages)`
+        );
+      }
+      if ((supplyChainRequested || supplyChainOnline) && shouldFailForSupplyChain(supplyChainReport, { failOnSupplyChain })) {
+        const reason = [
+          `${supplyChainReport.criticalCount} critical`,
+          `${supplyChainReport.highCount} high`
+        ].join(", ");
+        console.log(`::error::AgentShield supply-chain gate FAILED: ${reason} package risk(s)`);
+        shouldFailOnSupplyChain = true;
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setOutput("supply-chain-status", "error");
+      console.log(`::error::AgentShield supply-chain verification failed: ${escapeAnnotation(message)}`);
+      process.exitCode = 1;
+      return;
+    }
+  }
   if (saveBaselinePath) {
     const { saveBaseline: saveBaseline2 } = await Promise.resolve().then(() => (init_baseline(), baseline_exports));
     const savePath = resolve4(workspace, saveBaselinePath);
@@ -11779,7 +12497,7 @@ async function run() {
         policyPath: policyPath || void 0,
         baselineComparison: baselineComparison ?? void 0,
         baselinePath: baselinePath || void 0,
-        supplyChainReport: emptySupplyChainReport()
+        supplyChainReport
       });
       setOutput("evidence-pack-path", pack.outputDir);
       console.log(`Evidence pack written to: ${pack.outputDir}`);
@@ -11807,6 +12525,10 @@ async function run() {
     return;
   }
   if (shouldFailOnBaseline) {
+    process.exitCode = 1;
+    return;
+  }
+  if (shouldFailOnSupplyChain) {
     process.exitCode = 1;
     return;
   }

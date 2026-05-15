@@ -24,6 +24,11 @@ import {
   renderMissingBaselineJobSummary,
   statusForBaselineGate,
 } from "./action-baseline.js";
+import {
+  renderSupplyChainJobSummary,
+  shouldFailForSupplyChain,
+  statusForSupplyChainReport,
+} from "./action-supply-chain.js";
 import type { PolicyEvaluation } from "./policy/index.js";
 import type { BaselineComparison } from "./baseline/index.js";
 import type { SupplyChainReport } from "./supply-chain/index.js";
@@ -128,6 +133,12 @@ async function run(): Promise<void> {
   const sarifOutput = getInput("sarif-output", "agentshield-results.sarif");
   const policyPath = getInput("policy", "");
   const failOnPolicy = getInput("fail-on-policy", "true") === "true";
+  const supplyChainRequested = getInput("supply-chain", "true") === "true";
+  const supplyChainOnline = getInput("supply-chain-online", "false") === "true";
+  const failOnSupplyChainInput = getInput("fail-on-supply-chain", "");
+  const failOnSupplyChain = failOnSupplyChainInput
+    ? failOnSupplyChainInput === "true"
+    : failOnFindings;
   const evidencePackPath = getInput("evidence-pack", "");
   const verifyEvidencePackOutput = getInput("verify-evidence-pack", "true") === "true";
 
@@ -178,6 +189,10 @@ async function run(): Promise<void> {
   setOutput("score-delta", "0");
   setOutput("policy-status", "not-run");
   setOutput("policy-violations", "0");
+  setOutput("supply-chain-status", "not-run");
+  setOutput("supply-chain-risky-packages", "0");
+  setOutput("supply-chain-critical-count", "0");
+  setOutput("supply-chain-high-count", "0");
   setOutput("evidence-pack-status", "not-run");
   setOutput("evidence-pack-digest", "");
 
@@ -185,6 +200,8 @@ async function run(): Promise<void> {
   let shouldFailOnPolicy = false;
   let baselineComparison: BaselineComparison | null = null;
   let shouldFailOnBaseline = false;
+  let supplyChainReport: SupplyChainReport = emptySupplyChainReport();
+  let shouldFailOnSupplyChain = false;
 
   if (policyPath) {
     const { loadPolicy, evaluatePolicy, renderPolicyEvaluation } = await import(
@@ -264,6 +281,55 @@ async function run(): Promise<void> {
   console.log(`  Low: ${report.summary.low}`);
   console.log(`  Info: ${report.summary.info}`);
 
+  if (supplyChainRequested || supplyChainOnline || evidencePackPath) {
+    try {
+      const { extractPackages, renderSupplyChainReport, verifyPackages } = await import(
+        "./supply-chain/index.js"
+      );
+      const packages = extractPackages(result.target.files);
+      supplyChainReport = await verifyPackages(packages, {
+        online: supplyChainOnline,
+      });
+      const supplyChainStatus = statusForSupplyChainReport(supplyChainReport);
+
+      setOutput("supply-chain-status", supplyChainStatus);
+      setOutput("supply-chain-risky-packages", String(supplyChainReport.riskyPackages));
+      setOutput("supply-chain-critical-count", String(supplyChainReport.criticalCount));
+      setOutput("supply-chain-high-count", String(supplyChainReport.highCount));
+      writeJobSummary(renderSupplyChainJobSummary(supplyChainReport, {
+        online: supplyChainOnline,
+        failOnSupplyChain,
+      }));
+
+      if (supplyChainRequested || supplyChainOnline) {
+        console.log(renderSupplyChainReport(supplyChainReport));
+      } else {
+        console.log(
+          `Supply-chain verification: ${supplyChainStatus.toUpperCase()} ` +
+          `(${supplyChainReport.riskyPackages}/${supplyChainReport.totalPackages} risky packages)`
+        );
+      }
+
+      if (
+        (supplyChainRequested || supplyChainOnline) &&
+        shouldFailForSupplyChain(supplyChainReport, { failOnSupplyChain })
+      ) {
+        const reason = [
+          `${supplyChainReport.criticalCount} critical`,
+          `${supplyChainReport.highCount} high`,
+        ].join(", ");
+        console.log(`::error::AgentShield supply-chain gate FAILED: ${reason} package risk(s)`);
+        shouldFailOnSupplyChain = true;
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setOutput("supply-chain-status", "error");
+      console.log(`::error::AgentShield supply-chain verification failed: ${escapeAnnotation(message)}`);
+      process.exitCode = 1;
+      return;
+    }
+  }
+
   // Save baseline if requested
   if (saveBaselinePath) {
     const { saveBaseline } = await import("./baseline/index.js");
@@ -321,7 +387,7 @@ async function run(): Promise<void> {
         policyPath: policyPath || undefined,
         baselineComparison: baselineComparison ?? undefined,
         baselinePath: baselinePath || undefined,
-        supplyChainReport: emptySupplyChainReport(),
+        supplyChainReport,
       });
       setOutput("evidence-pack-path", pack.outputDir);
       console.log(`Evidence pack written to: ${pack.outputDir}`);
@@ -352,6 +418,11 @@ async function run(): Promise<void> {
   }
 
   if (shouldFailOnBaseline) {
+    process.exitCode = 1;
+    return;
+  }
+
+  if (shouldFailOnSupplyChain) {
     process.exitCode = 1;
     return;
   }

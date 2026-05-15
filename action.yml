@@ -43,6 +43,18 @@ inputs:
     description: "Fail the action when the organization policy is non-compliant"
     required: false
     default: "true"
+  supply-chain:
+    description: "Verify MCP npm/git package provenance and known malicious package risk"
+    required: false
+    default: "true"
+  supply-chain-online:
+    description: "Query npm registry metadata during supply-chain verification"
+    required: false
+    default: "false"
+  fail-on-supply-chain:
+    description: "Fail the action when supply-chain verification finds critical or high package risks; defaults to fail-on-findings when unset"
+    required: false
+    default: ""
   evidence-pack:
     description: "Path to write an AgentShield evidence pack for audit and security-review handoffs"
     required: false
@@ -79,6 +91,14 @@ outputs:
     description: "Organization policy status: not-run, compliant, non-compliant, or error"
   policy-violations:
     description: "Number of unsuppressed organization policy violations"
+  supply-chain-status:
+    description: "Supply-chain status: not-run, clean, risky, or error"
+  supply-chain-risky-packages:
+    description: "Number of MCP packages with supply-chain risks"
+  supply-chain-critical-count:
+    description: "Number of MCP packages with critical supply-chain risk"
+  supply-chain-high-count:
+    description: "Number of MCP packages with high supply-chain risk"
   evidence-pack-path:
     description: "Path to the generated evidence-pack directory"
   evidence-pack-status:

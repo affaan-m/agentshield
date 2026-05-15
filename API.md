@@ -123,6 +123,15 @@ annotations for newly introduced findings. Set `fail-on-findings: "false"` when
 the workflow should fail only on baseline drift instead of every current
 finding.
 
+The GitHub Action runs offline MCP package supply-chain verification by default
+through the `supply-chain` input. It reports `supply-chain-status`,
+`supply-chain-risky-packages`, `supply-chain-critical-count`, and
+`supply-chain-high-count` outputs, appends package-risk evidence to the job
+summary, and fails on critical/high package risk whenever `fail-on-findings` is
+enabled. Set `fail-on-supply-chain: "false"` to collect evidence only, set it
+to `"true"` to force the package-risk gate in evidence-only workflows, or enable
+`supply-chain-online: "true"` to add npm registry metadata.
+
 Policy files use schema version `1`. Enterprise policy metadata is optional but
 recommended for CI gates:
 
@@ -189,8 +198,11 @@ agentshield scan --evidence-pack ./agentshield-evidence
 The evidence-pack directory is deterministic and contains `manifest.json`,
 `README.md`, `agentshield-report.json`, `agentshield-report.html`,
 `agentshield-results.sarif`, `policy-evaluation.json`,
-`baseline-comparison.json`, and `supply-chain.json`. Local path, username,
-email, and token-shaped string redaction is enabled by default.
+`baseline-comparison.json`, `supply-chain.json`, and `remediation-plan.json`.
+In the GitHub Action, evidence packs use the same supply-chain verification
+result that powers the package-risk outputs instead of an empty placeholder.
+Local path, username, email, and token-shaped string redaction is enabled by
+default.
 
 Top-level shape:
 

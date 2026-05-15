@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
@@ -69,6 +69,18 @@ describe("action helpers (logic verification)", () => {
     expect(actionYaml).toContain('default: "true"');
   });
 
+  it("documents supply-chain gate inputs and outputs in action.yml", () => {
+    const actionYaml = readFileSync(resolve(process.cwd(), "action.yml"), "utf-8");
+
+    expect(actionYaml).toContain("supply-chain:");
+    expect(actionYaml).toContain("supply-chain-online:");
+    expect(actionYaml).toContain("fail-on-supply-chain:");
+    expect(actionYaml).toContain("supply-chain-status:");
+    expect(actionYaml).toContain("supply-chain-risky-packages:");
+    expect(actionYaml).toContain("supply-chain-critical-count:");
+    expect(actionYaml).toContain("supply-chain-high-count:");
+  });
+
   it("writes and verifies an evidence pack when requested", () => {
     const workspace = mkdtempSync(join(tmpdir(), "agentshield-action-workspace-"));
     const outputFile = join(workspace, "github-output.txt");
@@ -103,6 +115,92 @@ describe("action helpers (logic verification)", () => {
     expect(outputs).toContain(`evidence-pack-path=${evidenceDir}`);
     expect(outputs).toContain("evidence-pack-status=passed");
     expect(outputs).toMatch(/evidence-pack-digest=sha256:[a-f0-9]{64}/);
+    expect(outputs).toContain("supply-chain-status=clean");
+  });
+
+  it("fails by default when MCP supply-chain verification finds a compromised package", () => {
+    const workspace = mkdtempSync(join(tmpdir(), "agentshield-action-supply-chain-"));
+    const outputFile = join(workspace, "github-output.txt");
+    const summaryFile = join(workspace, "github-summary.md");
+    const claudeDir = join(workspace, ".claude");
+    const settingsPath = join(claudeDir, "settings.json");
+
+    mkdirSync(claudeDir, { recursive: true });
+    writeFileSync(settingsPath, JSON.stringify({
+      mcpServers: {
+        router: {
+          command: "npx",
+          args: ["@tanstack/react-router@1.169.8"],
+        },
+      },
+    }, null, 2));
+
+    const result = spawnSync(process.execPath, [ACTION_PATH], {
+      cwd: workspace,
+      env: {
+        ...process.env,
+        GITHUB_WORKSPACE: workspace,
+        GITHUB_OUTPUT: outputFile,
+        GITHUB_STEP_SUMMARY: summaryFile,
+        INPUT_PATH: ".",
+      },
+      encoding: "utf-8",
+    });
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toBe("");
+    expect(result.stdout).toContain("Supply Chain Verification Report");
+    expect(result.stdout).toContain("@tanstack/react-router@1.169.8");
+    expect(result.stdout).toContain("AgentShield supply-chain gate FAILED");
+
+    const outputs = readFileSync(outputFile, "utf-8");
+    expect(outputs).toContain("supply-chain-status=risky");
+    expect(outputs).toContain("supply-chain-risky-packages=1");
+    expect(outputs).toContain("supply-chain-critical-count=1");
+
+    const summary = readFileSync(summaryFile, "utf-8");
+    expect(summary).toContain("## AgentShield Supply Chain");
+    expect(summary).toContain("@tanstack/react-router@1.169.8");
+  });
+
+  it("collects supply-chain evidence without failing when findings gate is disabled", () => {
+    const workspace = mkdtempSync(join(tmpdir(), "agentshield-action-supply-chain-collect-"));
+    const outputFile = join(workspace, "github-output.txt");
+    const summaryFile = join(workspace, "github-summary.md");
+    const claudeDir = join(workspace, ".claude");
+    const settingsPath = join(claudeDir, "settings.json");
+
+    mkdirSync(claudeDir, { recursive: true });
+    writeFileSync(settingsPath, JSON.stringify({
+      mcpServers: {
+        router: {
+          command: "npx",
+          args: ["@tanstack/react-router@1.169.8"],
+        },
+      },
+    }, null, 2));
+
+    const result = spawnSync(process.execPath, [ACTION_PATH], {
+      cwd: workspace,
+      env: {
+        ...process.env,
+        GITHUB_WORKSPACE: workspace,
+        GITHUB_OUTPUT: outputFile,
+        GITHUB_STEP_SUMMARY: summaryFile,
+        INPUT_PATH: ".",
+        "INPUT_FAIL-ON-FINDINGS": "false",
+      },
+      encoding: "utf-8",
+    });
+
+    expect(result.status).toBe(0);
+    expect(result.stderr).toBe("");
+    expect(result.stdout).toContain("Supply Chain Verification Report");
+    expect(result.stdout).not.toContain("AgentShield supply-chain gate FAILED");
+
+    const outputs = readFileSync(outputFile, "utf-8");
+    expect(outputs).toContain("supply-chain-status=risky");
+    expect(outputs).toContain("supply-chain-critical-count=1");
   });
 
   describe("escapeAnnotation", () => {

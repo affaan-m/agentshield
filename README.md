@@ -514,10 +514,15 @@ Detailed request/response and schema notes live in [`API.md`](./API.md).
 | `save-baseline` | `""` | Optional path to write the current scan as a new baseline |
 | `policy` | `""` | Optional organization policy JSON path |
 | `fail-on-policy` | `true` | Fail the action if the organization policy is non-compliant |
+| `supply-chain` | `true` | Verify MCP npm/git package provenance and known malicious package risk |
+| `supply-chain-online` | `false` | Query npm registry metadata during supply-chain verification |
+| `fail-on-supply-chain` | follows `fail-on-findings` | Fail the action when supply-chain verification finds critical or high package risks |
+| `evidence-pack` | `""` | Optional directory for a portable audit evidence bundle |
+| `verify-evidence-pack` | `true` | Verify evidence-pack artifact hashes after writing |
 
-**Outputs:** `score` (0–100), `grade` (A–F), `total-findings`, `critical-count`, `sarif-path`, `baseline-path`, `baseline-status`, `new-findings`, `resolved-findings`, `unchanged-findings`, `score-delta`, `policy-status`, `policy-violations`
+**Outputs:** `score` (0–100), `grade` (A–F), `total-findings`, `critical-count`, `sarif-path`, `baseline-path`, `baseline-status`, `new-findings`, `resolved-findings`, `unchanged-findings`, `score-delta`, `policy-status`, `policy-violations`, `supply-chain-status`, `supply-chain-risky-packages`, `supply-chain-critical-count`, `supply-chain-high-count`, `evidence-pack-path`, `evidence-pack-status`, `evidence-pack-digest`
 
-The action writes a markdown job summary and emits GitHub annotations inline on affected files. When `format: sarif` is set, it also writes a SARIF 2.1.0 report that can be uploaded to GitHub code scanning with `github/codeql-action/upload-sarif`. When `baseline` is set, the action appends a baseline drift summary, emits regression annotations for new findings, and reports `baseline-status` as `passed`, `failed`, `missing`, or `not-run`. When `policy` is set, the SARIF report includes organization-policy violations as `agentshield-policy/*` code-scanning results, appends the organization policy result to the job summary, emits policy violation annotations, and fails by default unless `fail-on-policy: "false"` is set.
+The action writes a markdown job summary and emits GitHub annotations inline on affected files. When `format: sarif` is set, it also writes a SARIF 2.1.0 report that can be uploaded to GitHub code scanning with `github/codeql-action/upload-sarif`. When `baseline` is set, the action appends a baseline drift summary, emits regression annotations for new findings, and reports `baseline-status` as `passed`, `failed`, `missing`, or `not-run`. When `policy` is set, the SARIF report includes organization-policy violations as `agentshield-policy/*` code-scanning results, appends the organization policy result to the job summary, emits policy violation annotations, and fails by default unless `fail-on-policy: "false"` is set. Supply-chain verification runs offline by default for MCP package references, appends package-risk evidence to the job summary, writes real `supply-chain.json` evidence packs, and fails on critical/high package risk whenever the action is in failing mode unless `fail-on-supply-chain: "false"` is set.
 
 Baseline drift gate:
 
