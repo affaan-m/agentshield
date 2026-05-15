@@ -11765,6 +11765,11 @@ var ARTIFACTS = [
     description: "MCP package provenance and supply-chain verification summary."
   },
   {
+    file: "ci-context.json",
+    kind: "ci-context",
+    description: "Whitelisted CI, commit, workflow, and runner provenance for the scan."
+  },
+  {
     file: "remediation-plan.json",
     kind: "remediation",
     description: "Stable-fingerprint remediation queue for ticketing and CI handoffs."
@@ -11786,6 +11791,9 @@ function writeEvidencePack(options) {
     reason: "No --baseline file was provided for this scan."
   };
   const supplyChainReport = redactor.value(options.supplyChainReport);
+  const ciContext = redactor.value(
+    options.ciContext ?? buildCiContext(options.environment ?? process.env, generatedAt)
+  );
   const remediationPlan = buildRemediationPlan(report, { generatedAt });
   const artifactContents = /* @__PURE__ */ new Map([
     ["agentshield-report.json", normalizeText(renderJsonReport(report))],
@@ -11800,6 +11808,7 @@ function writeEvidencePack(options) {
     ["policy-evaluation.json", normalizeText(redactor.json(policyEvaluation))],
     ["baseline-comparison.json", normalizeText(redactor.json(baselineComparison))],
     ["supply-chain.json", normalizeText(redactor.json(supplyChainReport))],
+    ["ci-context.json", normalizeText(redactor.json(ciContext))],
     ["remediation-plan.json", normalizeText(redactor.json(remediationPlan))]
   ]);
   const bundleDigest = buildBundleDigest(artifactContents);
@@ -11812,7 +11821,7 @@ function writeEvidencePack(options) {
     bundleDigest,
     artifacts: buildArtifactManifestEntries(artifactContents)
   };
-  artifactContents.set("README.md", normalizeText(renderReadme(readmeManifest, options)));
+  artifactContents.set("README.md", normalizeText(renderReadme(readmeManifest, options, ciContext)));
   const manifest = {
     ...readmeManifest,
     artifacts: buildArtifactManifestEntries(artifactContents)
@@ -11907,6 +11916,51 @@ function verifyEvidencePack(outputDir) {
     errors
   };
 }
+function buildCiContext(environment, generatedAt) {
+  const github = compact({
+    repository: environment.GITHUB_REPOSITORY,
+    repositoryId: environment.GITHUB_REPOSITORY_ID,
+    workflow: environment.GITHUB_WORKFLOW,
+    workflowRef: environment.GITHUB_WORKFLOW_REF,
+    job: environment.GITHUB_JOB,
+    runId: environment.GITHUB_RUN_ID,
+    runAttempt: environment.GITHUB_RUN_ATTEMPT,
+    runNumber: environment.GITHUB_RUN_NUMBER,
+    actor: environment.GITHUB_ACTOR,
+    eventName: environment.GITHUB_EVENT_NAME,
+    ref: environment.GITHUB_REF,
+    sha: environment.GITHUB_SHA,
+    headRef: environment.GITHUB_HEAD_REF,
+    baseRef: environment.GITHUB_BASE_REF,
+    serverUrl: environment.GITHUB_SERVER_URL
+  });
+  const runtime = {
+    nodeVersion: process.version,
+    platform: process.platform,
+    arch: process.arch,
+    cwd: process.cwd(),
+    ...compact({
+      name: environment.RUNNER_NAME,
+      os: environment.RUNNER_OS,
+      archLabel: environment.RUNNER_ARCH,
+      environment: environment.RUNNER_ENVIRONMENT,
+      temp: environment.RUNNER_TEMP,
+      toolCache: environment.RUNNER_TOOL_CACHE
+    })
+  };
+  return {
+    schemaVersion: 1,
+    generatedAt,
+    provider: environment.GITHUB_ACTIONS === "true" ? "github-actions" : "local",
+    source: "process-environment",
+    github: Object.keys(github).length > 0 ? github : void 0,
+    runtime
+  };
+}
+function compact(value) {
+  const entries = Object.entries(value).filter(([, entryValue]) => typeof entryValue === "string" && entryValue.length > 0);
+  return Object.fromEntries(entries);
+}
 function writeText(outputDir, fileName, content) {
   writeFileSync2(resolve3(outputDir, fileName), normalizeText(content));
 }
@@ -11939,7 +11993,7 @@ function hashContent(content) {
     bytes: Buffer.byteLength(content, "utf8")
   };
 }
-function renderReadme(manifest, options) {
+function renderReadme(manifest, options, ciContext) {
   const policyStatus = options.policyEvaluation ? options.policyEvaluation.passed ? "passed" : "failed" : "not run";
   const baselineStatus = options.baselineComparison ? options.baselineComparison.isRegression ? "regressed" : "passed" : "not run";
   return [
@@ -11960,6 +12014,7 @@ function renderReadme(manifest, options) {
     `- Baseline: ${baselineStatus}`,
     `- Supply-chain packages: ${options.supplyChainReport.totalPackages}`,
     `- Risky packages: ${options.supplyChainReport.riskyPackages}`,
+    `- CI context: ${ciContext.provider}`,
     "- Remediation plan: included",
     "",
     "## Artifacts",
@@ -11975,6 +12030,7 @@ function renderReadme(manifest, options) {
     "- Use `policy-evaluation.json` to confirm organization-policy status.",
     "- Use `baseline-comparison.json` to review drift from the accepted baseline.",
     "- Use `supply-chain.json` to review MCP package provenance and package risk.",
+    "- Use `ci-context.json` to confirm workflow, commit, and runner provenance.",
     "- Use `remediation-plan.json` for stable-fingerprint fix queues and ticket handoffs.",
     "",
     "This bundle is designed for audit handoffs, buyer security reviews, and CI artifacts."

@@ -397,8 +397,11 @@ Evidence packs write a deterministic directory containing `manifest.json`,
 `README.md`, `agentshield-report.json`, `agentshield-report.html`,
 `agentshield-results.sarif`, `policy-evaluation.json`,
 `baseline-comparison.json`, `supply-chain.json`, and
-`remediation-plan.json`. The manifest records SHA-256 digests and byte counts
-for bundle artifacts plus a bundle digest over the machine-readable evidence.
+`ci-context.json`, and `remediation-plan.json`. The manifest records SHA-256
+digests and byte counts for bundle artifacts plus a bundle digest over the
+machine-readable evidence. `ci-context.json` records whitelisted GitHub Actions
+workflow, commit, run, and runner provenance without copying arbitrary
+environment variables into the bundle.
 Redaction is enabled by default for local paths, usernames, emails, and
 token-shaped strings; use `--no-evidence-redact` only for private internal
 bundles.

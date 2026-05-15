@@ -106,6 +106,33 @@ function makeSupplyChainReport(): SupplyChainReport {
   };
 }
 
+function makeGitHubEnvironment(targetPath: string): Record<string, string> {
+  return {
+    GITHUB_ACTIONS: "true",
+    GITHUB_REPOSITORY: "affaan-m/agentshield",
+    GITHUB_REPOSITORY_ID: "123456789",
+    GITHUB_WORKFLOW: "AgentShield",
+    GITHUB_WORKFLOW_REF: "affaan-m/agentshield/.github/workflows/agentshield.yml@refs/heads/main",
+    GITHUB_JOB: "security",
+    GITHUB_RUN_ID: "987654321",
+    GITHUB_RUN_ATTEMPT: "2",
+    GITHUB_RUN_NUMBER: "42",
+    GITHUB_ACTOR: "security-owner",
+    GITHUB_EVENT_NAME: "pull_request",
+    GITHUB_REF: "refs/pull/12/merge",
+    GITHUB_SHA: "0123456789abcdef0123456789abcdef01234567",
+    GITHUB_HEAD_REF: "feature/evidence-pack",
+    GITHUB_BASE_REF: "main",
+    GITHUB_SERVER_URL: "https://github.com",
+    GITHUB_TOKEN: "ghp_should_never_enter_evidence_pack",
+    RUNNER_NAME: "GitHub Actions 4",
+    RUNNER_OS: "macOS",
+    RUNNER_ARCH: "ARM64",
+    RUNNER_TEMP: join(targetPath, "runner-temp"),
+    RUNNER_TOOL_CACHE: join(targetPath, "tool-cache"),
+  };
+}
+
 describe("writeEvidencePack", () => {
   it("writes a deterministic portable evidence bundle", () => {
     const targetPath = mkdtempSync(join(tmpdir(), "agentshield-target-"));
@@ -120,6 +147,7 @@ describe("writeEvidencePack", () => {
       baselinePath: join(targetPath, ".agentshield", "baseline.json"),
       supplyChainReport: makeSupplyChainReport(),
       generatedAt: "2026-05-13T05:01:00.000Z",
+      environment: makeGitHubEnvironment(targetPath),
     });
 
     expect(result.files).toEqual([
@@ -131,6 +159,7 @@ describe("writeEvidencePack", () => {
       "policy-evaluation.json",
       "baseline-comparison.json",
       "supply-chain.json",
+      "ci-context.json",
       "remediation-plan.json",
     ]);
     expect(readdirSync(outputDir).sort()).toEqual([...result.files].sort());
@@ -173,6 +202,7 @@ describe("writeEvidencePack", () => {
     expect(readme).toContain("Baseline: regressed");
     expect(readme).toContain("Remediation plan");
     expect(readme).toContain("Bundle digest:");
+    expect(readme).toContain("CI context: github-actions");
 
     const remediationPlan = JSON.parse(readFileSync(join(outputDir, "remediation-plan.json"), "utf-8"));
     expect(remediationPlan.summary.totalFindings).toBe(1);
@@ -180,6 +210,29 @@ describe("writeEvidencePack", () => {
       /^secrets-hardcoded-api-key::<target-path>\/\.claude\/settings\.json::sha256:[a-f0-9]{16}$/
     );
     expect(JSON.stringify(remediationPlan)).not.toContain("sk-1234567890abcdef");
+
+    const ciContextRaw = readFileSync(join(outputDir, "ci-context.json"), "utf-8");
+    const ciContext = JSON.parse(ciContextRaw);
+    expect(ciContext).toMatchObject({
+      schemaVersion: 1,
+      generatedAt: "2026-05-13T05:01:00.000Z",
+      provider: "github-actions",
+      source: "process-environment",
+      github: {
+        repository: "affaan-m/agentshield",
+        workflow: "AgentShield",
+        runId: "987654321",
+        runAttempt: "2",
+        sha: "0123456789abcdef0123456789abcdef01234567",
+      },
+      runtime: {
+        os: "macOS",
+        archLabel: "ARM64",
+      },
+    });
+    expect(ciContextRaw).not.toContain("GITHUB_TOKEN");
+    expect(ciContextRaw).not.toContain("ghp_should_never_enter_evidence_pack");
+    expect(ciContextRaw).not.toContain(targetPath);
   });
 
   it("redacts local paths, emails, and token-shaped strings by default", () => {

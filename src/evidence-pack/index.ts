@@ -21,6 +21,8 @@ export interface EvidencePackOptions {
   readonly supplyChainReport: SupplyChainReport;
   readonly redact?: boolean;
   readonly generatedAt?: string;
+  readonly ciContext?: EvidencePackCiContext;
+  readonly environment?: EvidencePackEnvironment;
 }
 
 export interface EvidencePackResult {
@@ -45,6 +47,48 @@ export interface EvidencePackVerificationResult {
   readonly artifacts: ReadonlyArray<EvidencePackVerificationArtifact>;
   readonly errors: ReadonlyArray<string>;
 }
+
+export interface EvidencePackCiContext {
+  readonly schemaVersion: 1;
+  readonly generatedAt: string;
+  readonly provider: "github-actions" | "local";
+  readonly source: "provided" | "process-environment";
+  readonly github?: EvidencePackGitHubContext;
+  readonly runtime: EvidencePackRuntimeContext;
+}
+
+export interface EvidencePackGitHubContext {
+  readonly repository?: string;
+  readonly repositoryId?: string;
+  readonly workflow?: string;
+  readonly workflowRef?: string;
+  readonly job?: string;
+  readonly runId?: string;
+  readonly runAttempt?: string;
+  readonly runNumber?: string;
+  readonly actor?: string;
+  readonly eventName?: string;
+  readonly ref?: string;
+  readonly sha?: string;
+  readonly headRef?: string;
+  readonly baseRef?: string;
+  readonly serverUrl?: string;
+}
+
+export interface EvidencePackRuntimeContext {
+  readonly nodeVersion: string;
+  readonly platform: string;
+  readonly arch: string;
+  readonly cwd: string;
+  readonly name?: string;
+  readonly os?: string;
+  readonly archLabel?: string;
+  readonly environment?: string;
+  readonly temp?: string;
+  readonly toolCache?: string;
+}
+
+type EvidencePackEnvironment = Readonly<Record<string, string | undefined>>;
 
 interface EvidencePackManifest {
   readonly schemaVersion: 1;
@@ -98,6 +142,11 @@ const ARTIFACTS = [
     description: "MCP package provenance and supply-chain verification summary.",
   },
   {
+    file: "ci-context.json",
+    kind: "ci-context",
+    description: "Whitelisted CI, commit, workflow, and runner provenance for the scan.",
+  },
+  {
     file: "remediation-plan.json",
     kind: "remediation",
     description: "Stable-fingerprint remediation queue for ticketing and CI handoffs.",
@@ -132,6 +181,9 @@ export function writeEvidencePack(options: EvidencePackOptions): EvidencePackRes
         reason: "No --baseline file was provided for this scan.",
       };
   const supplyChainReport = redactor.value(options.supplyChainReport);
+  const ciContext = redactor.value(
+    options.ciContext ?? buildCiContext(options.environment ?? process.env, generatedAt)
+  ) as EvidencePackCiContext;
   const remediationPlan = buildRemediationPlan(report, { generatedAt });
   const artifactContents = new Map<string, string>([
     ["agentshield-report.json", normalizeText(renderJsonReport(report))],
@@ -146,6 +198,7 @@ export function writeEvidencePack(options: EvidencePackOptions): EvidencePackRes
     ["policy-evaluation.json", normalizeText(redactor.json(policyEvaluation))],
     ["baseline-comparison.json", normalizeText(redactor.json(baselineComparison))],
     ["supply-chain.json", normalizeText(redactor.json(supplyChainReport))],
+    ["ci-context.json", normalizeText(redactor.json(ciContext))],
     ["remediation-plan.json", normalizeText(redactor.json(remediationPlan))],
   ]);
   const bundleDigest = buildBundleDigest(artifactContents);
@@ -158,7 +211,7 @@ export function writeEvidencePack(options: EvidencePackOptions): EvidencePackRes
     bundleDigest,
     artifacts: buildArtifactManifestEntries(artifactContents),
   };
-  artifactContents.set("README.md", normalizeText(renderReadme(readmeManifest, options)));
+  artifactContents.set("README.md", normalizeText(renderReadme(readmeManifest, options, ciContext)));
   const manifest: EvidencePackManifest = {
     ...readmeManifest,
     artifacts: buildArtifactManifestEntries(artifactContents),
@@ -266,6 +319,61 @@ export function verifyEvidencePack(outputDir: string): EvidencePackVerificationR
   };
 }
 
+function buildCiContext(
+  environment: EvidencePackEnvironment,
+  generatedAt: string
+): EvidencePackCiContext {
+  const github = compact({
+    repository: environment.GITHUB_REPOSITORY,
+    repositoryId: environment.GITHUB_REPOSITORY_ID,
+    workflow: environment.GITHUB_WORKFLOW,
+    workflowRef: environment.GITHUB_WORKFLOW_REF,
+    job: environment.GITHUB_JOB,
+    runId: environment.GITHUB_RUN_ID,
+    runAttempt: environment.GITHUB_RUN_ATTEMPT,
+    runNumber: environment.GITHUB_RUN_NUMBER,
+    actor: environment.GITHUB_ACTOR,
+    eventName: environment.GITHUB_EVENT_NAME,
+    ref: environment.GITHUB_REF,
+    sha: environment.GITHUB_SHA,
+    headRef: environment.GITHUB_HEAD_REF,
+    baseRef: environment.GITHUB_BASE_REF,
+    serverUrl: environment.GITHUB_SERVER_URL,
+  });
+
+  const runtime: EvidencePackRuntimeContext = {
+    nodeVersion: process.version,
+    platform: process.platform,
+    arch: process.arch,
+    cwd: process.cwd(),
+    ...compact({
+      name: environment.RUNNER_NAME,
+      os: environment.RUNNER_OS,
+      archLabel: environment.RUNNER_ARCH,
+      environment: environment.RUNNER_ENVIRONMENT,
+      temp: environment.RUNNER_TEMP,
+      toolCache: environment.RUNNER_TOOL_CACHE,
+    }),
+  };
+
+  return {
+    schemaVersion: 1,
+    generatedAt,
+    provider: environment.GITHUB_ACTIONS === "true" ? "github-actions" : "local",
+    source: "process-environment",
+    github: Object.keys(github).length > 0 ? github : undefined,
+    runtime,
+  };
+}
+
+function compact<T extends Record<string, string | undefined>>(value: T): {
+  readonly [K in keyof T]?: string;
+} {
+  const entries = Object.entries(value)
+    .filter(([, entryValue]) => typeof entryValue === "string" && entryValue.length > 0);
+  return Object.fromEntries(entries) as { readonly [K in keyof T]?: string };
+}
+
 function writeText(outputDir: string, fileName: string, content: string): void {
   writeFileSync(resolve(outputDir, fileName), normalizeText(content));
 }
@@ -311,7 +419,8 @@ function hashContent(content: string): { readonly sha256: string; readonly bytes
 
 function renderReadme(
   manifest: EvidencePackManifest,
-  options: EvidencePackOptions
+  options: EvidencePackOptions,
+  ciContext: EvidencePackCiContext
 ): string {
   const policyStatus = options.policyEvaluation
     ? options.policyEvaluation.passed ? "passed" : "failed"
@@ -338,6 +447,7 @@ function renderReadme(
     `- Baseline: ${baselineStatus}`,
     `- Supply-chain packages: ${options.supplyChainReport.totalPackages}`,
     `- Risky packages: ${options.supplyChainReport.riskyPackages}`,
+    `- CI context: ${ciContext.provider}`,
     "- Remediation plan: included",
     "",
     "## Artifacts",
@@ -353,6 +463,7 @@ function renderReadme(
     "- Use `policy-evaluation.json` to confirm organization-policy status.",
     "- Use `baseline-comparison.json` to review drift from the accepted baseline.",
     "- Use `supply-chain.json` to review MCP package provenance and package risk.",
+    "- Use `ci-context.json` to confirm workflow, commit, and runner provenance.",
     "- Use `remediation-plan.json` for stable-fingerprint fix queues and ticket handoffs.",
     "",
     "This bundle is designed for audit handoffs, buyer security reviews, and CI artifacts.",
