@@ -766,6 +766,21 @@ describe("writeEvidencePack", () => {
         }),
       ])
     );
+    expect(fleet.reviewItems).toEqual([
+      expect.objectContaining({
+        route: "security-blocker",
+        severity: "high",
+        repository: "affaan-m/risky-repo",
+        outputDir: riskyOutputDir,
+        targetPath: "<target-path>",
+        evidencePaths: expect.arrayContaining([
+          join(riskyOutputDir, "manifest.json"),
+          join(riskyOutputDir, "agentshield-report.json"),
+          join(riskyOutputDir, "supply-chain.json"),
+        ]),
+        recommendation: "Route to security owner before promotion.",
+      }),
+    ]);
   });
 
   it("routes tampered fleet entries as invalid without hiding pack errors", () => {
@@ -839,6 +854,8 @@ describe("writeEvidencePack", () => {
     expect(text.stdout).toContain("Findings:    critical 1, high 0, medium 0, low 0, info 0");
     expect(text.stdout).toContain("security-blocker affaan-m/risky-repo");
     expect(text.stdout).toContain("ready affaan-m/clean-repo");
+    expect(text.stdout).toContain("Review items:");
+    expect(text.stdout).toContain("high security-blocker affaan-m/risky-repo");
 
     const json = spawnSync(process.execPath, [
       CLI_PATH,
@@ -867,6 +884,14 @@ describe("writeEvidencePack", () => {
         policyFailures: 1,
         baselineRegressions: 1,
       },
+      reviewItems: [
+        {
+          route: "security-blocker",
+          severity: "high",
+          repository: "affaan-m/risky-repo",
+          recommendation: "Route to security owner before promotion.",
+        },
+      ],
     });
   });
 });

@@ -432,7 +432,9 @@ agentshield evidence-pack inspect ./agentshield-evidence --json
 ```
 
 Aggregate multiple verified evidence packs when an operator needs fleet-level
-routing across repos, teams, or harnesses:
+routing across repos, teams, or harnesses. The JSON output includes
+`reviewItems` with source evidence paths and owner-ready recommendations for
+packs that need follow-up:
 
 ```bash
 agentshield evidence-pack fleet ./repo-a-evidence ./repo-b-evidence

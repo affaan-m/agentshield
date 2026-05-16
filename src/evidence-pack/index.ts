@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { basename, resolve } from "node:path";
+import { basename, join, resolve } from "node:path";
 import { homedir } from "node:os";
 import type { BaselineComparison } from "../baseline/index.js";
 import type { PolicyEvaluation } from "../policy/index.js";
@@ -82,6 +82,7 @@ export interface EvidencePackFleetInspectionResult {
   readonly summary: EvidencePackFleetSummary;
   readonly entries: ReadonlyArray<EvidencePackFleetEntry>;
   readonly routes: ReadonlyArray<EvidencePackFleetRouteEntry>;
+  readonly reviewItems: ReadonlyArray<EvidencePackFleetReviewItem>;
   readonly errors: ReadonlyArray<string>;
 }
 
@@ -133,6 +134,17 @@ export interface EvidencePackFleetRouteEntry {
   readonly repository: string | null;
   readonly targetPath: string | null;
   readonly reason: string;
+}
+
+export interface EvidencePackFleetReviewItem {
+  readonly route: EvidencePackFleetRoute;
+  readonly severity: "high" | "medium" | "low" | "info";
+  readonly outputDir: string;
+  readonly repository: string | null;
+  readonly targetPath: string | null;
+  readonly reason: string;
+  readonly evidencePaths: ReadonlyArray<string>;
+  readonly recommendation: string;
 }
 
 export interface EvidencePackReportSummary {
@@ -558,6 +570,9 @@ export function inspectEvidencePackFleet(outputDirs: ReadonlyArray<string>): Evi
   const errors: ReadonlyArray<string> = entries.flatMap((entry) =>
     entry.errors.map((error) => `${entry.outputDir}: ${error}`)
   );
+  const reviewItems = entries
+    .filter((entry) => entry.route !== "ready")
+    .map(buildFleetReviewItem);
 
   return {
     ok: summary.invalidPacks === 0,
@@ -565,8 +580,59 @@ export function inspectEvidencePackFleet(outputDirs: ReadonlyArray<string>): Evi
     summary,
     entries,
     routes,
+    reviewItems,
     errors,
   };
+}
+
+function buildFleetReviewItem(entry: EvidencePackFleetEntry): EvidencePackFleetReviewItem {
+  return {
+    route: entry.route,
+    severity: determineFleetReviewSeverity(entry.route),
+    outputDir: entry.outputDir,
+    repository: entry.repository,
+    targetPath: entry.targetPath,
+    reason: entry.reason,
+    evidencePaths: buildFleetReviewEvidencePaths(entry),
+    recommendation: buildFleetReviewRecommendation(entry.route),
+  };
+}
+
+function determineFleetReviewSeverity(route: EvidencePackFleetRoute): EvidencePackFleetReviewItem["severity"] {
+  if (route === "invalid" || route === "security-blocker") return "high";
+  if (route === "policy-review" || route === "baseline-regression" || route === "supply-chain-review") return "medium";
+  return "info";
+}
+
+function buildFleetReviewEvidencePaths(entry: EvidencePackFleetEntry): ReadonlyArray<string> {
+  const paths = [
+    join(entry.outputDir, "manifest.json"),
+    join(entry.outputDir, "agentshield-report.json"),
+  ];
+
+  if (entry.policyStatus !== "not-run" && entry.policyStatus !== "unknown") {
+    paths.push(join(entry.outputDir, "policy-evaluation.json"));
+  }
+  if (entry.baselineStatus !== "not-run" && entry.baselineStatus !== "unknown") {
+    paths.push(join(entry.outputDir, "baseline-comparison.json"));
+  }
+  if (entry.riskyPackages > 0 || entry.route === "supply-chain-review" || entry.route === "security-blocker") {
+    paths.push(join(entry.outputDir, "supply-chain.json"));
+  }
+  if (entry.autoFixable > 0 || entry.manualReview > 0) {
+    paths.push(join(entry.outputDir, "remediation-plan.json"));
+  }
+
+  return Array.from(new Set(paths));
+}
+
+function buildFleetReviewRecommendation(route: EvidencePackFleetRoute): string {
+  if (route === "invalid") return "Regenerate or repair evidence pack before promotion.";
+  if (route === "security-blocker") return "Route to security owner before promotion.";
+  if (route === "policy-review") return "Route to policy owner before exception approval.";
+  if (route === "baseline-regression") return "Route to baseline owner before accepting drift.";
+  if (route === "supply-chain-review") return "Route to supply-chain owner before publication.";
+  return "Keep evidence pack in the ready set.";
 }
 
 function summarizeFleetEntry(inspection: EvidencePackInspectionResult): EvidencePackFleetEntry {

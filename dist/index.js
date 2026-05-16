@@ -10496,7 +10496,7 @@ var init_injection = __esm({
 // src/sandbox/executor.ts
 import { spawn } from "child_process";
 import { mkdtemp, readdir, stat as stat2, readFile, rm as rm2 } from "fs/promises";
-import { join as join8 } from "path";
+import { join as join9 } from "path";
 import { tmpdir } from "os";
 function parseHooks(settingsContent) {
   const hooks = [];
@@ -10533,7 +10533,7 @@ function parseHooks(settingsContent) {
 async function executeHookInSandbox(hookCommand, options = {}) {
   const opts = { ...DEFAULT_OPTIONS, ...options };
   const fakeEnv = { ...DEFAULT_FAKE_ENV, ...opts.fakeEnv };
-  const workDir = await mkdtemp(join8(tmpdir(), "agentshield-sandbox-"));
+  const workDir = await mkdtemp(join9(tmpdir(), "agentshield-sandbox-"));
   const sandboxEnv = {
     HOME: workDir,
     TMPDIR: workDir,
@@ -10706,7 +10706,7 @@ async function detectFileWrites(workDir, observations) {
   try {
     const entries = await readdir(workDir);
     for (const entry of entries) {
-      const entryPath = join8(workDir, entry);
+      const entryPath = join9(workDir, entry);
       const entryStat = await stat2(entryPath);
       if (entryStat.isFile()) {
         const content = await readFile(entryPath, "utf-8");
@@ -15025,7 +15025,7 @@ function normalizeUri(uri) {
 init_remediation();
 import { createHash as createHash2 } from "crypto";
 import { existsSync as existsSync3, mkdirSync as mkdirSync2, readFileSync as readFileSync2, writeFileSync as writeFileSync2 } from "fs";
-import { basename as basename3, resolve as resolve3 } from "path";
+import { basename as basename3, join as join4, resolve as resolve3 } from "path";
 import { homedir as homedir2 } from "os";
 var ARTIFACTS = [
   {
@@ -15321,14 +15321,60 @@ function inspectEvidencePackFleet(outputDirs) {
   const errors = entries.flatMap(
     (entry) => entry.errors.map((error) => `${entry.outputDir}: ${error}`)
   );
+  const reviewItems = entries.filter((entry) => entry.route !== "ready").map(buildFleetReviewItem);
   return {
     ok: summary.invalidPacks === 0,
     requiresAttention: routes.some((route) => route.route !== "ready"),
     summary,
     entries,
     routes,
+    reviewItems,
     errors
   };
+}
+function buildFleetReviewItem(entry) {
+  return {
+    route: entry.route,
+    severity: determineFleetReviewSeverity(entry.route),
+    outputDir: entry.outputDir,
+    repository: entry.repository,
+    targetPath: entry.targetPath,
+    reason: entry.reason,
+    evidencePaths: buildFleetReviewEvidencePaths(entry),
+    recommendation: buildFleetReviewRecommendation(entry.route)
+  };
+}
+function determineFleetReviewSeverity(route) {
+  if (route === "invalid" || route === "security-blocker") return "high";
+  if (route === "policy-review" || route === "baseline-regression" || route === "supply-chain-review") return "medium";
+  return "info";
+}
+function buildFleetReviewEvidencePaths(entry) {
+  const paths = [
+    join4(entry.outputDir, "manifest.json"),
+    join4(entry.outputDir, "agentshield-report.json")
+  ];
+  if (entry.policyStatus !== "not-run" && entry.policyStatus !== "unknown") {
+    paths.push(join4(entry.outputDir, "policy-evaluation.json"));
+  }
+  if (entry.baselineStatus !== "not-run" && entry.baselineStatus !== "unknown") {
+    paths.push(join4(entry.outputDir, "baseline-comparison.json"));
+  }
+  if (entry.riskyPackages > 0 || entry.route === "supply-chain-review" || entry.route === "security-blocker") {
+    paths.push(join4(entry.outputDir, "supply-chain.json"));
+  }
+  if (entry.autoFixable > 0 || entry.manualReview > 0) {
+    paths.push(join4(entry.outputDir, "remediation-plan.json"));
+  }
+  return Array.from(new Set(paths));
+}
+function buildFleetReviewRecommendation(route) {
+  if (route === "invalid") return "Regenerate or repair evidence pack before promotion.";
+  if (route === "security-blocker") return "Route to security owner before promotion.";
+  if (route === "policy-review") return "Route to policy owner before exception approval.";
+  if (route === "baseline-regression") return "Route to baseline owner before accepting drift.";
+  if (route === "supply-chain-review") return "Route to supply-chain owner before publication.";
+  return "Keep evidence pack in the ready set.";
 }
 function summarizeFleetEntry(inspection) {
   const findings = inspection.report?.findings;
@@ -16563,7 +16609,7 @@ function renderFixSummary(result) {
 
 // src/init/index.ts
 import { existsSync as existsSync4, mkdirSync as mkdirSync3, writeFileSync as writeFileSync4 } from "fs";
-import { join as join4, resolve as resolve5 } from "path";
+import { join as join5, resolve as resolve5 } from "path";
 function getDefaultSettings() {
   const settings = {
     permissions: {
@@ -16679,19 +16725,19 @@ function safeWriteFile(filePath, content) {
 }
 function runInit(targetDir) {
   const baseDir = targetDir ? resolve5(targetDir) : resolve5(process.cwd());
-  const claudeDir = join4(baseDir, ".claude");
+  const claudeDir = join5(baseDir, ".claude");
   if (!existsSync4(claudeDir)) {
     mkdirSync3(claudeDir, { recursive: true });
   }
   const files = [];
   files.push(
-    safeWriteFile(join4(claudeDir, "settings.json"), getDefaultSettings())
+    safeWriteFile(join5(claudeDir, "settings.json"), getDefaultSettings())
   );
   files.push(
-    safeWriteFile(join4(claudeDir, "CLAUDE.md"), getDefaultClaudeMd())
+    safeWriteFile(join5(claudeDir, "CLAUDE.md"), getDefaultClaudeMd())
   );
   files.push(
-    safeWriteFile(join4(claudeDir, "mcp.json"), getDefaultMcpConfig())
+    safeWriteFile(join5(claudeDir, "mcp.json"), getDefaultMcpConfig())
   );
   return {
     directory: claudeDir,
@@ -16775,11 +16821,11 @@ var DEFAULT_SERVER_CONFIG = {
 
 // src/miniclaw/sandbox.ts
 import { mkdir, rm, stat, realpath, access } from "fs/promises";
-import { join as join5, resolve as resolve6, relative as relative2, extname as extname3 } from "path";
+import { join as join6, resolve as resolve6, relative as relative2, extname as extname3 } from "path";
 import { randomUUID } from "crypto";
 async function createSandbox(config = DEFAULT_SANDBOX_CONFIG, allowedTools = [], maxDuration) {
   const sessionId = randomUUID();
-  const sandboxPath = join5(config.rootPath, sessionId);
+  const sandboxPath = join6(config.rootPath, sessionId);
   await mkdir(config.rootPath, { recursive: true, mode: 448 });
   await mkdir(sandboxPath, { mode: 448 });
   const session = {
@@ -17723,16 +17769,16 @@ import { dirname as dirname3 } from "path";
 
 // src/runtime/install.ts
 import { readFileSync as readFileSync6, writeFileSync as writeFileSync5, existsSync as existsSync9, mkdirSync as mkdirSync5, renameSync } from "fs";
-import { join as join7, dirname as dirname4 } from "path";
+import { join as join8, dirname as dirname4 } from "path";
 
 // src/runtime/status.ts
 import { existsSync as existsSync8, readFileSync as readFileSync5 } from "fs";
-import { join as join6, resolve as resolve9 } from "path";
+import { join as join7, resolve as resolve9 } from "path";
 function defaultLogPath(targetPath) {
   return resolve9(targetPath, ".agentshield", "runtime.ndjson");
 }
 function runtimePolicyPath(targetPath) {
-  return join6(targetPath, ".agentshield", "runtime-policy.json");
+  return join7(targetPath, ".agentshield", "runtime-policy.json");
 }
 function getRuntimeStatus(targetPath) {
   const settingsPath = resolveSettingsPath(targetPath);
@@ -17846,7 +17892,7 @@ function readSettingsFile(settingsPath) {
   }
 }
 function runtimePolicyPath2(targetPath) {
-  return join7(targetPath, ".agentshield", "runtime-policy.json");
+  return join8(targetPath, ".agentshield", "runtime-policy.json");
 }
 function hasValidRuntimePolicy(policyPath) {
   if (!existsSync9(policyPath)) {
@@ -18019,9 +18065,9 @@ function uninstallRuntime(targetPath) {
   return { removed: true, message: "AgentShield runtime hook removed." };
 }
 function resolveSettingsPath(targetPath) {
-  const claudeSettings = join7(targetPath, ".claude", "settings.json");
+  const claudeSettings = join8(targetPath, ".claude", "settings.json");
   if (existsSync9(claudeSettings)) return claudeSettings;
-  const directSettings = join7(targetPath, "settings.json");
+  const directSettings = join8(targetPath, "settings.json");
   if (existsSync9(directSettings)) return directSettings;
   return claudeSettings;
 }
@@ -18610,6 +18656,15 @@ evidencePack.command("fleet").description("Inspect multiple evidence packs and s
       writeStdout(
         `- ${route.route} ${route.repository ?? route.targetPath ?? route.outputDir}: ${route.reason}`
       );
+    }
+    if (result.reviewItems.length > 0) {
+      writeStdout();
+      writeStdout("Review items:");
+      for (const item of result.reviewItems) {
+        writeStdout(
+          `- ${item.severity} ${item.route} ${item.repository ?? item.targetPath ?? item.outputDir}: ${item.recommendation}`
+        );
+      }
     }
     writeStdout();
   }

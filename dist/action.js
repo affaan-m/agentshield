@@ -10700,7 +10700,7 @@ function normalizeUri(uri) {
 // src/evidence-pack/index.ts
 import { createHash as createHash2 } from "crypto";
 import { existsSync as existsSync3, mkdirSync as mkdirSync2, readFileSync as readFileSync2, writeFileSync as writeFileSync2 } from "fs";
-import { basename as basename3, resolve as resolve3 } from "path";
+import { basename as basename3, join as join4, resolve as resolve3 } from "path";
 import { homedir as homedir2 } from "os";
 
 // src/remediation/index.ts

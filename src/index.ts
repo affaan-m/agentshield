@@ -772,6 +772,15 @@ evidencePack
           `- ${route.route} ${route.repository ?? route.targetPath ?? route.outputDir}: ${route.reason}`
         );
       }
+      if (result.reviewItems.length > 0) {
+        writeStdout();
+        writeStdout("Review items:");
+        for (const item of result.reviewItems) {
+          writeStdout(
+            `- ${item.severity} ${item.route} ${item.repository ?? item.targetPath ?? item.outputDir}: ${item.recommendation}`
+          );
+        }
+      }
       writeStdout();
     }
 
