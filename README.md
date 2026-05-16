@@ -431,6 +431,14 @@ agentshield evidence-pack inspect ./agentshield-evidence
 agentshield evidence-pack inspect ./agentshield-evidence --json
 ```
 
+Aggregate multiple verified evidence packs when an operator needs fleet-level
+routing across repos, teams, or harnesses:
+
+```bash
+agentshield evidence-pack fleet ./repo-a-evidence ./repo-b-evidence
+agentshield evidence-pack fleet ./repo-a-evidence ./repo-b-evidence --json
+```
+
 ### JSON Report Shape
 
 `agentshield scan --format json` is the supported machine-readable scanner interface today.
@@ -582,6 +590,7 @@ agentshield scan [options]         Scan configuration directory
 
 agentshield init                   Generate secure baseline config
 agentshield baseline write         Write a scan baseline JSON file
+agentshield evidence-pack fleet    Summarize multiple evidence packs for routing
 agentshield evidence-pack inspect  Verify and summarize an evidence bundle
 agentshield evidence-pack verify   Verify artifact and bundle digests
 agentshield policy init            Generate an organization policy preset

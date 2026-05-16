@@ -10,7 +10,12 @@ import { renderTerminalReport } from "./reporter/terminal.js";
 import { renderJsonReport, renderMarkdownReport } from "./reporter/json.js";
 import { renderHtmlReport } from "./reporter/html.js";
 import { renderSarifReport } from "./reporter/sarif.js";
-import { inspectEvidencePack, verifyEvidencePack, writeEvidencePack } from "./evidence-pack/index.js";
+import {
+  inspectEvidencePack,
+  inspectEvidencePackFleet,
+  verifyEvidencePack,
+  writeEvidencePack,
+} from "./evidence-pack/index.js";
 import { runOpusPipeline, renderOpusAnalysis } from "./opus/index.js";
 import { applyFixes, renderFixSummary } from "./fixer/index.js";
 import { runInit, renderInitSummary } from "./init/index.js";
@@ -725,6 +730,47 @@ evidencePack
         for (const error of result.errors) {
           writeStdout(`- ${error}`);
         }
+      }
+      writeStdout();
+    }
+
+    if (!result.ok) {
+      process.exit(6);
+    }
+  });
+
+evidencePack
+  .command("fleet")
+  .description("Inspect multiple evidence packs and summarize fleet routing")
+  .argument("<dirs...>", "Evidence-pack directories")
+  .option("--json", "Emit machine-readable fleet inspection results", false)
+  .action((dirs: ReadonlyArray<string>, options) => {
+    const result = inspectEvidencePackFleet(dirs);
+    if (options.json) {
+      writeStdout(JSON.stringify(result, null, 2));
+    } else {
+      writeStdout();
+      writeStdout("AgentShield Evidence Pack Fleet");
+      writeStdout(
+        `Packs:       ${result.summary.totalPacks} total, ${result.summary.verifiedPacks} verified, ${result.summary.invalidPacks} invalid`
+      );
+      writeStdout(`Status:      ${result.ok ? "verified" : "invalid evidence"}`);
+      writeStdout(`Attention:   ${result.requiresAttention ? "required" : "none"}`);
+      writeStdout(
+        `Findings:    critical ${result.summary.critical}, high ${result.summary.high}, medium ${result.summary.medium}, low ${result.summary.low}, info ${result.summary.info}`
+      );
+      writeStdout(
+        `Policy:      ${result.summary.policyFailures} failed; Baseline: ${result.summary.baselineRegressions} regressed; Supply: ${result.summary.riskyPackages} risky packages`
+      );
+      writeStdout(
+        `Remediate:   ${result.summary.autoFixable} auto-fixable, ${result.summary.manualReview} manual-review`
+      );
+      writeStdout();
+      writeStdout("Routes:");
+      for (const route of result.routes) {
+        writeStdout(
+          `- ${route.route} ${route.repository ?? route.targetPath ?? route.outputDir}: ${route.reason}`
+        );
       }
       writeStdout();
     }

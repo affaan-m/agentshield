@@ -68,6 +68,73 @@ export interface EvidencePackInspectionResult {
   readonly errors: ReadonlyArray<string>;
 }
 
+export type EvidencePackFleetRoute =
+  | "invalid"
+  | "security-blocker"
+  | "policy-review"
+  | "baseline-regression"
+  | "supply-chain-review"
+  | "ready";
+
+export interface EvidencePackFleetInspectionResult {
+  readonly ok: boolean;
+  readonly requiresAttention: boolean;
+  readonly summary: EvidencePackFleetSummary;
+  readonly entries: ReadonlyArray<EvidencePackFleetEntry>;
+  readonly routes: ReadonlyArray<EvidencePackFleetRouteEntry>;
+  readonly errors: ReadonlyArray<string>;
+}
+
+export interface EvidencePackFleetSummary {
+  readonly totalPacks: number;
+  readonly verifiedPacks: number;
+  readonly invalidPacks: number;
+  readonly totalFindings: number;
+  readonly critical: number;
+  readonly high: number;
+  readonly medium: number;
+  readonly low: number;
+  readonly info: number;
+  readonly policyFailures: number;
+  readonly baselineRegressions: number;
+  readonly riskyPackages: number;
+  readonly autoFixable: number;
+  readonly manualReview: number;
+}
+
+export interface EvidencePackFleetEntry {
+  readonly outputDir: string;
+  readonly ok: boolean;
+  readonly route: EvidencePackFleetRoute;
+  readonly reason: string;
+  readonly generatedAt: string | null;
+  readonly targetPath: string | null;
+  readonly repository: string | null;
+  readonly provider: "github-actions" | "local" | "unknown" | null;
+  readonly score: number | null;
+  readonly grade: string | null;
+  readonly totalFindings: number;
+  readonly critical: number;
+  readonly high: number;
+  readonly medium: number;
+  readonly low: number;
+  readonly info: number;
+  readonly policyStatus: EvidencePackPolicySummary["status"];
+  readonly baselineStatus: EvidencePackBaselineSummary["status"];
+  readonly riskyPackages: number;
+  readonly autoFixable: number;
+  readonly manualReview: number;
+  readonly errors: ReadonlyArray<string>;
+}
+
+export interface EvidencePackFleetRouteEntry {
+  readonly route: EvidencePackFleetRoute;
+  readonly outputDir: string;
+  readonly repository: string | null;
+  readonly targetPath: string | null;
+  readonly reason: string;
+}
+
 export interface EvidencePackReportSummary {
   readonly score: {
     readonly grade: string;
@@ -441,6 +508,126 @@ export function inspectEvidencePack(outputDir: string): EvidencePackInspectionRe
     verification,
     errors,
   };
+}
+
+export function inspectEvidencePackFleet(outputDirs: ReadonlyArray<string>): EvidencePackFleetInspectionResult {
+  const entries: ReadonlyArray<EvidencePackFleetEntry> = outputDirs.map((outputDir) =>
+    summarizeFleetEntry(inspectEvidencePack(outputDir))
+  );
+  const summary = entries.reduce<EvidencePackFleetSummary>(
+    (accumulator, entry) => ({
+      totalPacks: accumulator.totalPacks + 1,
+      verifiedPacks: accumulator.verifiedPacks + (entry.ok ? 1 : 0),
+      invalidPacks: accumulator.invalidPacks + (entry.ok ? 0 : 1),
+      totalFindings: accumulator.totalFindings + entry.totalFindings,
+      critical: accumulator.critical + entry.critical,
+      high: accumulator.high + entry.high,
+      medium: accumulator.medium + entry.medium,
+      low: accumulator.low + entry.low,
+      info: accumulator.info + entry.info,
+      policyFailures: accumulator.policyFailures + (entry.policyStatus === "failed" ? 1 : 0),
+      baselineRegressions: accumulator.baselineRegressions + (entry.baselineStatus === "regressed" ? 1 : 0),
+      riskyPackages: accumulator.riskyPackages + entry.riskyPackages,
+      autoFixable: accumulator.autoFixable + entry.autoFixable,
+      manualReview: accumulator.manualReview + entry.manualReview,
+    }),
+    {
+      totalPacks: 0,
+      verifiedPacks: 0,
+      invalidPacks: 0,
+      totalFindings: 0,
+      critical: 0,
+      high: 0,
+      medium: 0,
+      low: 0,
+      info: 0,
+      policyFailures: 0,
+      baselineRegressions: 0,
+      riskyPackages: 0,
+      autoFixable: 0,
+      manualReview: 0,
+    }
+  );
+  const routes: ReadonlyArray<EvidencePackFleetRouteEntry> = entries.map((entry) => ({
+    route: entry.route,
+    outputDir: entry.outputDir,
+    repository: entry.repository,
+    targetPath: entry.targetPath,
+    reason: entry.reason,
+  }));
+  const errors: ReadonlyArray<string> = entries.flatMap((entry) =>
+    entry.errors.map((error) => `${entry.outputDir}: ${error}`)
+  );
+
+  return {
+    ok: summary.invalidPacks === 0,
+    requiresAttention: routes.some((route) => route.route !== "ready"),
+    summary,
+    entries,
+    routes,
+    errors,
+  };
+}
+
+function summarizeFleetEntry(inspection: EvidencePackInspectionResult): EvidencePackFleetEntry {
+  const findings = inspection.report?.findings;
+  const route = determineFleetRoute(inspection);
+  return {
+    outputDir: inspection.outputDir,
+    ok: inspection.ok,
+    route,
+    reason: describeFleetRoute(inspection, route),
+    generatedAt: inspection.generatedAt,
+    targetPath: inspection.targetPath,
+    repository: inspection.ciContext?.repository ?? null,
+    provider: inspection.ciContext?.provider ?? null,
+    score: inspection.report?.score.numericScore ?? null,
+    grade: inspection.report?.score.grade ?? null,
+    totalFindings: findings?.total ?? 0,
+    critical: findings?.critical ?? 0,
+    high: findings?.high ?? 0,
+    medium: findings?.medium ?? 0,
+    low: findings?.low ?? 0,
+    info: findings?.info ?? 0,
+    policyStatus: inspection.policy.status,
+    baselineStatus: inspection.baseline.status,
+    riskyPackages: inspection.supplyChain?.riskyPackages ?? 0,
+    autoFixable: inspection.remediation?.autoFixable ?? 0,
+    manualReview: inspection.remediation?.manualReview ?? 0,
+    errors: inspection.errors,
+  };
+}
+
+function determineFleetRoute(inspection: EvidencePackInspectionResult): EvidencePackFleetRoute {
+  if (!inspection.ok) return "invalid";
+  if ((inspection.report?.findings.critical ?? 0) > 0 || (inspection.report?.findings.high ?? 0) > 0) {
+    return "security-blocker";
+  }
+  if ((inspection.supplyChain?.criticalCount ?? 0) > 0 || (inspection.supplyChain?.highCount ?? 0) > 0) {
+    return "security-blocker";
+  }
+  if (inspection.policy.status === "failed") return "policy-review";
+  if (inspection.baseline.status === "regressed") return "baseline-regression";
+  if ((inspection.supplyChain?.riskyPackages ?? 0) > 0) return "supply-chain-review";
+  return "ready";
+}
+
+function describeFleetRoute(
+  inspection: EvidencePackInspectionResult,
+  route: EvidencePackFleetRoute
+): string {
+  if (route === "invalid") return inspection.errors[0] ?? "evidence pack failed verification";
+  const findings = inspection.report?.findings;
+  if (route === "security-blocker") {
+    if ((findings?.critical ?? 0) > 0) return `${findings?.critical ?? 0} critical findings`;
+    if ((findings?.high ?? 0) > 0) return `${findings?.high ?? 0} high findings`;
+    if ((inspection.supplyChain?.criticalCount ?? 0) > 0) return `${inspection.supplyChain?.criticalCount ?? 0} critical supply-chain packages`;
+    return `${inspection.supplyChain?.highCount ?? 0} high supply-chain packages`;
+  }
+  if (route === "policy-review") return "policy failed";
+  if (route === "baseline-regression") return "baseline regressed";
+  if (route === "supply-chain-review") return `${inspection.supplyChain?.riskyPackages ?? 0} risky packages`;
+  return "no routing blockers";
 }
 
 function buildCiContext(

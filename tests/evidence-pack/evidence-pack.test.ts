@@ -4,7 +4,12 @@ import { spawnSync } from "node:child_process";
 import { existsSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { inspectEvidencePack, verifyEvidencePack, writeEvidencePack } from "../../src/evidence-pack/index.js";
+import {
+  inspectEvidencePack,
+  inspectEvidencePackFleet,
+  verifyEvidencePack,
+  writeEvidencePack,
+} from "../../src/evidence-pack/index.js";
 import type { BaselineComparison } from "../../src/baseline/index.js";
 import type { PolicyEvaluation } from "../../src/policy/index.js";
 import type { SupplyChainReport } from "../../src/supply-chain/index.js";
@@ -131,6 +136,73 @@ function makeGitHubEnvironment(targetPath: string): Record<string, string> {
     RUNNER_TEMP: join(targetPath, "runner-temp"),
     RUNNER_TOOL_CACHE: join(targetPath, "tool-cache"),
   };
+}
+
+function makeCleanReport(targetPath: string): SecurityReport {
+  const report = makeReport(targetPath);
+  return {
+    ...report,
+    findings: [],
+    score: {
+      ...report.score,
+      grade: "A",
+      numericScore: 100,
+    },
+    summary: {
+      totalFindings: 0,
+      critical: 0,
+      high: 0,
+      medium: 0,
+      low: 0,
+      info: 0,
+      filesScanned: 1,
+      autoFixable: 0,
+    },
+  };
+}
+
+function makePassingPolicyEvaluation(): PolicyEvaluation {
+  return {
+    ...makePolicyEvaluation(),
+    passed: true,
+    violations: [],
+    score: 100,
+  };
+}
+
+function makePassingBaselineComparison(targetPath: string): BaselineComparison {
+  return {
+    ...makeBaselineComparison(targetPath),
+    newFindings: [],
+    scoreDelta: 0,
+    currentScore: 100,
+    isRegression: false,
+    newCriticalCount: 0,
+  };
+}
+
+function writeFleetEvidencePack(options: {
+  readonly outputDir: string;
+  readonly targetPath: string;
+  readonly generatedAt: string;
+  readonly repository: string;
+  readonly report?: SecurityReport;
+  readonly policyEvaluation?: PolicyEvaluation;
+  readonly baselineComparison?: BaselineComparison;
+  readonly supplyChainReport?: SupplyChainReport;
+}): void {
+  writeEvidencePack({
+    outputDir: options.outputDir,
+    report: options.report ?? makeReport(options.targetPath),
+    policyEvaluation: options.policyEvaluation ?? makePolicyEvaluation(),
+    baselineComparison: options.baselineComparison ?? makeBaselineComparison(options.targetPath),
+    supplyChainReport: options.supplyChainReport ?? makeSupplyChainReport(),
+    generatedAt: options.generatedAt,
+    environment: {
+      ...makeGitHubEnvironment(options.targetPath),
+      GITHUB_REPOSITORY: options.repository,
+    },
+  });
 }
 
 describe("writeEvidencePack", () => {
@@ -617,6 +689,184 @@ describe("writeEvidencePack", () => {
     expect(JSON.parse(invalidJson.stdout)).toMatchObject({
       ok: false,
       errors: expect.arrayContaining([expect.stringContaining("agentshield-report.json")]),
+    });
+  });
+
+  it("aggregates multiple evidence packs into a fleet routing summary", () => {
+    const cleanTargetPath = mkdtempSync(join(tmpdir(), "agentshield-fleet-clean-target-"));
+    const riskyTargetPath = mkdtempSync(join(tmpdir(), "agentshield-fleet-risky-target-"));
+    const cleanOutputDir = mkdtempSync(join(tmpdir(), "agentshield-fleet-clean-pack-"));
+    const riskyOutputDir = mkdtempSync(join(tmpdir(), "agentshield-fleet-risky-pack-"));
+
+    writeFleetEvidencePack({
+      outputDir: cleanOutputDir,
+      targetPath: cleanTargetPath,
+      report: makeCleanReport(cleanTargetPath),
+      policyEvaluation: makePassingPolicyEvaluation(),
+      baselineComparison: makePassingBaselineComparison(cleanTargetPath),
+      generatedAt: "2026-05-13T05:10:00.000Z",
+      repository: "affaan-m/clean-repo",
+    });
+    writeFleetEvidencePack({
+      outputDir: riskyOutputDir,
+      targetPath: riskyTargetPath,
+      supplyChainReport: {
+        ...makeSupplyChainReport(),
+        totalPackages: 3,
+        riskyPackages: 1,
+        criticalCount: 1,
+      },
+      generatedAt: "2026-05-13T05:11:00.000Z",
+      repository: "affaan-m/risky-repo",
+    });
+
+    const fleet = inspectEvidencePackFleet([cleanOutputDir, riskyOutputDir]);
+
+    expect(fleet.ok).toBe(true);
+    expect(fleet.requiresAttention).toBe(true);
+    expect(fleet.summary).toMatchObject({
+      totalPacks: 2,
+      verifiedPacks: 2,
+      invalidPacks: 0,
+      totalFindings: 1,
+      critical: 1,
+      high: 0,
+      policyFailures: 1,
+      baselineRegressions: 1,
+      riskyPackages: 1,
+      autoFixable: 0,
+      manualReview: 1,
+    });
+    expect(fleet.entries).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          outputDir: cleanOutputDir,
+          repository: "affaan-m/clean-repo",
+          ok: true,
+          route: "ready",
+        }),
+        expect.objectContaining({
+          outputDir: riskyOutputDir,
+          repository: "affaan-m/risky-repo",
+          ok: true,
+          route: "security-blocker",
+        }),
+      ])
+    );
+    expect(fleet.routes).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          route: "security-blocker",
+          repository: "affaan-m/risky-repo",
+          reason: "1 critical findings",
+        }),
+        expect.objectContaining({
+          route: "ready",
+          repository: "affaan-m/clean-repo",
+        }),
+      ])
+    );
+  });
+
+  it("routes tampered fleet entries as invalid without hiding pack errors", () => {
+    const targetPath = mkdtempSync(join(tmpdir(), "agentshield-fleet-invalid-target-"));
+    const outputDir = mkdtempSync(join(tmpdir(), "agentshield-fleet-invalid-pack-"));
+
+    writeFleetEvidencePack({
+      outputDir,
+      targetPath,
+      generatedAt: "2026-05-13T05:11:30.000Z",
+      repository: "affaan-m/agentshield",
+    });
+    writeFileSync(join(outputDir, "agentshield-report.json"), "{}\n");
+
+    const fleet = inspectEvidencePackFleet([outputDir]);
+
+    expect(fleet.ok).toBe(false);
+    expect(fleet.requiresAttention).toBe(true);
+    expect(fleet.summary).toMatchObject({
+      totalPacks: 1,
+      verifiedPacks: 0,
+      invalidPacks: 1,
+    });
+    expect(fleet.entries[0]).toMatchObject({
+      outputDir,
+      ok: false,
+      route: "invalid",
+    });
+    expect(fleet.errors).toEqual(expect.arrayContaining([expect.stringContaining("agentshield-report.json")]));
+  });
+
+  it("exposes evidence-pack fleet inspection through the CLI", () => {
+    const cleanTargetPath = mkdtempSync(join(tmpdir(), "agentshield-cli-fleet-clean-target-"));
+    const riskyTargetPath = mkdtempSync(join(tmpdir(), "agentshield-cli-fleet-risky-target-"));
+    const cleanOutputDir = mkdtempSync(join(tmpdir(), "agentshield-cli-fleet-clean-pack-"));
+    const riskyOutputDir = mkdtempSync(join(tmpdir(), "agentshield-cli-fleet-risky-pack-"));
+
+    writeFleetEvidencePack({
+      outputDir: cleanOutputDir,
+      targetPath: cleanTargetPath,
+      report: makeCleanReport(cleanTargetPath),
+      policyEvaluation: makePassingPolicyEvaluation(),
+      baselineComparison: makePassingBaselineComparison(cleanTargetPath),
+      generatedAt: "2026-05-13T05:12:00.000Z",
+      repository: "affaan-m/clean-repo",
+    });
+    writeFleetEvidencePack({
+      outputDir: riskyOutputDir,
+      targetPath: riskyTargetPath,
+      generatedAt: "2026-05-13T05:13:00.000Z",
+      repository: "affaan-m/risky-repo",
+    });
+
+    const text = spawnSync(process.execPath, [
+      CLI_PATH,
+      "evidence-pack",
+      "fleet",
+      cleanOutputDir,
+      riskyOutputDir,
+    ], {
+      encoding: "utf-8",
+      env: {
+        ...process.env,
+        NODE_NO_WARNINGS: "1",
+      },
+    });
+
+    expect(text.status).toBe(0);
+    expect(text.stdout).toContain("AgentShield Evidence Pack Fleet");
+    expect(text.stdout).toContain("Packs:       2 total, 2 verified, 0 invalid");
+    expect(text.stdout).toContain("Findings:    critical 1, high 0, medium 0, low 0, info 0");
+    expect(text.stdout).toContain("security-blocker affaan-m/risky-repo");
+    expect(text.stdout).toContain("ready affaan-m/clean-repo");
+
+    const json = spawnSync(process.execPath, [
+      CLI_PATH,
+      "evidence-pack",
+      "fleet",
+      cleanOutputDir,
+      riskyOutputDir,
+      "--json",
+    ], {
+      encoding: "utf-8",
+      env: {
+        ...process.env,
+        NODE_NO_WARNINGS: "1",
+      },
+    });
+
+    expect(json.status).toBe(0);
+    expect(JSON.parse(json.stdout)).toMatchObject({
+      ok: true,
+      requiresAttention: true,
+      summary: {
+        totalPacks: 2,
+        verifiedPacks: 2,
+        invalidPacks: 0,
+        critical: 1,
+        policyFailures: 1,
+        baselineRegressions: 1,
+      },
     });
   });
 });

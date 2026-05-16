@@ -15273,6 +15273,118 @@ function inspectEvidencePack(outputDir) {
     errors
   };
 }
+function inspectEvidencePackFleet(outputDirs) {
+  const entries = outputDirs.map(
+    (outputDir) => summarizeFleetEntry(inspectEvidencePack(outputDir))
+  );
+  const summary = entries.reduce(
+    (accumulator, entry) => ({
+      totalPacks: accumulator.totalPacks + 1,
+      verifiedPacks: accumulator.verifiedPacks + (entry.ok ? 1 : 0),
+      invalidPacks: accumulator.invalidPacks + (entry.ok ? 0 : 1),
+      totalFindings: accumulator.totalFindings + entry.totalFindings,
+      critical: accumulator.critical + entry.critical,
+      high: accumulator.high + entry.high,
+      medium: accumulator.medium + entry.medium,
+      low: accumulator.low + entry.low,
+      info: accumulator.info + entry.info,
+      policyFailures: accumulator.policyFailures + (entry.policyStatus === "failed" ? 1 : 0),
+      baselineRegressions: accumulator.baselineRegressions + (entry.baselineStatus === "regressed" ? 1 : 0),
+      riskyPackages: accumulator.riskyPackages + entry.riskyPackages,
+      autoFixable: accumulator.autoFixable + entry.autoFixable,
+      manualReview: accumulator.manualReview + entry.manualReview
+    }),
+    {
+      totalPacks: 0,
+      verifiedPacks: 0,
+      invalidPacks: 0,
+      totalFindings: 0,
+      critical: 0,
+      high: 0,
+      medium: 0,
+      low: 0,
+      info: 0,
+      policyFailures: 0,
+      baselineRegressions: 0,
+      riskyPackages: 0,
+      autoFixable: 0,
+      manualReview: 0
+    }
+  );
+  const routes = entries.map((entry) => ({
+    route: entry.route,
+    outputDir: entry.outputDir,
+    repository: entry.repository,
+    targetPath: entry.targetPath,
+    reason: entry.reason
+  }));
+  const errors = entries.flatMap(
+    (entry) => entry.errors.map((error) => `${entry.outputDir}: ${error}`)
+  );
+  return {
+    ok: summary.invalidPacks === 0,
+    requiresAttention: routes.some((route) => route.route !== "ready"),
+    summary,
+    entries,
+    routes,
+    errors
+  };
+}
+function summarizeFleetEntry(inspection) {
+  const findings = inspection.report?.findings;
+  const route = determineFleetRoute(inspection);
+  return {
+    outputDir: inspection.outputDir,
+    ok: inspection.ok,
+    route,
+    reason: describeFleetRoute(inspection, route),
+    generatedAt: inspection.generatedAt,
+    targetPath: inspection.targetPath,
+    repository: inspection.ciContext?.repository ?? null,
+    provider: inspection.ciContext?.provider ?? null,
+    score: inspection.report?.score.numericScore ?? null,
+    grade: inspection.report?.score.grade ?? null,
+    totalFindings: findings?.total ?? 0,
+    critical: findings?.critical ?? 0,
+    high: findings?.high ?? 0,
+    medium: findings?.medium ?? 0,
+    low: findings?.low ?? 0,
+    info: findings?.info ?? 0,
+    policyStatus: inspection.policy.status,
+    baselineStatus: inspection.baseline.status,
+    riskyPackages: inspection.supplyChain?.riskyPackages ?? 0,
+    autoFixable: inspection.remediation?.autoFixable ?? 0,
+    manualReview: inspection.remediation?.manualReview ?? 0,
+    errors: inspection.errors
+  };
+}
+function determineFleetRoute(inspection) {
+  if (!inspection.ok) return "invalid";
+  if ((inspection.report?.findings.critical ?? 0) > 0 || (inspection.report?.findings.high ?? 0) > 0) {
+    return "security-blocker";
+  }
+  if ((inspection.supplyChain?.criticalCount ?? 0) > 0 || (inspection.supplyChain?.highCount ?? 0) > 0) {
+    return "security-blocker";
+  }
+  if (inspection.policy.status === "failed") return "policy-review";
+  if (inspection.baseline.status === "regressed") return "baseline-regression";
+  if ((inspection.supplyChain?.riskyPackages ?? 0) > 0) return "supply-chain-review";
+  return "ready";
+}
+function describeFleetRoute(inspection, route) {
+  if (route === "invalid") return inspection.errors[0] ?? "evidence pack failed verification";
+  const findings = inspection.report?.findings;
+  if (route === "security-blocker") {
+    if ((findings?.critical ?? 0) > 0) return `${findings?.critical ?? 0} critical findings`;
+    if ((findings?.high ?? 0) > 0) return `${findings?.high ?? 0} high findings`;
+    if ((inspection.supplyChain?.criticalCount ?? 0) > 0) return `${inspection.supplyChain?.criticalCount ?? 0} critical supply-chain packages`;
+    return `${inspection.supplyChain?.highCount ?? 0} high supply-chain packages`;
+  }
+  if (route === "policy-review") return "policy failed";
+  if (route === "baseline-regression") return "baseline regressed";
+  if (route === "supply-chain-review") return `${inspection.supplyChain?.riskyPackages ?? 0} risky packages`;
+  return "no routing blockers";
+}
 function buildCiContext(environment, generatedAt) {
   const github = compact({
     repository: environment.GITHUB_REPOSITORY,
@@ -18464,6 +18576,40 @@ evidencePack.command("inspect").description("Inspect verified evidence-pack cont
       for (const error of result.errors) {
         writeStdout(`- ${error}`);
       }
+    }
+    writeStdout();
+  }
+  if (!result.ok) {
+    process.exit(6);
+  }
+});
+evidencePack.command("fleet").description("Inspect multiple evidence packs and summarize fleet routing").argument("<dirs...>", "Evidence-pack directories").option("--json", "Emit machine-readable fleet inspection results", false).action((dirs, options) => {
+  const result = inspectEvidencePackFleet(dirs);
+  if (options.json) {
+    writeStdout(JSON.stringify(result, null, 2));
+  } else {
+    writeStdout();
+    writeStdout("AgentShield Evidence Pack Fleet");
+    writeStdout(
+      `Packs:       ${result.summary.totalPacks} total, ${result.summary.verifiedPacks} verified, ${result.summary.invalidPacks} invalid`
+    );
+    writeStdout(`Status:      ${result.ok ? "verified" : "invalid evidence"}`);
+    writeStdout(`Attention:   ${result.requiresAttention ? "required" : "none"}`);
+    writeStdout(
+      `Findings:    critical ${result.summary.critical}, high ${result.summary.high}, medium ${result.summary.medium}, low ${result.summary.low}, info ${result.summary.info}`
+    );
+    writeStdout(
+      `Policy:      ${result.summary.policyFailures} failed; Baseline: ${result.summary.baselineRegressions} regressed; Supply: ${result.summary.riskyPackages} risky packages`
+    );
+    writeStdout(
+      `Remediate:   ${result.summary.autoFixable} auto-fixable, ${result.summary.manualReview} manual-review`
+    );
+    writeStdout();
+    writeStdout("Routes:");
+    for (const route of result.routes) {
+      writeStdout(
+        `- ${route.route} ${route.repository ?? route.targetPath ?? route.outputDir}: ${route.reason}`
+      );
     }
     writeStdout();
   }

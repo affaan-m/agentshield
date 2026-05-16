@@ -210,12 +210,17 @@ Consumers can verify and read back a saved pack:
 ```bash
 agentshield evidence-pack verify ./agentshield-evidence --json
 agentshield evidence-pack inspect ./agentshield-evidence --json
+agentshield evidence-pack fleet ./repo-a-evidence ./repo-b-evidence --json
 ```
 
 `inspect` verifies the bundle first, then emits score, finding counts,
 runtime-confidence counts, policy status, baseline drift status, supply-chain
 counts, CI provenance, and remediation workflow counts for GitHub App, Linear,
 or customer-review ingestion.
+
+`fleet` runs the same inspection across multiple evidence-pack directories and
+emits totals plus route suggestions: `invalid`, `security-blocker`,
+`policy-review`, `baseline-regression`, `supply-chain-review`, or `ready`.
 
 Top-level shape:
 
