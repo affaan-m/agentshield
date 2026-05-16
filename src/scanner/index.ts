@@ -10,7 +10,7 @@ import type {
 } from "../types.js";
 import { discoverConfigFiles } from "./discovery.js";
 import { getBuiltinRules } from "../rules/index.js";
-import { isExampleLikePath } from "../source-context.js";
+import { isExampleLikePath, isPluginCachePath } from "../source-context.js";
 import { analyzeSkillHealth } from "../skills/health.js";
 import { detectHarnessAdapters } from "../harness-adapters/index.js";
 
@@ -73,6 +73,10 @@ function classifyRuntimeConfidence(file: ConfigFile): RuntimeConfidence | undefi
     return "hook-code";
   }
 
+  if (isPluginCachePath(normalizedPath)) {
+    return "plugin-cache";
+  }
+
   if (
     file.type === "settings-json" &&
     /(?:^|\/)(?:\.claude\/)?hooks\/hooks\.json$/i.test(normalizedPath)
@@ -104,6 +108,8 @@ function adjustFindingForSourceContext(finding: Finding): Finding {
   switch (finding.runtimeConfidence) {
     case "docs-example":
       return adjustDocsExampleFinding(finding);
+    case "plugin-cache":
+      return adjustPluginCacheFinding(finding);
     case "plugin-manifest":
       return adjustPluginManifestFinding(finding);
     default:
@@ -129,6 +135,27 @@ function adjustDocsExampleFinding(finding: Finding): Finding {
       title: prefixTitle(finding.title, "Example config"),
     },
     "This finding comes from docs or sample configuration in the repository. It indicates risky guidance or example defaults, not confirmed active runtime exposure."
+  );
+}
+
+function adjustPluginCacheFinding(finding: Finding): Finding {
+  if (finding.category === "secrets") {
+    return withPrefixedDescription(
+      {
+        ...finding,
+        title: prefixTitle(finding.title, "Plugin cache"),
+      },
+      "This finding comes from an installed Claude plugin cache. It indicates packaged plugin content present on disk, not confirmed top-level runtime configuration."
+    );
+  }
+
+  return withPrefixedDescription(
+    {
+      ...finding,
+      severity: downgradeStructuralSeverity(finding.severity),
+      title: prefixTitle(finding.title, "Plugin cache"),
+    },
+    "This finding comes from an installed Claude plugin cache. It indicates packaged plugin content present on disk, not confirmed top-level runtime configuration."
   );
 }
 

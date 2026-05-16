@@ -294,6 +294,21 @@ describe("calculateScore", () => {
     expect(report.score.numericScore).toBe(100);
   });
 
+  it("discounts plugin-cache findings in score weighting", () => {
+    const result = makeScanResult([
+      makeFinding({
+        id: "plugin-cache",
+        severity: "high",
+        category: "agents",
+        runtimeConfidence: "plugin-cache",
+      }),
+    ]);
+
+    const report = calculateScore(result);
+    expect(report.score.breakdown.agents).toBe(93);
+    expect(report.score.numericScore).toBe(99);
+  });
+
   it("grades correctly at boundaries", () => {
     // A: >= 90 — 2 medium in one category
     expect(calculateScore(makeScanResult([

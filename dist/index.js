@@ -13,6 +13,9 @@ var __export = (target, all) => {
 function isExampleLikePath(path) {
   return EXAMPLE_LIKE_PATH_PATTERN.test(path.replace(/\\/g, "/"));
 }
+function isPluginCachePath(path) {
+  return /(^|\/)(?:\.claude\/)?plugins\/cache(\/|$)/i.test(path.replace(/\\/g, "/"));
+}
 var EXAMPLE_LIKE_SEGMENTS, EXAMPLE_LIKE_PATH_PATTERN;
 var init_source_context = __esm({
   "src/source-context.ts"() {
@@ -8725,6 +8728,9 @@ function classifyRuntimeConfidence(file) {
   if (file.type === "hook-code") {
     return "hook-code";
   }
+  if (isPluginCachePath(normalizedPath)) {
+    return "plugin-cache";
+  }
   if (file.type === "settings-json" && /(?:^|\/)(?:\.claude\/)?hooks\/hooks\.json$/i.test(normalizedPath)) {
     return "plugin-manifest";
   }
@@ -8745,6 +8751,8 @@ function adjustFindingForSourceContext(finding) {
   switch (finding.runtimeConfidence) {
     case "docs-example":
       return adjustDocsExampleFinding(finding);
+    case "plugin-cache":
+      return adjustPluginCacheFinding(finding);
     case "plugin-manifest":
       return adjustPluginManifestFinding(finding);
     default:
@@ -8768,6 +8776,25 @@ function adjustDocsExampleFinding(finding) {
       title: prefixTitle(finding.title, "Example config")
     },
     "This finding comes from docs or sample configuration in the repository. It indicates risky guidance or example defaults, not confirmed active runtime exposure."
+  );
+}
+function adjustPluginCacheFinding(finding) {
+  if (finding.category === "secrets") {
+    return withPrefixedDescription(
+      {
+        ...finding,
+        title: prefixTitle(finding.title, "Plugin cache")
+      },
+      "This finding comes from an installed Claude plugin cache. It indicates packaged plugin content present on disk, not confirmed top-level runtime configuration."
+    );
+  }
+  return withPrefixedDescription(
+    {
+      ...finding,
+      severity: downgradeStructuralSeverity(finding.severity),
+      title: prefixTitle(finding.title, "Plugin cache")
+    },
+    "This finding comes from an installed Claude plugin cache. It indicates packaged plugin content present on disk, not confirmed top-level runtime configuration."
   );
 }
 function adjustPluginManifestFinding(finding) {
@@ -9244,6 +9271,8 @@ function formatRuntimeConfidence(value) {
       return "template/example";
     case "docs-example":
       return "docs/example";
+    case "plugin-cache":
+      return "plugin cache";
     case "plugin-manifest":
       return "plugin manifest";
     case "hook-code":
@@ -13618,6 +13647,9 @@ function confidenceWeight(finding) {
   if (finding.runtimeConfidence === "plugin-manifest" && finding.category !== "secrets") {
     return 0.5;
   }
+  if (finding.runtimeConfidence === "plugin-cache" && finding.category !== "secrets") {
+    return 0.5;
+  }
   return 1;
 }
 function roundedCategoryScore(maxCategoryScore, deduction) {
@@ -13662,6 +13694,8 @@ function formatRuntimeConfidence2(value) {
       return "template/example";
     case "docs-example":
       return "docs/example";
+    case "plugin-cache":
+      return "plugin cache";
     case "plugin-manifest":
       return "plugin manifest";
     case "hook-code":
@@ -14159,6 +14193,8 @@ function formatRuntimeConfidence3(value) {
       return "template/example";
     case "docs-example":
       return "docs/example";
+    case "plugin-cache":
+      return "plugin cache";
     case "plugin-manifest":
       return "plugin manifest";
     case "hook-code":
@@ -14959,7 +14995,7 @@ function severityToSecurityScore(severity) {
 }
 function precisionForFinding(finding) {
   if (finding.runtimeConfidence === "active-runtime") return "very-high";
-  if (finding.runtimeConfidence === "template-example" || finding.runtimeConfidence === "docs-example") {
+  if (finding.runtimeConfidence === "template-example" || finding.runtimeConfidence === "docs-example" || finding.runtimeConfidence === "plugin-cache") {
     return "medium";
   }
   return "high";

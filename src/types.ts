@@ -32,6 +32,7 @@ export type RuntimeConfidence =
   | "project-local-optional"
   | "template-example"
   | "docs-example"
+  | "plugin-cache"
   | "plugin-manifest"
   | "hook-code";
 

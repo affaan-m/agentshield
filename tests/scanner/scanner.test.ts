@@ -309,6 +309,30 @@ describe("scanner", () => {
       expect(finding?.description).toContain("declarative hook manifest");
     });
 
+    it("marks installed Claude plugin cache findings separately from active runtime config", () => {
+      const tempDir = mkdtempSync(join(tmpdir(), "agentshield-scan-"));
+      mkdirSync(join(tempDir, ".claude", "plugins", "cache", "acme", "pluginpkg", "1.0.0", "agents"), {
+        recursive: true,
+      });
+      writeFileSync(
+        join(tempDir, ".claude", "plugins", "cache", "acme", "pluginpkg", "1.0.0", "CLAUDE.md"),
+        "# Plugin instructions",
+      );
+      writeFileSync(
+        join(tempDir, ".claude", "plugins", "cache", "acme", "pluginpkg", "1.0.0", "agents", "reviewer.md"),
+        "tools: Bash\n",
+      );
+
+      const result = scan(join(tempDir, ".claude"));
+      const finding = result.findings.find((f) =>
+        f.file.endsWith("plugins/cache/acme/pluginpkg/1.0.0/agents/reviewer.md")
+      );
+
+      expect(finding?.runtimeConfidence).toBe("plugin-cache");
+      expect(finding?.title).toMatch(/^Plugin cache: /);
+      expect(finding?.description).toContain("installed Claude plugin cache");
+    });
+
     it("marks manifest-resolved hook-code findings as hook-code", () => {
       const tempDir = mkdtempSync(join(tmpdir(), "agentshield-scan-"));
       mkdirSync(join(tempDir, "hooks"));

@@ -26,4 +26,8 @@ export function isExampleLikePath(path: string): boolean {
   return EXAMPLE_LIKE_PATH_PATTERN.test(path.replace(/\\/g, "/"));
 }
 
+export function isPluginCachePath(path: string): boolean {
+  return /(^|\/)(?:\.claude\/)?plugins\/cache(\/|$)/i.test(path.replace(/\\/g, "/"));
+}
+
 export { EXAMPLE_LIKE_SEGMENTS };

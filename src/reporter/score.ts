@@ -124,6 +124,10 @@ function confidenceWeight(finding: Finding): number {
     return 0.5;
   }
 
+  if (finding.runtimeConfidence === "plugin-cache" && finding.category !== "secrets") {
+    return 0.5;
+  }
+
   return 1;
 }
 

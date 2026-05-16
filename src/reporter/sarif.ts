@@ -282,7 +282,11 @@ function severityToSecurityScore(severity: Severity): string {
 
 function precisionForFinding(finding: Finding): "very-high" | "high" | "medium" {
   if (finding.runtimeConfidence === "active-runtime") return "very-high";
-  if (finding.runtimeConfidence === "template-example" || finding.runtimeConfidence === "docs-example") {
+  if (
+    finding.runtimeConfidence === "template-example" ||
+    finding.runtimeConfidence === "docs-example" ||
+    finding.runtimeConfidence === "plugin-cache"
+  ) {
     return "medium";
   }
   return "high";

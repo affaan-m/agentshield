@@ -285,6 +285,15 @@ describe("renderMarkdownReport", () => {
         },
         {
           id: "RC-4",
+          severity: "low",
+          category: "agents",
+          title: "Plugin cache source",
+          description: "A test",
+          file: ".claude/plugins/cache/demo/agent.md",
+          runtimeConfidence: "plugin-cache",
+        },
+        {
+          id: "RC-5",
           severity: "info",
           category: "agents",
           title: "Unknown confidence source",
@@ -294,13 +303,13 @@ describe("renderMarkdownReport", () => {
         },
       ],
       summary: {
-        totalFindings: 4,
+        totalFindings: 5,
         critical: 0,
         high: 1,
         medium: 1,
-        low: 1,
+        low: 2,
         info: 1,
-        filesScanned: 4,
+        filesScanned: 5,
         autoFixable: 0,
       },
     }));
@@ -308,6 +317,7 @@ describe("renderMarkdownReport", () => {
     expect(output).toContain("project-local optional");
     expect(output).toContain("docs/example");
     expect(output).toContain("plugin manifest");
+    expect(output).toContain("plugin cache");
     expect(output).toContain("custom-confidence");
   });
 

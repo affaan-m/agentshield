@@ -523,6 +523,8 @@ function formatRuntimeConfidence(value: RuntimeConfidence): string {
       return "template/example";
     case "docs-example":
       return "docs/example";
+    case "plugin-cache":
+      return "plugin cache";
     case "plugin-manifest":
       return "plugin manifest";
     case "hook-code":
