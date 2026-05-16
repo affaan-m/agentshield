@@ -10,13 +10,28 @@ var __export = (target, all) => {
 };
 
 // src/source-context.ts
+function findAllMatches(content, pattern) {
+  const flags = pattern.flags.includes("g") ? pattern.flags : pattern.flags + "g";
+  return [...content.matchAll(new RegExp(pattern.source, flags))];
+}
 function isExampleLikePath(path) {
   return EXAMPLE_LIKE_PATH_PATTERN.test(path.replace(/\\/g, "/"));
 }
-function isPluginCachePath(path) {
-  return /(^|\/)(?:\.claude\/)?plugins\/cache(\/|$)/i.test(path.replace(/\\/g, "/"));
+function isPluginCachePath(path, scanRoot) {
+  const normalizedPath = path.replace(/\\/g, "/");
+  if (findAllMatches(normalizedPath, CLAUDE_PLUGIN_CACHE_PATH_PATTERN).length > 0) {
+    return true;
+  }
+  if (!scanRoot || !isClaudeScanRoot(scanRoot)) {
+    return false;
+  }
+  return findAllMatches(normalizedPath, CLAUDE_SCAN_ROOT_PLUGIN_CACHE_PATH_PATTERN).length > 0;
 }
-var EXAMPLE_LIKE_SEGMENTS, EXAMPLE_LIKE_PATH_PATTERN;
+function isClaudeScanRoot(scanRoot) {
+  const normalizedRoot = scanRoot.replace(/\\/g, "/").replace(/\/+$/, "").toLowerCase();
+  return normalizedRoot === ".claude" || normalizedRoot.endsWith("/.claude");
+}
+var EXAMPLE_LIKE_SEGMENTS, EXAMPLE_LIKE_PATH_PATTERN, CLAUDE_PLUGIN_CACHE_PATH_PATTERN, CLAUDE_SCAN_ROOT_PLUGIN_CACHE_PATH_PATTERN;
 var init_source_context = __esm({
   "src/source-context.ts"() {
     "use strict";
@@ -42,6 +57,8 @@ var init_source_context = __esm({
       `(^|/)(${EXAMPLE_LIKE_SEGMENTS.join("|")})(/|$)`,
       "i"
     );
+    CLAUDE_PLUGIN_CACHE_PATH_PATTERN = /(^|\/)\.claude\/plugins\/cache(\/|$)/i;
+    CLAUDE_SCAN_ROOT_PLUGIN_CACHE_PATH_PATTERN = /^plugins\/cache(\/|$)/i;
   }
 });
 
@@ -359,7 +376,7 @@ var init_discovery = __esm({
 function findLineNumber(content, matchIndex) {
   return content.substring(0, matchIndex).split("\n").length;
 }
-function findAllMatches(content, pattern) {
+function findAllMatches2(content, pattern) {
   const flags = pattern.flags.includes("g") ? pattern.flags : pattern.flags + "g";
   return [...content.matchAll(new RegExp(pattern.source, flags))];
 }
@@ -570,7 +587,7 @@ var init_secrets = __esm({
         check(file) {
           const findings = [];
           for (const secretPattern of SECRET_PATTERNS) {
-            const matches = findAllMatches(file.content, secretPattern.pattern);
+            const matches = findAllMatches2(file.content, secretPattern.pattern);
             for (const match of matches) {
               const idx = match.index ?? 0;
               const context = file.content.substring(
@@ -618,7 +635,7 @@ var init_secrets = __esm({
         check(file) {
           const findings = [];
           const echoEnvPattern = /echo\s+.*\$\{?\w*(KEY|TOKEN|SECRET|PASSWORD|PASS|CRED)\w*\}?/gi;
-          const matches = findAllMatches(file.content, echoEnvPattern);
+          const matches = findAllMatches2(file.content, echoEnvPattern);
           for (const match of matches) {
             findings.push({
               id: `secrets-echo-env-${match.index}`,
@@ -650,7 +667,7 @@ var init_secrets = __esm({
           if (file.type !== "claude-md") return [];
           const findings = [];
           const envAssignmentPattern = /(?:export\s+)?\b(\w*(?:API_KEY|SECRET_KEY|AUTH_TOKEN|ACCESS_TOKEN|PRIVATE_KEY|PASSWORD|CREDENTIAL|API_SECRET)\w*)\s*[=:]\s*["']?([^\s"']{4,})["']?/gi;
-          const matches = findAllMatches(file.content, envAssignmentPattern);
+          const matches = findAllMatches2(file.content, envAssignmentPattern);
           for (const match of matches) {
             const varName = match[1];
             const idx = match.index ?? 0;
@@ -728,7 +745,7 @@ var init_secrets = __esm({
           if (file.type !== "agent-md" && file.type !== "claude-md") return [];
           const findings = [];
           const urlCredPattern = /https?:\/\/[^:\s]+:[^@\s]+@[^\s"']+/g;
-          const matches = findAllMatches(file.content, urlCredPattern);
+          const matches = findAllMatches2(file.content, urlCredPattern);
           for (const match of matches) {
             const idx = match.index ?? 0;
             const context = file.content.substring(Math.max(0, idx - 20), idx);
@@ -794,7 +811,7 @@ var init_secrets = __esm({
             }
           ];
           for (const { pattern, description } of credentialFiles) {
-            const matches = findAllMatches(file.content, pattern);
+            const matches = findAllMatches2(file.content, pattern);
             for (const match of matches) {
               const idx = match.index ?? 0;
               findings.push({
@@ -831,7 +848,7 @@ var init_secrets = __esm({
             }
           ];
           for (const { pattern, description } of keyPatterns) {
-            const matches = findAllMatches(file.content, pattern);
+            const matches = findAllMatches2(file.content, pattern);
             for (const match of matches) {
               const idx = match.index ?? 0;
               findings.push({
@@ -878,7 +895,7 @@ var init_secrets = __esm({
             }
           ];
           for (const { pattern, description } of webhookPatterns) {
-            const matches = findAllMatches(file.content, pattern);
+            const matches = findAllMatches2(file.content, pattern);
             for (const match of matches) {
               const idx = match.index ?? 0;
               findings.push({
@@ -912,7 +929,7 @@ var init_secrets = __esm({
           if (file.type !== "agent-md" && file.type !== "claude-md") return [];
           const findings = [];
           const base64Pattern = /(?<![a-zA-Z0-9/])([A-Za-z0-9+/]{60,}={0,2})(?![a-zA-Z0-9])/g;
-          const matches = findAllMatches(file.content, base64Pattern);
+          const matches = findAllMatches2(file.content, base64Pattern);
           for (const match of matches) {
             const idx = match.index ?? 0;
             const context = file.content.substring(Math.max(0, idx - 30), idx);
@@ -955,7 +972,7 @@ var init_secrets = __esm({
             }
           ];
           for (const { pattern, description } of ipPatterns) {
-            const matches = findAllMatches(file.content, pattern);
+            const matches = findAllMatches2(file.content, pattern);
             for (const match of matches) {
               const idx = match.index ?? 0;
               findings.push({
@@ -1806,7 +1823,7 @@ var init_permissions = __esm({
 function findLineNumber3(content, matchIndex) {
   return content.substring(0, matchIndex).split("\n").length;
 }
-function findAllMatches2(content, pattern) {
+function findAllMatches3(content, pattern) {
   return [...content.matchAll(new RegExp(pattern.source, pattern.flags.includes("g") ? pattern.flags : pattern.flags + "g"))];
 }
 function isPluginHookManifest(file) {
@@ -2043,7 +2060,7 @@ function isBlockingGuardCommand(content) {
 function findAllHookMatches(file, pattern) {
   const matches = [];
   for (const target of getHookSearchTargets(file)) {
-    for (const match of findAllMatches2(target.content, pattern)) {
+    for (const match of findAllMatches3(target.content, pattern)) {
       if (file.type === "hook-script" && isCommentOnlyShellMatch(target.content, match.index ?? 0)) {
         continue;
       }
@@ -2254,7 +2271,7 @@ var init_hooks = __esm({
           ];
           for (const ioc of AI_TOOL_PERSISTENCE_IOCS) {
             for (const target of searchTargets) {
-              for (const match of findAllMatches2(target.content, ioc.pattern)) {
+              for (const match of findAllMatches3(target.content, ioc.pattern)) {
                 const index = match.index ?? 0;
                 if (target.source === "content" && isCommentOnlyAutomationMatch(file, target.content, index)) {
                   continue;
@@ -6024,7 +6041,7 @@ var init_mcp_tool_poisoning = __esm({
 function findLineNumber4(content, matchIndex) {
   return content.substring(0, matchIndex).split("\n").length;
 }
-function findAllMatches3(content, pattern) {
+function findAllMatches4(content, pattern) {
   const flags = pattern.flags.includes("g") ? pattern.flags : pattern.flags + "g";
   return [...content.matchAll(new RegExp(pattern.source, flags))];
 }
@@ -6280,7 +6297,7 @@ var init_agents = __esm({
             }
           ];
           for (const { pattern, desc, severity } of urlExecPatterns) {
-            const matches = findAllMatches3(file.content, pattern);
+            const matches = findAllMatches4(file.content, pattern);
             for (const match of matches) {
               findings.push({
                 id: `agents-claude-md-url-exec-${match.index}`,
@@ -6329,7 +6346,7 @@ var init_agents = __esm({
             }
           ];
           for (const { pattern, desc } of injectionPatterns) {
-            const matches = findAllMatches3(file.content, pattern);
+            const matches = findAllMatches4(file.content, pattern);
             for (const match of matches) {
               findings.push({
                 id: `agents-injection-pattern-${match.index}`,
@@ -6384,7 +6401,7 @@ var init_agents = __esm({
             }
           ];
           for (const { pattern, name, description } of unicodeTricks) {
-            const matches = findAllMatches3(file.content, pattern);
+            const matches = findAllMatches4(file.content, pattern);
             if (matches.length > 0) {
               findings.push({
                 id: `agents-hidden-unicode-${name.replace(/\s/g, "-")}`,
@@ -6509,7 +6526,7 @@ var init_agents = __esm({
             }
           ];
           for (const { pattern, desc } of autoRunPatterns) {
-            const matches = findAllMatches3(file.content, pattern);
+            const matches = findAllMatches4(file.content, pattern);
             for (const match of matches) {
               findings.push({
                 id: `agents-claude-md-autorun-${match.index}`,
@@ -6615,7 +6632,7 @@ var init_agents = __esm({
             }
           ];
           for (const { pattern, desc } of commentPatterns) {
-            const matches = findAllMatches3(file.content, pattern);
+            const matches = findAllMatches4(file.content, pattern);
             for (const match of matches) {
               findings.push({
                 id: `agents-comment-injection-${match.index}`,
@@ -6682,7 +6699,7 @@ var init_agents = __esm({
             }
           ];
           for (const { pattern, desc } of delegationPatterns) {
-            const matches = findAllMatches3(file.content, pattern);
+            const matches = findAllMatches4(file.content, pattern);
             for (const match of matches) {
               findings.push({
                 id: `agents-unrestricted-delegation-${match.index}`,
@@ -6727,7 +6744,7 @@ var init_agents = __esm({
             }
           ];
           for (const { pattern, desc } of exfilPatterns) {
-            const matches = findAllMatches3(file.content, pattern);
+            const matches = findAllMatches4(file.content, pattern);
             for (const match of matches) {
               findings.push({
                 id: `agents-exfil-instruction-${match.index}`,
@@ -6772,7 +6789,7 @@ var init_agents = __esm({
             }
           ];
           for (const { pattern, desc } of urlLoadPatterns) {
-            const matches = findAllMatches3(file.content, pattern);
+            const matches = findAllMatches4(file.content, pattern);
             for (const match of matches) {
               findings.push({
                 id: `agents-external-url-${match.index}`,
@@ -6813,7 +6830,7 @@ var init_agents = __esm({
             }
           ];
           for (const { pattern, desc } of suppressionPatterns) {
-            const matches = findAllMatches3(file.content, pattern);
+            const matches = findAllMatches4(file.content, pattern);
             for (const match of matches) {
               findings.push({
                 id: `agents-security-suppression-${match.index}`,
@@ -6854,7 +6871,7 @@ var init_agents = __esm({
             }
           ];
           for (const { pattern, desc } of impersonationPatterns) {
-            const matches = findAllMatches3(file.content, pattern);
+            const matches = findAllMatches4(file.content, pattern);
             for (const match of matches) {
               findings.push({
                 id: `agents-identity-impersonation-${match.index}`,
@@ -6895,7 +6912,7 @@ var init_agents = __esm({
             }
           ];
           for (const { pattern, desc } of destructionPatterns) {
-            const matches = findAllMatches3(file.content, pattern);
+            const matches = findAllMatches4(file.content, pattern);
             for (const match of matches) {
               findings.push({
                 id: `agents-fs-destruction-${match.index}`,
@@ -6936,7 +6953,7 @@ var init_agents = __esm({
             }
           ];
           for (const { pattern, desc } of miningPatterns) {
-            const matches = findAllMatches3(file.content, pattern);
+            const matches = findAllMatches4(file.content, pattern);
             for (const match of matches) {
               findings.push({
                 id: `agents-crypto-mining-${match.index}`,
@@ -6981,7 +6998,7 @@ var init_agents = __esm({
             }
           ];
           for (const { pattern, desc } of timeBombPatterns) {
-            const matches = findAllMatches3(file.content, pattern);
+            const matches = findAllMatches4(file.content, pattern);
             for (const match of matches) {
               findings.push({
                 id: `agents-time-bomb-${match.index}`,
@@ -7022,7 +7039,7 @@ var init_agents = __esm({
             }
           ];
           for (const { pattern, desc } of harvestingPatterns) {
-            const matches = findAllMatches3(file.content, pattern);
+            const matches = findAllMatches4(file.content, pattern);
             for (const match of matches) {
               findings.push({
                 id: `agents-data-harvesting-${match.index}`,
@@ -7063,7 +7080,7 @@ var init_agents = __esm({
             }
           ];
           for (const { pattern, desc } of obfuscationPatterns) {
-            const matches = findAllMatches3(file.content, pattern);
+            const matches = findAllMatches4(file.content, pattern);
             for (const match of matches) {
               findings.push({
                 id: `agents-obfuscated-code-${match.index}`,
@@ -7104,7 +7121,7 @@ var init_agents = __esm({
             }
           ];
           for (const { pattern, desc } of sePatterns) {
-            const matches = findAllMatches3(file.content, pattern);
+            const matches = findAllMatches4(file.content, pattern);
             for (const match of matches) {
               findings.push({
                 id: `agents-social-engineering-${match.index}`,
@@ -7149,7 +7166,7 @@ var init_agents = __esm({
             }
           ];
           for (const { pattern, desc } of reflectionPatterns) {
-            const matches = findAllMatches3(file.content, pattern);
+            const matches = findAllMatches4(file.content, pattern);
             for (const match of matches) {
               findings.push({
                 id: `agents-reflection-${match.index}`,
@@ -7190,7 +7207,7 @@ var init_agents = __esm({
             }
           ];
           for (const { pattern, desc } of outputManipPatterns) {
-            const matches = findAllMatches3(file.content, pattern);
+            const matches = findAllMatches4(file.content, pattern);
             for (const match of matches) {
               findings.push({
                 id: `agents-output-manip-${match.index}`,
@@ -7239,7 +7256,7 @@ var init_agents = __esm({
             }
           ];
           for (const { pattern, desc } of endSequencePatterns) {
-            const matches = findAllMatches3(file.content, pattern);
+            const matches = findAllMatches4(file.content, pattern);
             for (const match of matches) {
               findings.push({
                 id: `agents-end-sequence-${match.index}`,
@@ -7280,7 +7297,7 @@ var init_agents = __esm({
             }
           ];
           for (const { pattern, desc } of linkExfilPatterns) {
-            const matches = findAllMatches3(file.content, pattern);
+            const matches = findAllMatches4(file.content, pattern);
             for (const match of matches) {
               const url = match[0].toLowerCase();
               if (url.includes("github.com") || url.includes("shields.io") || url.includes("githubusercontent.com")) continue;
@@ -7323,7 +7340,7 @@ var init_agents = __esm({
             }
           ];
           for (const { pattern, desc } of russianDollPatterns) {
-            const matches = findAllMatches3(file.content, pattern);
+            const matches = findAllMatches4(file.content, pattern);
             for (const match of matches) {
               findings.push({
                 id: `agents-russian-doll-${match.index}`,
@@ -7368,7 +7385,7 @@ var init_agents = __esm({
             }
           ];
           for (const { pattern, desc } of encodedPatterns) {
-            const matches = findAllMatches3(file.content, pattern);
+            const matches = findAllMatches4(file.content, pattern);
             for (const match of matches) {
               findings.push({
                 id: `agents-encoded-payload-${match.index}`,
@@ -7413,7 +7430,7 @@ var init_agents = __esm({
             }
           ];
           for (const { pattern, desc } of toolPoisoningPatterns) {
-            const matches = findAllMatches3(file.content, pattern);
+            const matches = findAllMatches4(file.content, pattern);
             for (const match of matches) {
               findings.push({
                 id: `agents-tool-poisoning-${match.index}`,
@@ -7454,7 +7471,7 @@ var init_agents = __esm({
             }
           ];
           for (const { pattern, desc } of probingPatterns) {
-            const matches = findAllMatches3(file.content, pattern);
+            const matches = findAllMatches4(file.content, pattern);
             for (const match of matches) {
               findings.push({
                 id: `agents-env-probing-${match.index}`,
@@ -7503,7 +7520,7 @@ var init_agents = __esm({
             }
           ];
           for (const { pattern, desc } of persistencePatterns) {
-            const matches = findAllMatches3(file.content, pattern);
+            const matches = findAllMatches4(file.content, pattern);
             for (const match of matches) {
               findings.push({
                 id: `agents-persistence-${match.index}`,
@@ -7552,7 +7569,7 @@ var init_agents = __esm({
             }
           ];
           for (const { pattern, desc } of privescPatterns) {
-            const matches = findAllMatches3(file.content, pattern);
+            const matches = findAllMatches4(file.content, pattern);
             for (const match of matches) {
               findings.push({
                 id: `agents-privesc-${match.index}`,
@@ -7597,7 +7614,7 @@ var init_agents = __esm({
             }
           ];
           for (const { pattern, desc } of allowlistPatterns) {
-            const matches = findAllMatches3(file.content, pattern);
+            const matches = findAllMatches4(file.content, pattern);
             for (const match of matches) {
               findings.push({
                 id: `agents-allowlist-bypass-${match.index}`,
@@ -7642,7 +7659,7 @@ var init_agents = __esm({
             }
           ];
           for (const { pattern, desc } of skillTamperPatterns) {
-            const matches = findAllMatches3(file.content, pattern);
+            const matches = findAllMatches4(file.content, pattern);
             for (const match of matches) {
               findings.push({
                 id: `agents-skill-tamper-${match.index}`,
@@ -7683,7 +7700,7 @@ var init_agents = __esm({
             }
           ];
           for (const { pattern, desc } of leakagePatterns) {
-            const matches = findAllMatches3(file.content, pattern);
+            const matches = findAllMatches4(file.content, pattern);
             for (const match of matches) {
               findings.push({
                 id: `agents-config-secret-leak-${match.index}`,
@@ -7724,7 +7741,7 @@ var init_agents = __esm({
             }
           ];
           for (const { pattern, desc } of outputSecretPatterns) {
-            const matches = findAllMatches3(file.content, pattern);
+            const matches = findAllMatches4(file.content, pattern);
             for (const match of matches) {
               findings.push({
                 id: `agents-secrets-in-output-${match.index}`,
@@ -7766,7 +7783,7 @@ var init_agents = __esm({
             }
           ];
           for (const { pattern, desc } of extractionPatterns) {
-            const matches = findAllMatches3(file.content, pattern);
+            const matches = findAllMatches4(file.content, pattern);
             for (const match of matches) {
               findings.push({
                 id: `agents-prompt-extraction-${match.index}`,
@@ -7815,7 +7832,7 @@ var init_agents = __esm({
             }
           ];
           for (const { pattern, desc } of framingPatterns) {
-            const matches = findAllMatches3(file.content, pattern);
+            const matches = findAllMatches4(file.content, pattern);
             for (const match of matches) {
               findings.push({
                 id: `agents-jailbreak-framing-${match.index}`,
@@ -7860,7 +7877,7 @@ var init_agents = __esm({
             }
           ];
           for (const { pattern, desc } of rolePatterns) {
-            const matches = findAllMatches3(file.content, pattern);
+            const matches = findAllMatches4(file.content, pattern);
             for (const match of matches) {
               findings.push({
                 id: `agents-role-hijacking-${match.index}`,
@@ -7905,7 +7922,7 @@ var init_agents = __esm({
             }
           ];
           for (const { pattern, desc } of destructiveToolPatterns) {
-            const matches = findAllMatches3(file.content, pattern);
+            const matches = findAllMatches4(file.content, pattern);
             for (const match of matches) {
               findings.push({
                 id: `agents-destructive-tool-${match.index}`,
@@ -8697,12 +8714,12 @@ __export(scanner_exports, {
 function scan(targetPath) {
   const target = discoverConfigFiles(targetPath);
   const rules = getBuiltinRules();
-  const findings = runRules(target.files, rules);
+  const findings = runRules(target.files, rules, target.path);
   const skillHealth = analyzeSkillHealth(target.files);
   const harnessAdapters = detectHarnessAdapters(targetPath);
   return { target, findings, skillHealth, harnessAdapters };
 }
-function runRules(files, rules) {
+function runRules(files, rules, scanRoot) {
   const findings = [];
   for (const file of files) {
     for (const rule of rules) {
@@ -8712,7 +8729,7 @@ function runRules(files, rules) {
   }
   const filesByPath = new Map(files.map((file) => [file.path, file]));
   const annotatedFindings = findings.map((finding) => {
-    const annotatedFinding = annotateFindingRuntimeConfidence(finding, filesByPath);
+    const annotatedFinding = annotateFindingRuntimeConfidence(finding, filesByPath, scanRoot);
     return adjustFindingForSourceContext(annotatedFinding);
   });
   return [...annotatedFindings].sort((a, b) => {
@@ -8720,16 +8737,16 @@ function runRules(files, rules) {
     return order[a.severity] - order[b.severity];
   });
 }
-function classifyRuntimeConfidence(file) {
+function classifyRuntimeConfidence(file, scanRoot) {
   const normalizedPath = file.path.replace(/\\/g, "/").toLowerCase();
   if (normalizedPath === "settings.local.json" || normalizedPath.endsWith("/settings.local.json")) {
     return "project-local-optional";
   }
+  if (isPluginCachePath(file.path, scanRoot)) {
+    return "plugin-cache";
+  }
   if (file.type === "hook-code") {
     return "hook-code";
-  }
-  if (isPluginCachePath(normalizedPath)) {
-    return "plugin-cache";
   }
   if (file.type === "settings-json" && /(?:^|\/)(?:\.claude\/)?hooks\/hooks\.json$/i.test(normalizedPath)) {
     return "plugin-manifest";
@@ -8739,12 +8756,12 @@ function classifyRuntimeConfidence(file) {
   }
   return void 0;
 }
-function annotateFindingRuntimeConfidence(finding, filesByPath) {
+function annotateFindingRuntimeConfidence(finding, filesByPath, scanRoot) {
   if (finding.runtimeConfidence) {
     return finding;
   }
   const file = filesByPath.get(finding.file);
-  const runtimeConfidence = file ? classifyRuntimeConfidence(file) : void 0;
+  const runtimeConfidence = file ? classifyRuntimeConfidence(file, scanRoot) : void 0;
   return runtimeConfidence ? { ...finding, runtimeConfidence } : finding;
 }
 function adjustFindingForSourceContext(finding) {

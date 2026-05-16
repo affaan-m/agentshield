@@ -27,7 +27,7 @@ export interface ScanResult {
 export function scan(targetPath: string): ScanResult {
   const target = discoverConfigFiles(targetPath);
   const rules = getBuiltinRules();
-  const findings = runRules(target.files, rules);
+  const findings = runRules(target.files, rules, target.path);
   const skillHealth = analyzeSkillHealth(target.files);
   const harnessAdapters = detectHarnessAdapters(targetPath);
 
@@ -39,7 +39,8 @@ export function scan(targetPath: string): ScanResult {
  */
 function runRules(
   files: ReadonlyArray<ConfigFile>,
-  rules: ReadonlyArray<Rule>
+  rules: ReadonlyArray<Rule>,
+  scanRoot: string
 ): ReadonlyArray<Finding> {
   const findings: Finding[] = [];
 
@@ -52,7 +53,7 @@ function runRules(
 
   const filesByPath = new Map(files.map((file) => [file.path, file]));
   const annotatedFindings = findings.map((finding) => {
-    const annotatedFinding = annotateFindingRuntimeConfidence(finding, filesByPath);
+    const annotatedFinding = annotateFindingRuntimeConfidence(finding, filesByPath, scanRoot);
     return adjustFindingForSourceContext(annotatedFinding);
   });
 
@@ -63,18 +64,18 @@ function runRules(
   });
 }
 
-function classifyRuntimeConfidence(file: ConfigFile): RuntimeConfidence | undefined {
+function classifyRuntimeConfidence(file: ConfigFile, scanRoot: string): RuntimeConfidence | undefined {
   const normalizedPath = file.path.replace(/\\/g, "/").toLowerCase();
   if (normalizedPath === "settings.local.json" || normalizedPath.endsWith("/settings.local.json")) {
     return "project-local-optional";
   }
 
-  if (file.type === "hook-code") {
-    return "hook-code";
+  if (isPluginCachePath(file.path, scanRoot)) {
+    return "plugin-cache";
   }
 
-  if (isPluginCachePath(normalizedPath)) {
-    return "plugin-cache";
+  if (file.type === "hook-code") {
+    return "hook-code";
   }
 
   if (
@@ -93,14 +94,15 @@ function classifyRuntimeConfidence(file: ConfigFile): RuntimeConfidence | undefi
 
 function annotateFindingRuntimeConfidence(
   finding: Finding,
-  filesByPath: ReadonlyMap<string, ConfigFile>
+  filesByPath: ReadonlyMap<string, ConfigFile>,
+  scanRoot: string
 ): Finding {
   if (finding.runtimeConfidence) {
     return finding;
   }
 
   const file = filesByPath.get(finding.file);
-  const runtimeConfidence = file ? classifyRuntimeConfidence(file) : undefined;
+  const runtimeConfidence = file ? classifyRuntimeConfidence(file, scanRoot) : undefined;
   return runtimeConfidence ? { ...finding, runtimeConfidence } : finding;
 }
 

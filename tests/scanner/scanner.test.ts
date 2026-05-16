@@ -333,6 +333,50 @@ describe("scanner", () => {
       expect(finding?.description).toContain("installed Claude plugin cache");
     });
 
+    it("does not treat repository-local non-Claude plugin caches as installed Claude plugin cache", () => {
+      const tempDir = mkdtempSync(join(tmpdir(), "agentshield-scan-"));
+      mkdirSync(join(tempDir, "plugins", "cache", "acme", "pluginpkg", "agents"), {
+        recursive: true,
+      });
+      writeFileSync(
+        join(tempDir, "plugins", "cache", "acme", "pluginpkg", "CLAUDE.md"),
+        "# Plugin instructions",
+      );
+      writeFileSync(
+        join(tempDir, "plugins", "cache", "acme", "pluginpkg", "agents", "reviewer.md"),
+        "tools: Bash\n",
+      );
+
+      const result = scan(tempDir);
+      const finding = result.findings.find((f) =>
+        f.file.endsWith("plugins/cache/acme/pluginpkg/agents/reviewer.md")
+      );
+
+      expect(finding?.runtimeConfidence).not.toBe("plugin-cache");
+    });
+
+    it("marks hook-code inside installed Claude plugin caches as plugin-cache", () => {
+      const tempDir = mkdtempSync(join(tmpdir(), "agentshield-scan-"));
+      mkdirSync(join(tempDir, ".claude", "plugins", "cache", "acme", "pluginpkg", "1.0.0", "hooks"), {
+        recursive: true,
+      });
+      writeFileSync(
+        join(tempDir, ".claude", "plugins", "cache", "acme", "pluginpkg", "1.0.0", "CLAUDE.md"),
+        "# Plugin instructions",
+      );
+      writeFileSync(
+        join(tempDir, ".claude", "plugins", "cache", "acme", "pluginpkg", "1.0.0", "hooks", "session-start.js"),
+        "const { output } = require('../lib/utils');\noutput('hello');\n",
+      );
+
+      const result = scan(join(tempDir, ".claude"));
+      const finding = result.findings.find((f) =>
+        f.file.endsWith("plugins/cache/acme/pluginpkg/1.0.0/hooks/session-start.js")
+      );
+
+      expect(finding?.runtimeConfidence).toBe("plugin-cache");
+    });
+
     it("marks manifest-resolved hook-code findings as hook-code", () => {
       const tempDir = mkdtempSync(join(tmpdir(), "agentshield-scan-"));
       mkdirSync(join(tempDir, "hooks"));
