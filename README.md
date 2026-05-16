@@ -423,6 +423,14 @@ agentshield evidence-pack verify ./agentshield-evidence
 agentshield evidence-pack verify ./agentshield-evidence --json
 ```
 
+Inspect a verified evidence pack when a downstream GitHub App, Linear sync, or
+security-review workflow needs a compact readback without opening every artifact:
+
+```bash
+agentshield evidence-pack inspect ./agentshield-evidence
+agentshield evidence-pack inspect ./agentshield-evidence --json
+```
+
 ### JSON Report Shape
 
 `agentshield scan --format json` is the supported machine-readable scanner interface today.
@@ -574,6 +582,7 @@ agentshield scan [options]         Scan configuration directory
 
 agentshield init                   Generate secure baseline config
 agentshield baseline write         Write a scan baseline JSON file
+agentshield evidence-pack inspect  Verify and summarize an evidence bundle
 agentshield evidence-pack verify   Verify artifact and bundle digests
 agentshield policy init            Generate an organization policy preset
 ```

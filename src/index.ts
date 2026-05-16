@@ -10,7 +10,7 @@ import { renderTerminalReport } from "./reporter/terminal.js";
 import { renderJsonReport, renderMarkdownReport } from "./reporter/json.js";
 import { renderHtmlReport } from "./reporter/html.js";
 import { renderSarifReport } from "./reporter/sarif.js";
-import { verifyEvidencePack, writeEvidencePack } from "./evidence-pack/index.js";
+import { inspectEvidencePack, verifyEvidencePack, writeEvidencePack } from "./evidence-pack/index.js";
 import { runOpusPipeline, renderOpusAnalysis } from "./opus/index.js";
 import { applyFixes, renderFixSummary } from "./fixer/index.js";
 import { runInit, renderInitSummary } from "./init/index.js";
@@ -31,6 +31,10 @@ import type {
   DeepScanResult,
 } from "./types.js";
 import type { PolicyEvaluation } from "./policy/index.js";
+
+function writeStdout(line = ""): void {
+  process.stdout.write(`${line}\n`);
+}
 
 // ─── Dynamic Module Loaders ───────────────────────────────────
 // These modules are being built in parallel by other agents.
@@ -671,6 +675,64 @@ program
 const evidencePack = program
   .command("evidence-pack")
   .description("Inspect and verify AgentShield evidence-pack bundles");
+
+evidencePack
+  .command("inspect")
+  .description("Inspect verified evidence-pack contents for downstream consumers")
+  .argument("<dir>", "Evidence-pack directory")
+  .option("--json", "Emit machine-readable inspection results", false)
+  .action((dir, options) => {
+    const result = inspectEvidencePack(dir);
+    if (options.json) {
+      writeStdout(JSON.stringify(result, null, 2));
+    } else {
+      writeStdout();
+      writeStdout("AgentShield Evidence Pack Inspection");
+      writeStdout(`Directory:   ${result.outputDir}`);
+      writeStdout(`Status:      ${result.ok ? "passed" : "failed"}`);
+      writeStdout(`Digest:      ${result.bundleDigest ?? "not available"}`);
+      writeStdout(`Generated:   ${result.generatedAt ?? "unknown"}`);
+      writeStdout(`Target:      ${result.targetPath ?? "unknown"}`);
+      writeStdout(`Artifacts:   ${result.verifiedArtifactCount}/${result.artifactCount} verified`);
+      if (result.report) {
+        writeStdout(
+          `Score:       ${result.report.score.numericScore}/100 (${result.report.score.grade}); ${result.report.findings.total} findings`
+        );
+        writeStdout(
+          `Findings:    critical ${result.report.findings.critical}, high ${result.report.findings.high}, medium ${result.report.findings.medium}, low ${result.report.findings.low}, info ${result.report.findings.info}`
+        );
+      }
+      writeStdout(`Policy:      ${result.policy.status}`);
+      writeStdout(`Baseline:    ${result.baseline.status}`);
+      if (result.supplyChain) {
+        writeStdout(
+          `Supply:      ${result.supplyChain.riskyPackages}/${result.supplyChain.totalPackages} risky packages`
+        );
+      }
+      if (result.ciContext) {
+        writeStdout(
+          `CI:          ${result.ciContext.provider}${result.ciContext.repository ? ` ${result.ciContext.repository}` : ""}`
+        );
+      }
+      if (result.remediation) {
+        writeStdout(
+          `Remediate:   ${result.remediation.autoFixable} auto-fixable, ${result.remediation.manualReview} manual-review`
+        );
+      }
+      if (result.errors.length > 0) {
+        writeStdout();
+        writeStdout("Errors:");
+        for (const error of result.errors) {
+          writeStdout(`- ${error}`);
+        }
+      }
+      writeStdout();
+    }
+
+    if (!result.ok) {
+      process.exit(6);
+    }
+  });
 
 evidencePack
   .command("verify")

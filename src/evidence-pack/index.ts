@@ -48,6 +48,83 @@ export interface EvidencePackVerificationResult {
   readonly errors: ReadonlyArray<string>;
 }
 
+export interface EvidencePackInspectionResult {
+  readonly ok: boolean;
+  readonly outputDir: string;
+  readonly generatedAt: string | null;
+  readonly targetPath: string | null;
+  readonly redacted: boolean | null;
+  readonly bundleDigest: string | null;
+  readonly expectedBundleDigest: string | null;
+  readonly artifactCount: number;
+  readonly verifiedArtifactCount: number;
+  readonly report: EvidencePackReportSummary | null;
+  readonly policy: EvidencePackPolicySummary;
+  readonly baseline: EvidencePackBaselineSummary;
+  readonly supplyChain: EvidencePackSupplyChainSummary | null;
+  readonly ciContext: EvidencePackCiSummary | null;
+  readonly remediation: EvidencePackRemediationSummary | null;
+  readonly verification: EvidencePackVerificationResult;
+  readonly errors: ReadonlyArray<string>;
+}
+
+export interface EvidencePackReportSummary {
+  readonly score: {
+    readonly grade: string;
+    readonly numericScore: number;
+  };
+  readonly findings: {
+    readonly total: number;
+    readonly critical: number;
+    readonly high: number;
+    readonly medium: number;
+    readonly low: number;
+    readonly info: number;
+  };
+  readonly runtimeConfidence: Readonly<Record<string, number>>;
+}
+
+export interface EvidencePackPolicySummary {
+  readonly status: "passed" | "failed" | "not-run" | "unknown";
+  readonly policyName?: string;
+  readonly policyPack?: string;
+  readonly violations?: number;
+}
+
+export interface EvidencePackBaselineSummary {
+  readonly status: "passed" | "regressed" | "not-run" | "unknown";
+  readonly newFindings?: number;
+  readonly resolvedFindings?: number;
+  readonly unchangedCount?: number;
+  readonly scoreDelta?: number;
+}
+
+export interface EvidencePackSupplyChainSummary {
+  readonly totalPackages: number;
+  readonly riskyPackages: number;
+  readonly criticalCount: number;
+  readonly highCount: number;
+}
+
+export interface EvidencePackCiSummary {
+  readonly provider: "github-actions" | "local" | "unknown";
+  readonly repository?: string;
+  readonly workflow?: string;
+  readonly runId?: string;
+  readonly sha?: string;
+}
+
+export interface EvidencePackRemediationSummary {
+  readonly totalFindings: number;
+  readonly autoFixable: number;
+  readonly manualReview: number;
+  readonly phases: ReadonlyArray<{
+    readonly id: string;
+    readonly findingCount: number;
+    readonly blocking: boolean;
+  }>;
+}
+
 export interface EvidencePackCiContext {
   readonly schemaVersion: 1;
   readonly generatedAt: string;
@@ -319,6 +396,53 @@ export function verifyEvidencePack(outputDir: string): EvidencePackVerificationR
   };
 }
 
+export function inspectEvidencePack(outputDir: string): EvidencePackInspectionResult {
+  const resolvedOutputDir = resolve(outputDir);
+  const verification = verifyEvidencePack(resolvedOutputDir);
+  const errors = [...verification.errors];
+  const manifest = readJsonFile<EvidencePackManifest>(resolvedOutputDir, "manifest.json", errors);
+  const report = readJsonFile<SecurityReport>(resolvedOutputDir, "agentshield-report.json", errors);
+  const policy = readJsonFile<Record<string, unknown>>(resolvedOutputDir, "policy-evaluation.json", errors);
+  const baseline = readJsonFile<Record<string, unknown>>(resolvedOutputDir, "baseline-comparison.json", errors);
+  const supplyChain = readJsonFile<SupplyChainReport>(resolvedOutputDir, "supply-chain.json", errors);
+  const ciContext = readJsonFile<EvidencePackCiContext>(resolvedOutputDir, "ci-context.json", errors);
+  const remediation = readJsonFile<Record<string, unknown>>(resolvedOutputDir, "remediation-plan.json", errors);
+  const reportSummary = summarizeArtifact("agentshield-report.json", errors, () =>
+    report ? summarizeReport(report) : null
+  );
+  const policySummary = summarizeArtifact("policy-evaluation.json", errors, () => summarizePolicy(policy));
+  const baselineSummary = summarizeArtifact("baseline-comparison.json", errors, () => summarizeBaseline(baseline));
+  const supplyChainSummary = summarizeArtifact("supply-chain.json", errors, () =>
+    supplyChain ? summarizeSupplyChain(supplyChain) : null
+  );
+  const ciContextSummary = summarizeArtifact("ci-context.json", errors, () =>
+    ciContext ? summarizeCiContext(ciContext) : null
+  );
+  const remediationSummary = summarizeArtifact("remediation-plan.json", errors, () =>
+    remediation ? summarizeRemediation(remediation) : null
+  );
+
+  return {
+    ok: verification.ok && errors.length === 0,
+    outputDir: resolvedOutputDir,
+    generatedAt: typeof manifest?.generatedAt === "string" ? manifest.generatedAt : null,
+    targetPath: typeof manifest?.targetPath === "string" ? manifest.targetPath : null,
+    redacted: typeof manifest?.redacted === "boolean" ? manifest.redacted : null,
+    bundleDigest: verification.bundleDigest,
+    expectedBundleDigest: verification.expectedBundleDigest,
+    artifactCount: manifest?.artifacts.length ?? verification.artifacts.length,
+    verifiedArtifactCount: verification.artifacts.filter((artifact) => artifact.ok).length,
+    report: reportSummary,
+    policy: policySummary ?? { status: "unknown" },
+    baseline: baselineSummary ?? { status: "unknown" },
+    supplyChain: supplyChainSummary,
+    ciContext: ciContextSummary,
+    remediation: remediationSummary,
+    verification,
+    errors,
+  };
+}
+
 function buildCiContext(
   environment: EvidencePackEnvironment,
   generatedAt: string
@@ -408,6 +532,138 @@ function buildBundleDigest(artifactContents: ReadonlyMap<string, string>): strin
       };
     });
   return `sha256:${createHash("sha256").update(JSON.stringify(bundleEntries)).digest("hex")}`;
+}
+
+function readJsonFile<T>(
+  outputDir: string,
+  fileName: string,
+  errors: string[]
+): T | null {
+  const filePath = resolve(outputDir, fileName);
+  if (!existsSync(filePath)) {
+    errors.push(`${fileName} is missing`);
+    return null;
+  }
+
+  try {
+    return JSON.parse(readFileSync(filePath, "utf-8")) as T;
+  } catch (error) {
+    errors.push(`${fileName} is not valid JSON: ${error instanceof Error ? error.message : String(error)}`);
+    return null;
+  }
+}
+
+function summarizeArtifact<T>(
+  fileName: string,
+  errors: string[],
+  summarize: () => T
+): T | null {
+  try {
+    return summarize();
+  } catch (error) {
+    errors.push(`${fileName} summary failed: ${error instanceof Error ? error.message : String(error)}`);
+    return null;
+  }
+}
+
+function summarizeReport(report: SecurityReport): EvidencePackReportSummary {
+  return {
+    score: {
+      grade: report.score.grade,
+      numericScore: report.score.numericScore,
+    },
+    findings: {
+      total: report.summary.totalFindings,
+      critical: report.summary.critical,
+      high: report.summary.high,
+      medium: report.summary.medium,
+      low: report.summary.low,
+      info: report.summary.info,
+    },
+    runtimeConfidence: countRuntimeConfidence(report),
+  };
+}
+
+function countRuntimeConfidence(report: SecurityReport): Readonly<Record<string, number>> {
+  const counts = report.findings.reduce<Record<string, number>>((accumulator, finding) => {
+    const key = finding.runtimeConfidence ?? "active-runtime";
+    return {
+      ...accumulator,
+      [key]: (accumulator[key] ?? 0) + 1,
+    };
+  }, {});
+  return Object.fromEntries(Object.entries(counts).sort(([left], [right]) => left.localeCompare(right)));
+}
+
+function summarizePolicy(policy: Record<string, unknown> | null): EvidencePackPolicySummary {
+  if (!policy) return { status: "unknown" };
+  if (policy.status === "not-run") return { status: "not-run" };
+
+  const violations = Array.isArray(policy.violations) ? policy.violations.length : undefined;
+  return {
+    status: policy.passed === true ? "passed" : policy.passed === false ? "failed" : "unknown",
+    policyName: typeof policy.policyName === "string" ? policy.policyName : undefined,
+    policyPack: typeof policy.policyPack === "string" ? policy.policyPack : undefined,
+    violations,
+  };
+}
+
+function summarizeBaseline(baseline: Record<string, unknown> | null): EvidencePackBaselineSummary {
+  if (!baseline) return { status: "unknown" };
+  if (baseline.status === "not-run") return { status: "not-run" };
+
+  return {
+    status: baseline.isRegression === true ? "regressed" : baseline.isRegression === false ? "passed" : "unknown",
+    newFindings: Array.isArray(baseline.newFindings) ? baseline.newFindings.length : undefined,
+    resolvedFindings: Array.isArray(baseline.resolvedFindings) ? baseline.resolvedFindings.length : undefined,
+    unchangedCount: typeof baseline.unchangedCount === "number" ? baseline.unchangedCount : undefined,
+    scoreDelta: typeof baseline.scoreDelta === "number" ? baseline.scoreDelta : undefined,
+  };
+}
+
+function summarizeSupplyChain(report: SupplyChainReport): EvidencePackSupplyChainSummary {
+  return {
+    totalPackages: report.totalPackages,
+    riskyPackages: report.riskyPackages,
+    criticalCount: report.criticalCount,
+    highCount: report.highCount,
+  };
+}
+
+function summarizeCiContext(context: EvidencePackCiContext): EvidencePackCiSummary {
+  return {
+    provider: context.provider,
+    repository: context.github?.repository,
+    workflow: context.github?.workflow,
+    runId: context.github?.runId,
+    sha: context.github?.sha,
+  };
+}
+
+function summarizeRemediation(remediation: Record<string, unknown>): EvidencePackRemediationSummary | null {
+  const summary = remediation.summary;
+  const workflow = remediation.workflow;
+  if (!summary || typeof summary !== "object") return null;
+
+  const summaryRecord = summary as Record<string, unknown>;
+  const phases = workflow && typeof workflow === "object" && Array.isArray((workflow as Record<string, unknown>).phases)
+    ? ((workflow as { phases: ReadonlyArray<Record<string, unknown>> }).phases)
+    : [];
+
+  return {
+    totalFindings: numberOrZero(summaryRecord.totalFindings),
+    autoFixable: numberOrZero(summaryRecord.autoFixable),
+    manualReview: numberOrZero(summaryRecord.manualReview),
+    phases: phases.map((phase) => ({
+      id: typeof phase.id === "string" ? phase.id : "unknown",
+      findingCount: numberOrZero(phase.findingCount),
+      blocking: phase.blocking === true,
+    })),
+  };
+}
+
+function numberOrZero(value: unknown): number {
+  return typeof value === "number" ? value : 0;
 }
 
 function hashContent(content: string): { readonly sha256: string; readonly bytes: number } {

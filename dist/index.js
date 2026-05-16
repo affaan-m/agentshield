@@ -15220,6 +15220,59 @@ function verifyEvidencePack(outputDir) {
     errors
   };
 }
+function inspectEvidencePack(outputDir) {
+  const resolvedOutputDir = resolve3(outputDir);
+  const verification = verifyEvidencePack(resolvedOutputDir);
+  const errors = [...verification.errors];
+  const manifest = readJsonFile(resolvedOutputDir, "manifest.json", errors);
+  const report = readJsonFile(resolvedOutputDir, "agentshield-report.json", errors);
+  const policy = readJsonFile(resolvedOutputDir, "policy-evaluation.json", errors);
+  const baseline2 = readJsonFile(resolvedOutputDir, "baseline-comparison.json", errors);
+  const supplyChain = readJsonFile(resolvedOutputDir, "supply-chain.json", errors);
+  const ciContext = readJsonFile(resolvedOutputDir, "ci-context.json", errors);
+  const remediation = readJsonFile(resolvedOutputDir, "remediation-plan.json", errors);
+  const reportSummary = summarizeArtifact(
+    "agentshield-report.json",
+    errors,
+    () => report ? summarizeReport(report) : null
+  );
+  const policySummary = summarizeArtifact("policy-evaluation.json", errors, () => summarizePolicy(policy));
+  const baselineSummary = summarizeArtifact("baseline-comparison.json", errors, () => summarizeBaseline(baseline2));
+  const supplyChainSummary = summarizeArtifact(
+    "supply-chain.json",
+    errors,
+    () => supplyChain ? summarizeSupplyChain(supplyChain) : null
+  );
+  const ciContextSummary = summarizeArtifact(
+    "ci-context.json",
+    errors,
+    () => ciContext ? summarizeCiContext(ciContext) : null
+  );
+  const remediationSummary = summarizeArtifact(
+    "remediation-plan.json",
+    errors,
+    () => remediation ? summarizeRemediation(remediation) : null
+  );
+  return {
+    ok: verification.ok && errors.length === 0,
+    outputDir: resolvedOutputDir,
+    generatedAt: typeof manifest?.generatedAt === "string" ? manifest.generatedAt : null,
+    targetPath: typeof manifest?.targetPath === "string" ? manifest.targetPath : null,
+    redacted: typeof manifest?.redacted === "boolean" ? manifest.redacted : null,
+    bundleDigest: verification.bundleDigest,
+    expectedBundleDigest: verification.expectedBundleDigest,
+    artifactCount: manifest?.artifacts.length ?? verification.artifacts.length,
+    verifiedArtifactCount: verification.artifacts.filter((artifact) => artifact.ok).length,
+    report: reportSummary,
+    policy: policySummary ?? { status: "unknown" },
+    baseline: baselineSummary ?? { status: "unknown" },
+    supplyChain: supplyChainSummary,
+    ciContext: ciContextSummary,
+    remediation: remediationSummary,
+    verification,
+    errors
+  };
+}
 function buildCiContext(environment, generatedAt) {
   const github = compact({
     repository: environment.GITHUB_REPOSITORY,
@@ -15290,6 +15343,113 @@ function buildBundleDigest(artifactContents) {
     };
   });
   return `sha256:${createHash2("sha256").update(JSON.stringify(bundleEntries)).digest("hex")}`;
+}
+function readJsonFile(outputDir, fileName, errors) {
+  const filePath = resolve3(outputDir, fileName);
+  if (!existsSync3(filePath)) {
+    errors.push(`${fileName} is missing`);
+    return null;
+  }
+  try {
+    return JSON.parse(readFileSync2(filePath, "utf-8"));
+  } catch (error) {
+    errors.push(`${fileName} is not valid JSON: ${error instanceof Error ? error.message : String(error)}`);
+    return null;
+  }
+}
+function summarizeArtifact(fileName, errors, summarize) {
+  try {
+    return summarize();
+  } catch (error) {
+    errors.push(`${fileName} summary failed: ${error instanceof Error ? error.message : String(error)}`);
+    return null;
+  }
+}
+function summarizeReport(report) {
+  return {
+    score: {
+      grade: report.score.grade,
+      numericScore: report.score.numericScore
+    },
+    findings: {
+      total: report.summary.totalFindings,
+      critical: report.summary.critical,
+      high: report.summary.high,
+      medium: report.summary.medium,
+      low: report.summary.low,
+      info: report.summary.info
+    },
+    runtimeConfidence: countRuntimeConfidence(report)
+  };
+}
+function countRuntimeConfidence(report) {
+  const counts = report.findings.reduce((accumulator, finding) => {
+    const key = finding.runtimeConfidence ?? "active-runtime";
+    return {
+      ...accumulator,
+      [key]: (accumulator[key] ?? 0) + 1
+    };
+  }, {});
+  return Object.fromEntries(Object.entries(counts).sort(([left], [right]) => left.localeCompare(right)));
+}
+function summarizePolicy(policy) {
+  if (!policy) return { status: "unknown" };
+  if (policy.status === "not-run") return { status: "not-run" };
+  const violations = Array.isArray(policy.violations) ? policy.violations.length : void 0;
+  return {
+    status: policy.passed === true ? "passed" : policy.passed === false ? "failed" : "unknown",
+    policyName: typeof policy.policyName === "string" ? policy.policyName : void 0,
+    policyPack: typeof policy.policyPack === "string" ? policy.policyPack : void 0,
+    violations
+  };
+}
+function summarizeBaseline(baseline2) {
+  if (!baseline2) return { status: "unknown" };
+  if (baseline2.status === "not-run") return { status: "not-run" };
+  return {
+    status: baseline2.isRegression === true ? "regressed" : baseline2.isRegression === false ? "passed" : "unknown",
+    newFindings: Array.isArray(baseline2.newFindings) ? baseline2.newFindings.length : void 0,
+    resolvedFindings: Array.isArray(baseline2.resolvedFindings) ? baseline2.resolvedFindings.length : void 0,
+    unchangedCount: typeof baseline2.unchangedCount === "number" ? baseline2.unchangedCount : void 0,
+    scoreDelta: typeof baseline2.scoreDelta === "number" ? baseline2.scoreDelta : void 0
+  };
+}
+function summarizeSupplyChain(report) {
+  return {
+    totalPackages: report.totalPackages,
+    riskyPackages: report.riskyPackages,
+    criticalCount: report.criticalCount,
+    highCount: report.highCount
+  };
+}
+function summarizeCiContext(context) {
+  return {
+    provider: context.provider,
+    repository: context.github?.repository,
+    workflow: context.github?.workflow,
+    runId: context.github?.runId,
+    sha: context.github?.sha
+  };
+}
+function summarizeRemediation(remediation) {
+  const summary = remediation.summary;
+  const workflow = remediation.workflow;
+  if (!summary || typeof summary !== "object") return null;
+  const summaryRecord = summary;
+  const phases = workflow && typeof workflow === "object" && Array.isArray(workflow.phases) ? workflow.phases : [];
+  return {
+    totalFindings: numberOrZero(summaryRecord.totalFindings),
+    autoFixable: numberOrZero(summaryRecord.autoFixable),
+    manualReview: numberOrZero(summaryRecord.manualReview),
+    phases: phases.map((phase) => ({
+      id: typeof phase.id === "string" ? phase.id : "unknown",
+      findingCount: numberOrZero(phase.findingCount),
+      blocking: phase.blocking === true
+    }))
+  };
+}
+function numberOrZero(value) {
+  return typeof value === "number" ? value : 0;
 }
 function hashContent(content) {
   return {
@@ -17755,6 +17915,10 @@ function resolveSettingsPath(targetPath) {
 }
 
 // src/index.ts
+function writeStdout(line = "") {
+  process.stdout.write(`${line}
+`);
+}
 async function runInjectionTests2(targetPath) {
   try {
     const { runInjectionSuite: runInjectionSuite2 } = await Promise.resolve().then(() => (init_injection(), injection_exports));
@@ -18256,6 +18420,57 @@ program.command("init").description("Generate a secure baseline Claude Code conf
   console.log(renderInitSummary(initResult));
 });
 var evidencePack = program.command("evidence-pack").description("Inspect and verify AgentShield evidence-pack bundles");
+evidencePack.command("inspect").description("Inspect verified evidence-pack contents for downstream consumers").argument("<dir>", "Evidence-pack directory").option("--json", "Emit machine-readable inspection results", false).action((dir, options) => {
+  const result = inspectEvidencePack(dir);
+  if (options.json) {
+    writeStdout(JSON.stringify(result, null, 2));
+  } else {
+    writeStdout();
+    writeStdout("AgentShield Evidence Pack Inspection");
+    writeStdout(`Directory:   ${result.outputDir}`);
+    writeStdout(`Status:      ${result.ok ? "passed" : "failed"}`);
+    writeStdout(`Digest:      ${result.bundleDigest ?? "not available"}`);
+    writeStdout(`Generated:   ${result.generatedAt ?? "unknown"}`);
+    writeStdout(`Target:      ${result.targetPath ?? "unknown"}`);
+    writeStdout(`Artifacts:   ${result.verifiedArtifactCount}/${result.artifactCount} verified`);
+    if (result.report) {
+      writeStdout(
+        `Score:       ${result.report.score.numericScore}/100 (${result.report.score.grade}); ${result.report.findings.total} findings`
+      );
+      writeStdout(
+        `Findings:    critical ${result.report.findings.critical}, high ${result.report.findings.high}, medium ${result.report.findings.medium}, low ${result.report.findings.low}, info ${result.report.findings.info}`
+      );
+    }
+    writeStdout(`Policy:      ${result.policy.status}`);
+    writeStdout(`Baseline:    ${result.baseline.status}`);
+    if (result.supplyChain) {
+      writeStdout(
+        `Supply:      ${result.supplyChain.riskyPackages}/${result.supplyChain.totalPackages} risky packages`
+      );
+    }
+    if (result.ciContext) {
+      writeStdout(
+        `CI:          ${result.ciContext.provider}${result.ciContext.repository ? ` ${result.ciContext.repository}` : ""}`
+      );
+    }
+    if (result.remediation) {
+      writeStdout(
+        `Remediate:   ${result.remediation.autoFixable} auto-fixable, ${result.remediation.manualReview} manual-review`
+      );
+    }
+    if (result.errors.length > 0) {
+      writeStdout();
+      writeStdout("Errors:");
+      for (const error of result.errors) {
+        writeStdout(`- ${error}`);
+      }
+    }
+    writeStdout();
+  }
+  if (!result.ok) {
+    process.exit(6);
+  }
+});
 evidencePack.command("verify").description("Verify evidence-pack artifact digests and bundle digest").argument("<dir>", "Evidence-pack directory").option("--json", "Emit machine-readable verification results", false).action((dir, options) => {
   const result = verifyEvidencePack(dir);
   if (options.json) {

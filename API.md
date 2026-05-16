@@ -198,11 +198,24 @@ agentshield scan --evidence-pack ./agentshield-evidence
 The evidence-pack directory is deterministic and contains `manifest.json`,
 `README.md`, `agentshield-report.json`, `agentshield-report.html`,
 `agentshield-results.sarif`, `policy-evaluation.json`,
-`baseline-comparison.json`, `supply-chain.json`, and `remediation-plan.json`.
+`baseline-comparison.json`, `supply-chain.json`, `ci-context.json`, and
+`remediation-plan.json`.
 In the GitHub Action, evidence packs use the same supply-chain verification
 result that powers the package-risk outputs instead of an empty placeholder.
 Local path, username, email, and token-shaped string redaction is enabled by
 default.
+
+Consumers can verify and read back a saved pack:
+
+```bash
+agentshield evidence-pack verify ./agentshield-evidence --json
+agentshield evidence-pack inspect ./agentshield-evidence --json
+```
+
+`inspect` verifies the bundle first, then emits score, finding counts,
+runtime-confidence counts, policy status, baseline drift status, supply-chain
+counts, CI provenance, and remediation workflow counts for GitHub App, Linear,
+or customer-review ingestion.
 
 Top-level shape:
 
