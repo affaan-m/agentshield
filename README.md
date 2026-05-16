@@ -595,6 +595,7 @@ agentshield baseline write         Write a scan baseline JSON file
 agentshield evidence-pack fleet    Summarize multiple evidence packs for routing
 agentshield evidence-pack inspect  Verify and summarize an evidence bundle
 agentshield evidence-pack verify   Verify artifact and bundle digests
+agentshield policy export          Export policy packs plus checksum manifest
 agentshield policy init            Generate an organization policy preset
 ```
 
@@ -631,6 +632,8 @@ Organization policy files support enterprise metadata and temporary exceptions:
 ```bash
 agentshield policy init --pack enterprise --owner security-platform@acme.example
 agentshield policy init --pack regulated --name "Acme Regulated Policy"
+agentshield policy export --output-dir .github/agentshield-policies --owner security-platform@acme.example
+agentshield policy export --pack ci-enforcement --name-prefix "Acme" --json
 ```
 
 Policy pack presets are starter baselines, not hidden SaaS policy. `oss` keeps
@@ -639,6 +642,11 @@ public repos permissive while requiring destructive-command deny entries;
 tool allowlists; `regulated` disallows critical/high findings and bans broader
 MCP/tool surfaces; `high-risk-hooks-mcp` focuses on hook/MCP-heavy repos; and
 `ci-enforcement` is tuned for branch-protection evidence.
+
+Policy export writes one JSON policy file per selected pack plus a
+`manifest.json` containing SHA-256 digests. This gives platform teams a stable
+artifact bundle for branch-protection review, audit attachment, or downstream
+policy promotion without relying on generated console output.
 
 ```json
 {

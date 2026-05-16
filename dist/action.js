@@ -942,13 +942,70 @@ var init_evaluate = __esm({
   }
 });
 
+// src/policy/export.ts
+import { createHash as createHash3 } from "crypto";
+import { mkdirSync as mkdirSync3, writeFileSync as writeFileSync3 } from "fs";
+import { join as join5 } from "path";
+function exportPolicyPacks(options) {
+  mkdirSync3(options.outputDir, { recursive: true });
+  const summaries = listPolicyPacks();
+  const selectedPacks = options.packs && options.packs.length > 0 ? options.packs : summaries.map((summary) => summary.id);
+  const entries = [];
+  for (const packId of selectedPacks) {
+    const summary = summaries.find((item) => item.id === packId);
+    if (!summary) {
+      throw new Error(`Unknown policy pack: ${packId}`);
+    }
+    const policy = generatePolicyPack(packId, {
+      owners: options.owners,
+      name: options.namePrefix ? `${options.namePrefix} ${titleCase(summary.label)} Policy` : void 0
+    });
+    const policyJson = stableJson(policy);
+    const file = `${packId}-policy.json`;
+    writeFileSync3(join5(options.outputDir, file), policyJson);
+    entries.push({
+      id: summary.id,
+      label: summary.label,
+      description: summary.description,
+      file,
+      sha256: digest(policyJson)
+    });
+  }
+  const manifest = {
+    schema_version: POLICY_EXPORT_SCHEMA_VERSION,
+    packs: entries
+  };
+  writeFileSync3(join5(options.outputDir, "manifest.json"), stableJson(manifest));
+  return manifest;
+}
+function stableJson(value) {
+  return `${JSON.stringify(value, null, 2)}
+`;
+}
+function digest(value) {
+  return `sha256:${createHash3("sha256").update(value).digest("hex")}`;
+}
+function titleCase(label) {
+  return label.split(" ").map((word) => word.toUpperCase() === word ? word : `${word.slice(0, 1).toUpperCase()}${word.slice(1)}`).join(" ");
+}
+var POLICY_EXPORT_SCHEMA_VERSION;
+var init_export = __esm({
+  "src/policy/export.ts"() {
+    "use strict";
+    init_presets();
+    POLICY_EXPORT_SCHEMA_VERSION = "agentshield.policy-export.v1";
+  }
+});
+
 // src/policy/index.ts
 var policy_exports = {};
 __export(policy_exports, {
   OrgPolicySchema: () => OrgPolicySchema,
+  POLICY_EXPORT_SCHEMA_VERSION: () => POLICY_EXPORT_SCHEMA_VERSION,
   PolicyExceptionSchema: () => PolicyExceptionSchema,
   PolicyPackSchema: () => PolicyPackSchema,
   evaluatePolicy: () => evaluatePolicy,
+  exportPolicyPacks: () => exportPolicyPacks,
   generateExamplePolicy: () => generateExamplePolicy,
   generatePolicyPack: () => generatePolicyPack,
   listPolicyPacks: () => listPolicyPacks,
@@ -960,6 +1017,7 @@ var init_policy = __esm({
     "use strict";
     init_evaluate();
     init_presets();
+    init_export();
     init_types();
   }
 });
@@ -1603,9 +1661,9 @@ var init_types3 = __esm({
 });
 
 // src/baseline/compare.ts
-import { readFileSync as readFileSync4, writeFileSync as writeFileSync3, existsSync as existsSync5 } from "fs";
+import { readFileSync as readFileSync4, writeFileSync as writeFileSync4, existsSync as existsSync5 } from "fs";
 import { dirname as dirname3 } from "path";
-import { mkdirSync as mkdirSync3 } from "fs";
+import { mkdirSync as mkdirSync4 } from "fs";
 function saveBaseline(findings, score, outputPath) {
   const serialized = {
     version: 1,
@@ -1622,9 +1680,9 @@ function saveBaseline(findings, score, outputPath) {
   };
   const dir = dirname3(outputPath);
   if (!existsSync5(dir)) {
-    mkdirSync3(dir, { recursive: true });
+    mkdirSync4(dir, { recursive: true });
   }
-  writeFileSync3(outputPath, JSON.stringify(serialized, null, 2));
+  writeFileSync4(outputPath, JSON.stringify(serialized, null, 2));
 }
 function loadBaseline(baselinePath) {
   if (!existsSync5(baselinePath)) return null;
@@ -1797,7 +1855,7 @@ var init_baseline = __esm({
 import { resolve as resolve4 } from "path";
 import { dirname as dirname4 } from "path";
 import { existsSync as existsSync6 } from "fs";
-import { appendFileSync, mkdirSync as mkdirSync4, writeFileSync as writeFileSync4 } from "fs";
+import { appendFileSync, mkdirSync as mkdirSync5, writeFileSync as writeFileSync5 } from "fs";
 
 // src/scanner/discovery.ts
 import { readFileSync, existsSync, readdirSync, statSync } from "fs";
@@ -12497,8 +12555,8 @@ async function run() {
   }
   if (format === "sarif") {
     const sarifPath = resolve4(workspace, sarifOutput);
-    mkdirSync4(dirname4(sarifPath), { recursive: true });
-    writeFileSync4(
+    mkdirSync5(dirname4(sarifPath), { recursive: true });
+    writeFileSync5(
       sarifPath,
       renderSarifReport(report, {
         policyEvaluation: policyEvaluation ?? void 0,

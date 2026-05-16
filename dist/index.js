@@ -12716,13 +12716,70 @@ var init_evaluate = __esm({
   }
 });
 
+// src/policy/export.ts
+import { createHash as createHash3 } from "crypto";
+import { mkdirSync as mkdirSync6, writeFileSync as writeFileSync6 } from "fs";
+import { join as join10 } from "path";
+function exportPolicyPacks(options) {
+  mkdirSync6(options.outputDir, { recursive: true });
+  const summaries = listPolicyPacks();
+  const selectedPacks = options.packs && options.packs.length > 0 ? options.packs : summaries.map((summary) => summary.id);
+  const entries = [];
+  for (const packId of selectedPacks) {
+    const summary = summaries.find((item) => item.id === packId);
+    if (!summary) {
+      throw new Error(`Unknown policy pack: ${packId}`);
+    }
+    const policy = generatePolicyPack(packId, {
+      owners: options.owners,
+      name: options.namePrefix ? `${options.namePrefix} ${titleCase(summary.label)} Policy` : void 0
+    });
+    const policyJson = stableJson(policy);
+    const file = `${packId}-policy.json`;
+    writeFileSync6(join10(options.outputDir, file), policyJson);
+    entries.push({
+      id: summary.id,
+      label: summary.label,
+      description: summary.description,
+      file,
+      sha256: digest(policyJson)
+    });
+  }
+  const manifest = {
+    schema_version: POLICY_EXPORT_SCHEMA_VERSION,
+    packs: entries
+  };
+  writeFileSync6(join10(options.outputDir, "manifest.json"), stableJson(manifest));
+  return manifest;
+}
+function stableJson(value) {
+  return `${JSON.stringify(value, null, 2)}
+`;
+}
+function digest(value) {
+  return `sha256:${createHash3("sha256").update(value).digest("hex")}`;
+}
+function titleCase(label) {
+  return label.split(" ").map((word) => word.toUpperCase() === word ? word : `${word.slice(0, 1).toUpperCase()}${word.slice(1)}`).join(" ");
+}
+var POLICY_EXPORT_SCHEMA_VERSION;
+var init_export = __esm({
+  "src/policy/export.ts"() {
+    "use strict";
+    init_presets();
+    POLICY_EXPORT_SCHEMA_VERSION = "agentshield.policy-export.v1";
+  }
+});
+
 // src/policy/index.ts
 var policy_exports = {};
 __export(policy_exports, {
   OrgPolicySchema: () => OrgPolicySchema,
+  POLICY_EXPORT_SCHEMA_VERSION: () => POLICY_EXPORT_SCHEMA_VERSION,
   PolicyExceptionSchema: () => PolicyExceptionSchema,
   PolicyPackSchema: () => PolicyPackSchema,
   evaluatePolicy: () => evaluatePolicy,
+  exportPolicyPacks: () => exportPolicyPacks,
   generateExamplePolicy: () => generateExamplePolicy,
   generatePolicyPack: () => generatePolicyPack,
   listPolicyPacks: () => listPolicyPacks,
@@ -12734,6 +12791,7 @@ var init_policy = __esm({
     "use strict";
     init_evaluate();
     init_presets();
+    init_export();
     init_types();
   }
 });
@@ -12753,9 +12811,9 @@ var init_types2 = __esm({
 });
 
 // src/baseline/compare.ts
-import { readFileSync as readFileSync8, writeFileSync as writeFileSync6, existsSync as existsSync11 } from "fs";
+import { readFileSync as readFileSync8, writeFileSync as writeFileSync7, existsSync as existsSync11 } from "fs";
 import { dirname as dirname5 } from "path";
-import { mkdirSync as mkdirSync6 } from "fs";
+import { mkdirSync as mkdirSync7 } from "fs";
 function saveBaseline(findings, score, outputPath) {
   const serialized = {
     version: 1,
@@ -12772,9 +12830,9 @@ function saveBaseline(findings, score, outputPath) {
   };
   const dir = dirname5(outputPath);
   if (!existsSync11(dir)) {
-    mkdirSync6(dir, { recursive: true });
+    mkdirSync7(dir, { recursive: true });
   }
-  writeFileSync6(outputPath, JSON.stringify(serialized, null, 2));
+  writeFileSync7(outputPath, JSON.stringify(serialized, null, 2));
 }
 function loadBaseline(baselinePath) {
   if (!existsSync11(baselinePath)) return null;
@@ -13571,8 +13629,8 @@ var init_supply_chain = __esm({
 init_scanner();
 import { Command } from "commander";
 import { resolve as resolve10 } from "path";
-import { dirname as dirname6 } from "path";
-import { existsSync as existsSync12, writeFileSync as writeFileSync7, appendFileSync as appendFileSync2, mkdirSync as mkdirSync7 } from "fs";
+import { dirname as dirname6, join as join11 } from "path";
+import { existsSync as existsSync12, writeFileSync as writeFileSync8, appendFileSync as appendFileSync2, mkdirSync as mkdirSync8 } from "fs";
 
 // src/reporter/score.ts
 var SCORE_DEDUCTIONS = {
@@ -18193,7 +18251,7 @@ function createScanLogger(logPath, logFormat) {
     },
     flush() {
       if (logPath && logFormat === "json") {
-        writeFileSync7(logPath, JSON.stringify(entries, null, 2));
+        writeFileSync8(logPath, JSON.stringify(entries, null, 2));
       }
     }
   };
@@ -18207,8 +18265,8 @@ function emitReportOutput(output, outputPath) {
     return;
   }
   const resolvedOutput = resolve10(outputPath);
-  mkdirSync7(dirname6(resolvedOutput), { recursive: true });
-  writeFileSync7(resolvedOutput, output);
+  mkdirSync8(dirname6(resolvedOutput), { recursive: true });
+  writeFileSync8(resolvedOutput, output);
   console.log(`Report written to: ${resolvedOutput}`);
 }
 function collectOption(value, previous) {
@@ -18911,9 +18969,9 @@ policyCmd.command("init").description("Generate an example organization policy f
   }
   const dir = resolve10(outputPath, "..");
   if (!existsSync12(dir)) {
-    mkdirSync7(dir, { recursive: true });
+    mkdirSync8(dir, { recursive: true });
   }
-  writeFileSync7(outputPath, generateExamplePolicy2(packResult.data, {
+  writeFileSync8(outputPath, generateExamplePolicy2(packResult.data, {
     name: options.name,
     owners: options.owner
   }));
@@ -18923,6 +18981,49 @@ policyCmd.command("init").description("Generate an example organization policy f
   console.log(`  Edit the file to match your organization's requirements.`);
   console.log(`  Then run: agentshield scan --policy ${options.output}
 `);
+});
+policyCmd.command("export").description("Export policy pack JSON files with a checksum manifest").option("-o, --output-dir <path>", "Output directory", ".agentshield/policies").option("--pack <pack>", "Policy pack to export; repeat for multiple packs", collectOption, []).option("--owner <owner>", "Policy owner identifier; repeat for multiple owners", collectOption, []).option("--name-prefix <prefix>", "Prefix generated policy names").option("--json", "Emit the export manifest as JSON", false).action(async (options) => {
+  const {
+    exportPolicyPacks: exportPolicyPacks2,
+    listPolicyPacks: listPolicyPacks2,
+    PolicyPackSchema: PolicyPackSchema2
+  } = await Promise.resolve().then(() => (init_policy(), policy_exports));
+  const requestedPacks = options.pack;
+  const validPackIds = listPolicyPacks2().map((pack) => pack.id);
+  const packs = requestedPacks.length > 0 ? requestedPacks.map((pack) => {
+    const result = PolicyPackSchema2.safeParse(pack);
+    if (!result.success) {
+      console.error(`
+  Error: Unknown policy pack "${pack}". Valid packs: ${validPackIds.join(", ")}
+`);
+      process.exit(1);
+    }
+    return result.data;
+  }) : void 0;
+  const outputDir = resolve10(options.outputDir);
+  const manifest = exportPolicyPacks2({
+    outputDir,
+    packs,
+    owners: options.owner,
+    namePrefix: options.namePrefix
+  });
+  if (options.json) {
+    writeStdout(JSON.stringify(manifest, null, 2));
+    return;
+  }
+  console.log(`
+  Policy bundle written to: ${outputDir}`);
+  console.log(`  Manifest:       ${join11(outputDir, "manifest.json")}`);
+  console.log(`  Policies:       ${manifest.packs.length}`);
+  for (const pack of manifest.packs) {
+    console.log(`  - ${pack.id}: ${pack.file} (${pack.sha256})`);
+  }
+  if (manifest.packs[0]) {
+    console.log(`  Then run: agentshield scan --policy ${join11(options.outputDir, manifest.packs[0].file)}
+`);
+  } else {
+    console.log("");
+  }
 });
 var miniclaw = program.command("miniclaw").description("MiniClaw \u2014 minimal secure sandboxed AI agent runtime");
 miniclaw.command("start").description("Start the MiniClaw server").option("-p, --port <port>", "Port to listen on", "3847").option("-H, --hostname <hostname>", "Hostname to bind to", "localhost").option("--network <policy>", "Network policy: none, localhost, allowlist", "none").option("--rate-limit <limit>", "Max requests per minute per IP", "10").option("--sandbox-root <path>", "Root path for sandbox directories", "/tmp/miniclaw-sandboxes").option("--max-duration <ms>", "Max session duration in milliseconds", "300000").action((options) => {

@@ -8,11 +8,20 @@ export {
   generatePolicyPack,
   listPolicyPacks,
 } from "./presets.js";
+export {
+  POLICY_EXPORT_SCHEMA_VERSION,
+  exportPolicyPacks,
+} from "./export.js";
 export type { EvaluatePolicyOptions, LoadPolicyResult } from "./evaluate.js";
 export type {
   GeneratePolicyPackOptions,
   PolicyPackSummary,
 } from "./presets.js";
+export type {
+  ExportPolicyPacksOptions,
+  PolicyPackExportEntry,
+  PolicyPackExportManifest,
+} from "./export.js";
 export {
   OrgPolicySchema,
   PolicyExceptionSchema,

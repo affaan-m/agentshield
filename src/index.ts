@@ -2,7 +2,7 @@
 
 import { Command } from "commander";
 import { resolve } from "node:path";
-import { dirname } from "node:path";
+import { dirname, join } from "node:path";
 import { existsSync, writeFileSync, appendFileSync, mkdirSync } from "node:fs";
 import { scan } from "./scanner/index.js";
 import { calculateScore } from "./reporter/score.js";
@@ -1119,6 +1119,58 @@ policyCmd
     console.log(`  Policy pack: ${packResult.data}`);
     console.log(`  Edit the file to match your organization's requirements.`);
     console.log(`  Then run: agentshield scan --policy ${options.output}\n`);
+  });
+
+policyCmd
+  .command("export")
+  .description("Export policy pack JSON files with a checksum manifest")
+  .option("-o, --output-dir <path>", "Output directory", ".agentshield/policies")
+  .option("--pack <pack>", "Policy pack to export; repeat for multiple packs", collectOption, [])
+  .option("--owner <owner>", "Policy owner identifier; repeat for multiple owners", collectOption, [])
+  .option("--name-prefix <prefix>", "Prefix generated policy names")
+  .option("--json", "Emit the export manifest as JSON", false)
+  .action(async (options) => {
+    const {
+      exportPolicyPacks,
+      listPolicyPacks,
+      PolicyPackSchema,
+    } = await import("./policy/index.js");
+    const requestedPacks = options.pack as string[];
+    const validPackIds = listPolicyPacks().map((pack) => pack.id);
+    const packs = requestedPacks.length > 0
+      ? requestedPacks.map((pack) => {
+        const result = PolicyPackSchema.safeParse(pack);
+        if (!result.success) {
+          console.error(`\n  Error: Unknown policy pack "${pack}". Valid packs: ${validPackIds.join(", ")}\n`);
+          process.exit(1);
+        }
+        return result.data;
+      })
+      : undefined;
+    const outputDir = resolve(options.outputDir);
+    const manifest = exportPolicyPacks({
+      outputDir,
+      packs,
+      owners: options.owner,
+      namePrefix: options.namePrefix,
+    });
+
+    if (options.json) {
+      writeStdout(JSON.stringify(manifest, null, 2));
+      return;
+    }
+
+    console.log(`\n  Policy bundle written to: ${outputDir}`);
+    console.log(`  Manifest:       ${join(outputDir, "manifest.json")}`);
+    console.log(`  Policies:       ${manifest.packs.length}`);
+    for (const pack of manifest.packs) {
+      console.log(`  - ${pack.id}: ${pack.file} (${pack.sha256})`);
+    }
+    if (manifest.packs[0]) {
+      console.log(`  Then run: agentshield scan --policy ${join(options.outputDir, manifest.packs[0].file)}\n`);
+    } else {
+      console.log("");
+    }
   });
 
 // ─── MiniClaw Commands ───────────────────────────────────
