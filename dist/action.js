@@ -997,6 +997,120 @@ var init_export = __esm({
   }
 });
 
+// src/policy/promote.ts
+import { createHash as createHash4 } from "crypto";
+import {
+  existsSync as existsSync5,
+  mkdirSync as mkdirSync4,
+  readFileSync as readFileSync4,
+  writeFileSync as writeFileSync4
+} from "fs";
+import {
+  dirname as dirname3,
+  isAbsolute,
+  join as join6
+} from "path";
+function promotePolicyPack(options) {
+  const manifest = readExportManifest(options.manifestPath);
+  const entry = selectPolicyPack(manifest.packs, options.pack);
+  const sourceFile = isAbsolute(entry.file) ? entry.file : join6(dirname3(options.manifestPath), entry.file);
+  if (!existsSync5(sourceFile)) {
+    throw new Error(`Policy file not found: ${sourceFile}`);
+  }
+  const policyJson = readFileSync4(sourceFile, "utf-8");
+  const actualDigest = digest2(policyJson);
+  if (actualDigest !== entry.sha256) {
+    throw new Error(
+      `Policy digest mismatch for ${entry.id}: expected ${entry.sha256}, got ${actualDigest}`
+    );
+  }
+  const parsed = JSON.parse(policyJson);
+  const policy = OrgPolicySchema.parse(parsed);
+  if (policy.policy_pack !== entry.id) {
+    throw new Error(
+      `Policy pack mismatch: manifest entry is ${entry.id}, policy file declares ${policy.policy_pack}`
+    );
+  }
+  if (!options.dryRun) {
+    mkdirSync4(dirname3(options.outputPath), { recursive: true });
+    writeFileSync4(options.outputPath, policyJson);
+  }
+  return {
+    manifestPath: options.manifestPath,
+    sourceFile,
+    outputPath: options.outputPath,
+    pack: entry.id,
+    policyName: policy.name ?? "Organization Policy",
+    owners: policy.owners ?? [],
+    sha256: entry.sha256,
+    verified: true,
+    promoted: !options.dryRun,
+    dryRun: Boolean(options.dryRun)
+  };
+}
+function readExportManifest(manifestPath) {
+  if (!existsSync5(manifestPath)) {
+    throw new Error(`Policy export manifest not found: ${manifestPath}`);
+  }
+  const raw = JSON.parse(readFileSync4(manifestPath, "utf-8"));
+  if (raw.schema_version !== POLICY_EXPORT_SCHEMA_VERSION) {
+    throw new Error(
+      `Unsupported policy export manifest schema: ${String(raw.schema_version)}`
+    );
+  }
+  if (!Array.isArray(raw.packs)) {
+    throw new Error("Policy export manifest is missing a packs array");
+  }
+  return {
+    schema_version: POLICY_EXPORT_SCHEMA_VERSION,
+    packs: raw.packs.map(readManifestEntry)
+  };
+}
+function readManifestEntry(entry) {
+  if (!entry || typeof entry !== "object") {
+    throw new Error("Invalid policy export manifest entry");
+  }
+  const candidate = entry;
+  const packResult = PolicyPackSchema.safeParse(candidate.id);
+  if (!packResult.success) {
+    throw new Error(`Invalid policy pack id in manifest: ${String(candidate.id)}`);
+  }
+  if (typeof candidate.file !== "string" || candidate.file.length === 0) {
+    throw new Error(`Invalid policy file for manifest pack: ${packResult.data}`);
+  }
+  if (typeof candidate.sha256 !== "string" || !/^sha256:[a-f0-9]{64}$/.test(candidate.sha256)) {
+    throw new Error(`Invalid policy digest for manifest pack: ${packResult.data}`);
+  }
+  return {
+    id: packResult.data,
+    file: candidate.file,
+    sha256: candidate.sha256
+  };
+}
+function selectPolicyPack(entries, requestedPack) {
+  if (requestedPack) {
+    const entry = entries.find((item) => item.id === requestedPack);
+    if (!entry) {
+      throw new Error(`Policy pack ${requestedPack} not found in export manifest`);
+    }
+    return entry;
+  }
+  if (entries.length === 1) {
+    return entries[0];
+  }
+  throw new Error("Export manifest contains multiple policy packs; pass --pack to select one");
+}
+function digest2(value) {
+  return `sha256:${createHash4("sha256").update(value).digest("hex")}`;
+}
+var init_promote = __esm({
+  "src/policy/promote.ts"() {
+    "use strict";
+    init_export();
+    init_types();
+  }
+});
+
 // src/policy/index.ts
 var policy_exports = {};
 __export(policy_exports, {
@@ -1010,6 +1124,7 @@ __export(policy_exports, {
   generatePolicyPack: () => generatePolicyPack,
   listPolicyPacks: () => listPolicyPacks,
   loadPolicy: () => loadPolicy,
+  promotePolicyPack: () => promotePolicyPack,
   renderPolicyEvaluation: () => renderPolicyEvaluation
 });
 var init_policy = __esm({
@@ -1018,6 +1133,7 @@ var init_policy = __esm({
     init_evaluate();
     init_presets();
     init_export();
+    init_promote();
     init_types();
   }
 });
@@ -1661,9 +1777,9 @@ var init_types3 = __esm({
 });
 
 // src/baseline/compare.ts
-import { readFileSync as readFileSync4, writeFileSync as writeFileSync4, existsSync as existsSync5 } from "fs";
-import { dirname as dirname3 } from "path";
-import { mkdirSync as mkdirSync4 } from "fs";
+import { readFileSync as readFileSync5, writeFileSync as writeFileSync5, existsSync as existsSync6 } from "fs";
+import { dirname as dirname4 } from "path";
+import { mkdirSync as mkdirSync5 } from "fs";
 function saveBaseline(findings, score, outputPath) {
   const serialized = {
     version: 1,
@@ -1678,16 +1794,16 @@ function saveBaseline(findings, score, outputPath) {
       fingerprint: fingerprintFinding(f)
     }))
   };
-  const dir = dirname3(outputPath);
-  if (!existsSync5(dir)) {
-    mkdirSync4(dir, { recursive: true });
+  const dir = dirname4(outputPath);
+  if (!existsSync6(dir)) {
+    mkdirSync5(dir, { recursive: true });
   }
-  writeFileSync4(outputPath, JSON.stringify(serialized, null, 2));
+  writeFileSync5(outputPath, JSON.stringify(serialized, null, 2));
 }
 function loadBaseline(baselinePath) {
-  if (!existsSync5(baselinePath)) return null;
+  if (!existsSync6(baselinePath)) return null;
   try {
-    const raw = readFileSync4(baselinePath, "utf-8");
+    const raw = readFileSync5(baselinePath, "utf-8");
     const parsed = JSON.parse(raw);
     if (parsed.version !== 1 || !Array.isArray(parsed.findings)) {
       return null;
@@ -1853,9 +1969,9 @@ var init_baseline = __esm({
 
 // src/action.ts
 import { resolve as resolve4 } from "path";
-import { dirname as dirname4 } from "path";
-import { existsSync as existsSync6 } from "fs";
-import { appendFileSync, mkdirSync as mkdirSync5, writeFileSync as writeFileSync5 } from "fs";
+import { dirname as dirname5 } from "path";
+import { existsSync as existsSync7 } from "fs";
+import { appendFileSync, mkdirSync as mkdirSync6, writeFileSync as writeFileSync6 } from "fs";
 
 // src/scanner/discovery.ts
 import { readFileSync, existsSync, readdirSync, statSync } from "fs";
@@ -12463,7 +12579,7 @@ async function run() {
   const verifyEvidencePackOutput = getInput("verify-evidence-pack", "true") === "true";
   const workspace = process.env.GITHUB_WORKSPACE ?? process.cwd();
   const targetPath = resolve4(workspace, inputPath);
-  if (!existsSync6(targetPath)) {
+  if (!existsSync7(targetPath)) {
     console.log(`::error::AgentShield: Path does not exist: ${targetPath}`);
     process.exitCode = 1;
     return;
@@ -12555,8 +12671,8 @@ async function run() {
   }
   if (format === "sarif") {
     const sarifPath = resolve4(workspace, sarifOutput);
-    mkdirSync5(dirname4(sarifPath), { recursive: true });
-    writeFileSync5(
+    mkdirSync6(dirname5(sarifPath), { recursive: true });
+    writeFileSync6(
       sarifPath,
       renderSarifReport(report, {
         policyEvaluation: policyEvaluation ?? void 0,

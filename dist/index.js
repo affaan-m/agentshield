@@ -12771,6 +12771,120 @@ var init_export = __esm({
   }
 });
 
+// src/policy/promote.ts
+import { createHash as createHash4 } from "crypto";
+import {
+  existsSync as existsSync11,
+  mkdirSync as mkdirSync7,
+  readFileSync as readFileSync8,
+  writeFileSync as writeFileSync7
+} from "fs";
+import {
+  dirname as dirname5,
+  isAbsolute,
+  join as join11
+} from "path";
+function promotePolicyPack(options) {
+  const manifest = readExportManifest(options.manifestPath);
+  const entry = selectPolicyPack(manifest.packs, options.pack);
+  const sourceFile = isAbsolute(entry.file) ? entry.file : join11(dirname5(options.manifestPath), entry.file);
+  if (!existsSync11(sourceFile)) {
+    throw new Error(`Policy file not found: ${sourceFile}`);
+  }
+  const policyJson = readFileSync8(sourceFile, "utf-8");
+  const actualDigest = digest2(policyJson);
+  if (actualDigest !== entry.sha256) {
+    throw new Error(
+      `Policy digest mismatch for ${entry.id}: expected ${entry.sha256}, got ${actualDigest}`
+    );
+  }
+  const parsed = JSON.parse(policyJson);
+  const policy = OrgPolicySchema.parse(parsed);
+  if (policy.policy_pack !== entry.id) {
+    throw new Error(
+      `Policy pack mismatch: manifest entry is ${entry.id}, policy file declares ${policy.policy_pack}`
+    );
+  }
+  if (!options.dryRun) {
+    mkdirSync7(dirname5(options.outputPath), { recursive: true });
+    writeFileSync7(options.outputPath, policyJson);
+  }
+  return {
+    manifestPath: options.manifestPath,
+    sourceFile,
+    outputPath: options.outputPath,
+    pack: entry.id,
+    policyName: policy.name ?? "Organization Policy",
+    owners: policy.owners ?? [],
+    sha256: entry.sha256,
+    verified: true,
+    promoted: !options.dryRun,
+    dryRun: Boolean(options.dryRun)
+  };
+}
+function readExportManifest(manifestPath) {
+  if (!existsSync11(manifestPath)) {
+    throw new Error(`Policy export manifest not found: ${manifestPath}`);
+  }
+  const raw = JSON.parse(readFileSync8(manifestPath, "utf-8"));
+  if (raw.schema_version !== POLICY_EXPORT_SCHEMA_VERSION) {
+    throw new Error(
+      `Unsupported policy export manifest schema: ${String(raw.schema_version)}`
+    );
+  }
+  if (!Array.isArray(raw.packs)) {
+    throw new Error("Policy export manifest is missing a packs array");
+  }
+  return {
+    schema_version: POLICY_EXPORT_SCHEMA_VERSION,
+    packs: raw.packs.map(readManifestEntry)
+  };
+}
+function readManifestEntry(entry) {
+  if (!entry || typeof entry !== "object") {
+    throw new Error("Invalid policy export manifest entry");
+  }
+  const candidate = entry;
+  const packResult = PolicyPackSchema.safeParse(candidate.id);
+  if (!packResult.success) {
+    throw new Error(`Invalid policy pack id in manifest: ${String(candidate.id)}`);
+  }
+  if (typeof candidate.file !== "string" || candidate.file.length === 0) {
+    throw new Error(`Invalid policy file for manifest pack: ${packResult.data}`);
+  }
+  if (typeof candidate.sha256 !== "string" || !/^sha256:[a-f0-9]{64}$/.test(candidate.sha256)) {
+    throw new Error(`Invalid policy digest for manifest pack: ${packResult.data}`);
+  }
+  return {
+    id: packResult.data,
+    file: candidate.file,
+    sha256: candidate.sha256
+  };
+}
+function selectPolicyPack(entries, requestedPack) {
+  if (requestedPack) {
+    const entry = entries.find((item) => item.id === requestedPack);
+    if (!entry) {
+      throw new Error(`Policy pack ${requestedPack} not found in export manifest`);
+    }
+    return entry;
+  }
+  if (entries.length === 1) {
+    return entries[0];
+  }
+  throw new Error("Export manifest contains multiple policy packs; pass --pack to select one");
+}
+function digest2(value) {
+  return `sha256:${createHash4("sha256").update(value).digest("hex")}`;
+}
+var init_promote = __esm({
+  "src/policy/promote.ts"() {
+    "use strict";
+    init_export();
+    init_types();
+  }
+});
+
 // src/policy/index.ts
 var policy_exports = {};
 __export(policy_exports, {
@@ -12784,6 +12898,7 @@ __export(policy_exports, {
   generatePolicyPack: () => generatePolicyPack,
   listPolicyPacks: () => listPolicyPacks,
   loadPolicy: () => loadPolicy2,
+  promotePolicyPack: () => promotePolicyPack,
   renderPolicyEvaluation: () => renderPolicyEvaluation
 });
 var init_policy = __esm({
@@ -12792,6 +12907,7 @@ var init_policy = __esm({
     init_evaluate();
     init_presets();
     init_export();
+    init_promote();
     init_types();
   }
 });
@@ -12811,9 +12927,9 @@ var init_types2 = __esm({
 });
 
 // src/baseline/compare.ts
-import { readFileSync as readFileSync8, writeFileSync as writeFileSync7, existsSync as existsSync11 } from "fs";
-import { dirname as dirname5 } from "path";
-import { mkdirSync as mkdirSync7 } from "fs";
+import { readFileSync as readFileSync9, writeFileSync as writeFileSync8, existsSync as existsSync12 } from "fs";
+import { dirname as dirname6 } from "path";
+import { mkdirSync as mkdirSync8 } from "fs";
 function saveBaseline(findings, score, outputPath) {
   const serialized = {
     version: 1,
@@ -12828,16 +12944,16 @@ function saveBaseline(findings, score, outputPath) {
       fingerprint: fingerprintFinding(f)
     }))
   };
-  const dir = dirname5(outputPath);
-  if (!existsSync11(dir)) {
-    mkdirSync7(dir, { recursive: true });
+  const dir = dirname6(outputPath);
+  if (!existsSync12(dir)) {
+    mkdirSync8(dir, { recursive: true });
   }
-  writeFileSync7(outputPath, JSON.stringify(serialized, null, 2));
+  writeFileSync8(outputPath, JSON.stringify(serialized, null, 2));
 }
 function loadBaseline(baselinePath) {
-  if (!existsSync11(baselinePath)) return null;
+  if (!existsSync12(baselinePath)) return null;
   try {
-    const raw = readFileSync8(baselinePath, "utf-8");
+    const raw = readFileSync9(baselinePath, "utf-8");
     const parsed = JSON.parse(raw);
     if (parsed.version !== 1 || !Array.isArray(parsed.findings)) {
       return null;
@@ -13629,8 +13745,8 @@ var init_supply_chain = __esm({
 init_scanner();
 import { Command } from "commander";
 import { resolve as resolve10 } from "path";
-import { dirname as dirname6, join as join11 } from "path";
-import { existsSync as existsSync12, writeFileSync as writeFileSync8, appendFileSync as appendFileSync2, mkdirSync as mkdirSync8 } from "fs";
+import { dirname as dirname7, join as join12 } from "path";
+import { existsSync as existsSync13, writeFileSync as writeFileSync9, appendFileSync as appendFileSync2, mkdirSync as mkdirSync9 } from "fs";
 
 // src/reporter/score.ts
 var SCORE_DEDUCTIONS = {
@@ -18251,7 +18367,7 @@ function createScanLogger(logPath, logFormat) {
     },
     flush() {
       if (logPath && logFormat === "json") {
-        writeFileSync8(logPath, JSON.stringify(entries, null, 2));
+        writeFileSync9(logPath, JSON.stringify(entries, null, 2));
       }
     }
   };
@@ -18265,8 +18381,8 @@ function emitReportOutput(output, outputPath) {
     return;
   }
   const resolvedOutput = resolve10(outputPath);
-  mkdirSync8(dirname6(resolvedOutput), { recursive: true });
-  writeFileSync8(resolvedOutput, output);
+  mkdirSync9(dirname7(resolvedOutput), { recursive: true });
+  writeFileSync9(resolvedOutput, output);
   console.log(`Report written to: ${resolvedOutput}`);
 }
 function collectOption(value, previous) {
@@ -18301,7 +18417,7 @@ function emptySupplyChainReport() {
 }
 program.command("scan").description("Scan a Claude Code configuration directory for security issues").option("-p, --path <path>", "Path to scan (default: ~/.claude or current dir)").option("-f, --format <format>", "Output format: terminal, json, markdown, html, sarif", "terminal").option("-o, --output <path>", "Write the primary report output to a file").option("--fix", "Auto-apply safe fixes", false).option("--opus", "Enable Opus 4.6 multi-agent deep analysis", false).option("--stream", "Stream Opus analysis in real-time", false).option("--injection", "Run active prompt injection testing against the config", false).option("--sandbox", "Execute hooks in sandbox and observe behavior", false).option("--taint", "Run taint analysis (data flow tracking)", false).option("--deep", "Run ALL analysis (injection + sandbox + taint + opus)", false).option("--log <path>", "Write structured scan log to file").option("--log-format <format>", "Log format: ndjson (default) or json", "ndjson").option("--corpus", "Run scanner validation against built-in attack corpus", false).option("--corpus-gate", "Run built-in attack corpus and fail if scanner accuracy regresses", false).option("--baseline <path>", "Compare against a baseline file and report regressions").option("--save-baseline <path>", "Save current scan results as a baseline file").option("--gate", "Fail if new critical/high findings or score drops (use with --baseline)", false).option("--supply-chain", "Verify MCP npm packages against known-bad list and typosquatting", false).option("--supply-chain-online", "Also query npm registry for metadata (requires network)", false).option("--policy <path>", "Validate against an organization policy file").option("--evidence-pack <dir>", "Write a portable evidence bundle for audits and security reviews").option("--remediation-plan <path>", "Write a stable-fingerprint JSON remediation plan").option("--no-evidence-redact", "Disable evidence-pack redaction of local paths, usernames, emails, and token-shaped strings").option("--min-severity <severity>", "Minimum severity to report: critical, high, medium, low, info", "info").option("-v, --verbose", "Show detailed output", false).action(async (options) => {
   const targetPath = resolveTargetPath(options.path);
-  if (!existsSync12(targetPath)) {
+  if (!existsSync13(targetPath)) {
     console.error(`Error: Path does not exist: ${targetPath}`);
     process.exit(1);
   }
@@ -18764,7 +18880,7 @@ baseline.command("write").description("Scan a target and write the current findi
     process.exit(1);
   }
   const targetPath = resolveTargetPath(options.path);
-  if (!existsSync12(targetPath)) {
+  if (!existsSync13(targetPath)) {
     console.error(`Error: Path does not exist: ${targetPath}`);
     process.exit(1);
   }
@@ -18799,7 +18915,7 @@ baseline.command("write").description("Scan a target and write the current findi
 });
 program.command("watch").description("Continuously monitor config directories for security regressions").option("-p, --path <path>", "Path to watch (default: ~/.claude or current dir)").option("--debounce <ms>", "Debounce interval in milliseconds", "500").option("--alert <mode>", "Alert mode: terminal, webhook, both", "terminal").option("--webhook <url>", "Webhook URL for alerts").option("--min-severity <severity>", "Minimum severity to track: critical, high, medium, low, info", "info").option("--block", "Exit non-zero if critical findings detected (for CI integration)", false).action((options) => {
   const targetPath = resolveTargetPath(options.path);
-  if (!existsSync12(targetPath)) {
+  if (!existsSync13(targetPath)) {
     console.error(`Error: Path does not exist: ${targetPath}`);
     process.exit(1);
   }
@@ -18839,7 +18955,7 @@ program.command("watch").description("Continuously monitor config directories fo
     ".claude"
   );
   const watchPaths = [targetPath];
-  if (existsSync12(homeClaude) && homeClaude !== targetPath) {
+  if (existsSync13(homeClaude) && homeClaude !== targetPath) {
     watchPaths.push(homeClaude);
     console.log(`  Also watching:  ${homeClaude}`);
   }
@@ -18954,7 +19070,7 @@ policyCmd.command("init").description("Generate an example organization policy f
   const { generateExamplePolicy: generateExamplePolicy2, listPolicyPacks: listPolicyPacks2, PolicyPackSchema: PolicyPackSchema2 } = await Promise.resolve().then(() => (init_policy(), policy_exports));
   const outputPath = resolve10(options.output);
   const packResult = PolicyPackSchema2.safeParse(options.pack);
-  if (existsSync12(outputPath)) {
+  if (existsSync13(outputPath)) {
     console.error(`
   Error: Policy file already exists at ${outputPath}
 `);
@@ -18968,10 +19084,10 @@ policyCmd.command("init").description("Generate an example organization policy f
     process.exit(1);
   }
   const dir = resolve10(outputPath, "..");
-  if (!existsSync12(dir)) {
-    mkdirSync8(dir, { recursive: true });
+  if (!existsSync13(dir)) {
+    mkdirSync9(dir, { recursive: true });
   }
-  writeFileSync8(outputPath, generateExamplePolicy2(packResult.data, {
+  writeFileSync9(outputPath, generateExamplePolicy2(packResult.data, {
     name: options.name,
     owners: options.owner
   }));
@@ -19013,16 +19129,57 @@ policyCmd.command("export").description("Export policy pack JSON files with a ch
   }
   console.log(`
   Policy bundle written to: ${outputDir}`);
-  console.log(`  Manifest:       ${join11(outputDir, "manifest.json")}`);
+  console.log(`  Manifest:       ${join12(outputDir, "manifest.json")}`);
   console.log(`  Policies:       ${manifest.packs.length}`);
   for (const pack of manifest.packs) {
     console.log(`  - ${pack.id}: ${pack.file} (${pack.sha256})`);
   }
   if (manifest.packs[0]) {
-    console.log(`  Then run: agentshield scan --policy ${join11(options.outputDir, manifest.packs[0].file)}
+    console.log(`  Then run: agentshield scan --policy ${join12(options.outputDir, manifest.packs[0].file)}
 `);
   } else {
     console.log("");
+  }
+});
+policyCmd.command("promote").description("Promote a checksum-verified exported policy into the active policy path").option("-m, --manifest <path>", "Policy export manifest path", ".agentshield/policies/manifest.json").option("-o, --output <path>", "Active policy output path", ".agentshield/policy.json").option("--pack <pack>", "Policy pack to promote when the manifest contains multiple packs").option("--dry-run", "Verify the manifest and policy without writing the active policy", false).option("--json", "Emit the promotion result as JSON", false).action(async (options) => {
+  const {
+    promotePolicyPack: promotePolicyPack2,
+    PolicyPackSchema: PolicyPackSchema2
+  } = await Promise.resolve().then(() => (init_policy(), policy_exports));
+  const pack = options.pack ? PolicyPackSchema2.safeParse(options.pack) : void 0;
+  if (pack && !pack.success) {
+    console.error(`
+  Error: Unknown policy pack "${options.pack}"
+`);
+    process.exit(1);
+  }
+  try {
+    const result = promotePolicyPack2({
+      manifestPath: resolve10(options.manifest),
+      outputPath: resolve10(options.output),
+      pack: pack?.data,
+      dryRun: options.dryRun
+    });
+    if (options.json) {
+      writeStdout(JSON.stringify(result, null, 2));
+      return;
+    }
+    console.log(`
+  Policy promotion ${result.dryRun ? "verified" : "complete"}`);
+    console.log(`  Pack:        ${result.pack}`);
+    console.log(`  Policy:      ${result.policyName}`);
+    console.log(`  Manifest:    ${result.manifestPath}`);
+    console.log(`  Source:      ${result.sourceFile}`);
+    console.log(`  Output:      ${result.outputPath}`);
+    console.log(`  Digest:      ${result.sha256}`);
+    console.log(`  Written:     ${result.promoted ? "yes" : "no (dry run)"}
+`);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error(`
+  Error: ${message}
+`);
+    process.exit(1);
   }
 });
 var miniclaw = program.command("miniclaw").description("MiniClaw \u2014 minimal secure sandboxed AI agent runtime");
@@ -19119,14 +19276,14 @@ function resolveTargetPath(pathArg) {
     return resolve10(pathArg);
   }
   const localClaude = resolve10(process.cwd(), ".claude");
-  if (existsSync12(localClaude)) {
+  if (existsSync13(localClaude)) {
     return localClaude;
   }
   const homeClaude = resolve10(
     process.env.HOME ?? process.env.USERPROFILE ?? ".",
     ".claude"
   );
-  if (existsSync12(homeClaude)) {
+  if (existsSync13(homeClaude)) {
     return homeClaude;
   }
   return process.cwd();

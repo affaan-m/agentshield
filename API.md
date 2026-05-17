@@ -103,10 +103,20 @@ Policy preset generation:
 ```bash
 agentshield policy init --pack enterprise --owner security@example.com
 agentshield policy init --pack regulated --name "Regulated Agent Policy"
+agentshield policy export --pack ci-enforcement --output-dir .github/agentshield-policies
+agentshield policy promote --manifest .github/agentshield-policies/manifest.json --pack ci-enforcement --output .agentshield/policy.json
+agentshield policy promote --manifest .github/agentshield-policies/manifest.json --pack ci-enforcement --dry-run --json
 ```
 
 Supported packs: `oss`, `team`, `enterprise`, `regulated`,
 `high-risk-hooks-mcp`, and `ci-enforcement`.
+
+`policy promote` is checksum-first: it rejects missing manifests, unsupported
+manifest schemas, ambiguous multi-pack manifests without `--pack`, tampered
+policy files whose SHA-256 no longer matches the manifest, and policy files
+that fail the organization policy schema. This makes exported policy bundles
+usable as reviewable CI artifacts before they become the active
+`.agentshield/policy.json`.
 
 The GitHub Action exposes the same organization policy gate through the
 `policy` input. It reports `policy-status` and `policy-violations` outputs,

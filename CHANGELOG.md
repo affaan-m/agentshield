@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## Unreleased
+
+- Added `agentshield policy promote` to verify exported policy-pack manifests,
+  reject tampered policy JSON by SHA-256 digest, and promote a selected pack
+  into the active policy path with dry-run and JSON review modes.
+
 ## [1.4.0] - 2026-03-20
 
 This release focuses on scan accuracy, source-aware scoring, and safer interpretation of example and manifest-heavy repositories.

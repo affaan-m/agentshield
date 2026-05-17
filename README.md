@@ -597,6 +597,7 @@ agentshield evidence-pack inspect  Verify and summarize an evidence bundle
 agentshield evidence-pack verify   Verify artifact and bundle digests
 agentshield policy export          Export policy packs plus checksum manifest
 agentshield policy init            Generate an organization policy preset
+agentshield policy promote         Verify and promote an exported policy
 ```
 
 Baseline write:
@@ -634,6 +635,8 @@ agentshield policy init --pack enterprise --owner security-platform@acme.example
 agentshield policy init --pack regulated --name "Acme Regulated Policy"
 agentshield policy export --output-dir .github/agentshield-policies --owner security-platform@acme.example
 agentshield policy export --pack ci-enforcement --name-prefix "Acme" --json
+agentshield policy promote --manifest .github/agentshield-policies/manifest.json --pack ci-enforcement --output .agentshield/policy.json
+agentshield policy promote --manifest .github/agentshield-policies/manifest.json --pack ci-enforcement --dry-run --json
 ```
 
 Policy pack presets are starter baselines, not hidden SaaS policy. `oss` keeps
@@ -647,6 +650,12 @@ Policy export writes one JSON policy file per selected pack plus a
 `manifest.json` containing SHA-256 digests. This gives platform teams a stable
 artifact bundle for branch-protection review, audit attachment, or downstream
 policy promotion without relying on generated console output.
+
+Policy promotion is the review gate for those exported bundles. It reads the
+export manifest, verifies the selected policy file digest, validates the policy
+schema, and only then writes the active policy path. Use `--dry-run --json` in
+review workflows to prove the exact pack, source file, output path, owner list,
+and digest before a protected branch or operator copies the policy into place.
 
 ```json
 {

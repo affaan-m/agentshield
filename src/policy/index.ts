@@ -12,6 +12,9 @@ export {
   POLICY_EXPORT_SCHEMA_VERSION,
   exportPolicyPacks,
 } from "./export.js";
+export {
+  promotePolicyPack,
+} from "./promote.js";
 export type { EvaluatePolicyOptions, LoadPolicyResult } from "./evaluate.js";
 export type {
   GeneratePolicyPackOptions,
@@ -22,6 +25,10 @@ export type {
   PolicyPackExportEntry,
   PolicyPackExportManifest,
 } from "./export.js";
+export type {
+  PromotePolicyPackOptions,
+  PolicyPackPromotionResult,
+} from "./promote.js";
 export {
   OrgPolicySchema,
   PolicyExceptionSchema,

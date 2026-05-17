@@ -1173,6 +1173,55 @@ policyCmd
     }
   });
 
+policyCmd
+  .command("promote")
+  .description("Promote a checksum-verified exported policy into the active policy path")
+  .option("-m, --manifest <path>", "Policy export manifest path", ".agentshield/policies/manifest.json")
+  .option("-o, --output <path>", "Active policy output path", ".agentshield/policy.json")
+  .option("--pack <pack>", "Policy pack to promote when the manifest contains multiple packs")
+  .option("--dry-run", "Verify the manifest and policy without writing the active policy", false)
+  .option("--json", "Emit the promotion result as JSON", false)
+  .action(async (options) => {
+    const {
+      promotePolicyPack,
+      PolicyPackSchema,
+    } = await import("./policy/index.js");
+    const pack = options.pack
+      ? PolicyPackSchema.safeParse(options.pack)
+      : undefined;
+    if (pack && !pack.success) {
+      console.error(`\n  Error: Unknown policy pack "${options.pack}"\n`);
+      process.exit(1);
+    }
+
+    try {
+      const result = promotePolicyPack({
+        manifestPath: resolve(options.manifest),
+        outputPath: resolve(options.output),
+        pack: pack?.data,
+        dryRun: options.dryRun,
+      });
+
+      if (options.json) {
+        writeStdout(JSON.stringify(result, null, 2));
+        return;
+      }
+
+      console.log(`\n  Policy promotion ${result.dryRun ? "verified" : "complete"}`);
+      console.log(`  Pack:        ${result.pack}`);
+      console.log(`  Policy:      ${result.policyName}`);
+      console.log(`  Manifest:    ${result.manifestPath}`);
+      console.log(`  Source:      ${result.sourceFile}`);
+      console.log(`  Output:      ${result.outputPath}`);
+      console.log(`  Digest:      ${result.sha256}`);
+      console.log(`  Written:     ${result.promoted ? "yes" : "no (dry run)"}\n`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error(`\n  Error: ${message}\n`);
+      process.exit(1);
+    }
+  });
+
 // ─── MiniClaw Commands ───────────────────────────────────
 
 const miniclaw = program
