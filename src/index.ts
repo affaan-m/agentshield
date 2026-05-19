@@ -785,6 +785,7 @@ evidencePack
           );
           writeStdout(`  owner: ${item.owner}`);
           writeStdout(`  priority: ${item.priority}`);
+          writeStdout(`  approval: ${item.approvalId}`);
           writeStdout(`  ticket: ${item.ticket.title}`);
           writeStdout(`  before: ${item.beforeState}`);
           writeStdout(`  after: ${item.afterState}`);

@@ -2299,9 +2299,9 @@ var init_hooks = __esm({
         description: "Matches the fictitious @tanstack/setup dependency or malicious git ref from the May 2026 TanStack/Mini Shai-Hulud campaign."
       },
       {
-        name: "tanstack-payload-filename",
-        pattern: /\b(?:router_init\.js|tanstack_runner\.js)\b/gi,
-        description: "Matches payload filenames used by the May 2026 TanStack/Mini Shai-Hulud npm campaign."
+        name: "mini-shai-hulud-payload-filename",
+        pattern: /\b(?:router_init\.js|tanstack_runner\.js|opensearch_init\.js|vite_setup\.mjs|execution\.js|shai-hulud-workflow\.ya?ml)\b/gi,
+        description: "Matches payload and workflow filenames used by the May 2026 TanStack/Mini Shai-Hulud npm campaign and follow-on package waves."
       },
       {
         name: "tanstack-exfil-network",
@@ -16210,6 +16210,7 @@ function buildFleetOperatorReadback(summary, routes, reviewItems) {
   const status = determineFleetOperatorStatus(summary, reviewItems);
   const owners = Array.from(new Set(reviewItems.map((item) => item.owner))).sort();
   const routesRequiringApproval = Array.from(new Set(reviewItems.map((item) => item.route))).sort();
+  const approvalIds = reviewItems.map((item) => item.approvalId).sort();
   return {
     status,
     ready: status === "ready",
@@ -16221,6 +16222,7 @@ function buildFleetOperatorReadback(summary, routes, reviewItems) {
     ownerCount: owners.length,
     owners,
     routesRequiringApproval,
+    approvalIds,
     nextAction: describeFleetOperatorNextAction(status)
   };
 }
@@ -16247,6 +16249,7 @@ function buildFleetOperatorDigest(summary, routes, reviewItems) {
       route: item.route,
       severity: item.severity,
       priority: item.priority,
+      approvalId: item.approvalId,
       outputDir: item.outputDir,
       owner: item.owner,
       repository: item.repository,
@@ -16275,12 +16278,26 @@ function buildFleetReviewItem(entry) {
   const reversibleAction = buildFleetReviewReversibleAction(entry.route);
   const actions = buildFleetReviewActions(entry.route);
   const recommendation = buildFleetReviewRecommendation(entry.route);
+  const owner = buildFleetReviewOwner(entry);
+  const approvalId = buildFleetReviewApprovalId({
+    entry,
+    severity,
+    priority,
+    owner,
+    evidencePaths,
+    beforeState,
+    afterState,
+    reversibleAction,
+    actions,
+    recommendation
+  });
   return {
     route: entry.route,
     severity,
     priority,
+    approvalId,
     outputDir: entry.outputDir,
-    owner: buildFleetReviewOwner(entry),
+    owner,
     repository: entry.repository,
     targetPath: entry.targetPath,
     reason: entry.reason,
@@ -16294,6 +16311,8 @@ function buildFleetReviewItem(entry) {
       entry,
       severity,
       priority,
+      owner,
+      approvalId,
       evidencePaths,
       beforeState,
       afterState,
@@ -16302,6 +16321,26 @@ function buildFleetReviewItem(entry) {
       recommendation
     })
   };
+}
+function buildFleetReviewApprovalId(options) {
+  const payload = {
+    route: options.entry.route,
+    severity: options.severity,
+    priority: options.priority,
+    outputDir: options.entry.outputDir,
+    repository: options.entry.repository,
+    targetPath: options.entry.targetPath,
+    reason: options.entry.reason,
+    owner: options.owner,
+    evidencePaths: [...options.evidencePaths].sort(),
+    beforeState: options.beforeState,
+    afterState: options.afterState,
+    reversibleAction: options.reversibleAction,
+    actions: [...options.actions],
+    recommendation: options.recommendation
+  };
+  const digest3 = createHash2("sha256").update(JSON.stringify(payload)).digest("hex");
+  return `agsr_${digest3.slice(0, 16)}`;
 }
 function determineFleetReviewSeverity(route) {
   if (route === "invalid" || route === "security-blocker") return "high";
@@ -16405,6 +16444,7 @@ function buildFleetReviewActions(route) {
 }
 function buildFleetReviewTicket(options) {
   const repository = options.entry.repository ?? "unknown repository";
+  const externalId = `agentshield-fleet-review:${options.approvalId}`;
   const labels = [
     "AgentShield",
     "Security",
@@ -16417,8 +16457,10 @@ function buildFleetReviewTicket(options) {
     `Route: \`${options.entry.route}\``,
     `Priority: \`${options.priority}\``,
     `Severity: \`${options.severity}\``,
+    `Approval ID: \`${options.approvalId}\``,
+    `External ID: \`${externalId}\``,
     `Repository: \`${repository}\``,
-    `Owner: \`${buildFleetReviewOwner(options.entry)}\``,
+    `Owner: \`${options.owner}\``,
     `Reason: ${options.entry.reason}`,
     "",
     "### State",
@@ -16435,6 +16477,7 @@ function buildFleetReviewTicket(options) {
     `Recommendation: ${options.recommendation}`
   ].join("\n");
   return {
+    externalId,
     title: `AgentShield ${options.entry.route}: ${repository} (${options.entry.reason})`,
     body,
     labels,
@@ -19737,6 +19780,7 @@ evidencePack.command("fleet").description("Inspect multiple evidence packs and s
         );
         writeStdout(`  owner: ${item.owner}`);
         writeStdout(`  priority: ${item.priority}`);
+        writeStdout(`  approval: ${item.approvalId}`);
         writeStdout(`  ticket: ${item.ticket.title}`);
         writeStdout(`  before: ${item.beforeState}`);
         writeStdout(`  after: ${item.afterState}`);

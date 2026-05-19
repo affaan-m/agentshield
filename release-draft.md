@@ -14,7 +14,10 @@ Linear, and ECC Tools flows can consume directly.
   drop-ins, and OS startup artifacts.
 - Added evidence-pack fleet `operatorReadback` output with ready/blocked status,
   deterministic review digest, owner counts, approval routes, blocking counts,
-  and next-action guidance for promotion gates.
+  deterministic approval IDs, and next-action guidance for promotion gates.
+- Added review-item approval IDs and ticket external IDs so downstream GitHub
+  App, Linear, and ECC Tools sync jobs can dedupe owner-approval threads across
+  repeated fleet inspections.
 - Added `agentshield policy promote` to verify exported policy-pack manifests,
   reject tampered policy JSON by SHA-256 digest, and promote a selected pack
   into the active policy path with dry-run and JSON review modes.

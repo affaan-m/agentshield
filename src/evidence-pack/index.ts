@@ -98,6 +98,7 @@ export interface EvidencePackFleetOperatorReadback {
   readonly ownerCount: number;
   readonly owners: ReadonlyArray<string>;
   readonly routesRequiringApproval: ReadonlyArray<EvidencePackFleetRoute>;
+  readonly approvalIds: ReadonlyArray<string>;
   readonly nextAction: string;
 }
 
@@ -155,6 +156,7 @@ export interface EvidencePackFleetReviewItem {
   readonly route: EvidencePackFleetRoute;
   readonly severity: "high" | "medium" | "low" | "info";
   readonly priority: "urgent" | "high" | "normal";
+  readonly approvalId: string;
   readonly outputDir: string;
   readonly owner: string;
   readonly repository: string | null;
@@ -170,6 +172,7 @@ export interface EvidencePackFleetReviewItem {
 }
 
 export interface EvidencePackFleetReviewTicket {
+  readonly externalId: string;
   readonly title: string;
   readonly body: string;
   readonly labels: ReadonlyArray<string>;
@@ -624,6 +627,7 @@ function buildFleetOperatorReadback(
   const status = determineFleetOperatorStatus(summary, reviewItems);
   const owners = Array.from(new Set(reviewItems.map((item) => item.owner))).sort();
   const routesRequiringApproval = Array.from(new Set(reviewItems.map((item) => item.route))).sort();
+  const approvalIds = reviewItems.map((item) => item.approvalId).sort();
   return {
     status,
     ready: status === "ready",
@@ -635,6 +639,7 @@ function buildFleetOperatorReadback(
     ownerCount: owners.length,
     owners,
     routesRequiringApproval,
+    approvalIds,
     nextAction: describeFleetOperatorNextAction(status),
   };
 }
@@ -674,6 +679,7 @@ function buildFleetOperatorDigest(
         route: item.route,
         severity: item.severity,
         priority: item.priority,
+        approvalId: item.approvalId,
         outputDir: item.outputDir,
         owner: item.owner,
         repository: item.repository,
@@ -705,12 +711,26 @@ function buildFleetReviewItem(entry: EvidencePackFleetEntry): EvidencePackFleetR
   const reversibleAction = buildFleetReviewReversibleAction(entry.route);
   const actions = buildFleetReviewActions(entry.route);
   const recommendation = buildFleetReviewRecommendation(entry.route);
+  const owner = buildFleetReviewOwner(entry);
+  const approvalId = buildFleetReviewApprovalId({
+    entry,
+    severity,
+    priority,
+    owner,
+    evidencePaths,
+    beforeState,
+    afterState,
+    reversibleAction,
+    actions,
+    recommendation,
+  });
   return {
     route: entry.route,
     severity,
     priority,
+    approvalId,
     outputDir: entry.outputDir,
-    owner: buildFleetReviewOwner(entry),
+    owner,
     repository: entry.repository,
     targetPath: entry.targetPath,
     reason: entry.reason,
@@ -724,6 +744,8 @@ function buildFleetReviewItem(entry: EvidencePackFleetEntry): EvidencePackFleetR
       entry,
       severity,
       priority,
+      owner,
+      approvalId,
       evidencePaths,
       beforeState,
       afterState,
@@ -732,6 +754,38 @@ function buildFleetReviewItem(entry: EvidencePackFleetEntry): EvidencePackFleetR
       recommendation,
     }),
   };
+}
+
+function buildFleetReviewApprovalId(options: {
+  readonly entry: EvidencePackFleetEntry;
+  readonly severity: EvidencePackFleetReviewItem["severity"];
+  readonly priority: EvidencePackFleetReviewItem["priority"];
+  readonly owner: string;
+  readonly evidencePaths: ReadonlyArray<string>;
+  readonly beforeState: string;
+  readonly afterState: string;
+  readonly reversibleAction: string;
+  readonly actions: ReadonlyArray<string>;
+  readonly recommendation: string;
+}): string {
+  const payload = {
+    route: options.entry.route,
+    severity: options.severity,
+    priority: options.priority,
+    outputDir: options.entry.outputDir,
+    repository: options.entry.repository,
+    targetPath: options.entry.targetPath,
+    reason: options.entry.reason,
+    owner: options.owner,
+    evidencePaths: [...options.evidencePaths].sort(),
+    beforeState: options.beforeState,
+    afterState: options.afterState,
+    reversibleAction: options.reversibleAction,
+    actions: [...options.actions],
+    recommendation: options.recommendation,
+  };
+  const digest = createHash("sha256").update(JSON.stringify(payload)).digest("hex");
+  return `agsr_${digest.slice(0, 16)}`;
 }
 
 function determineFleetReviewSeverity(route: EvidencePackFleetRoute): EvidencePackFleetReviewItem["severity"] {
@@ -849,6 +903,8 @@ function buildFleetReviewTicket(options: {
   readonly entry: EvidencePackFleetEntry;
   readonly severity: EvidencePackFleetReviewItem["severity"];
   readonly priority: EvidencePackFleetReviewItem["priority"];
+  readonly owner: string;
+  readonly approvalId: string;
   readonly evidencePaths: ReadonlyArray<string>;
   readonly beforeState: string;
   readonly afterState: string;
@@ -857,6 +913,7 @@ function buildFleetReviewTicket(options: {
   readonly recommendation: string;
 }): EvidencePackFleetReviewTicket {
   const repository = options.entry.repository ?? "unknown repository";
+  const externalId = `agentshield-fleet-review:${options.approvalId}`;
   const labels = [
     "AgentShield",
     "Security",
@@ -869,8 +926,10 @@ function buildFleetReviewTicket(options: {
     `Route: \`${options.entry.route}\``,
     `Priority: \`${options.priority}\``,
     `Severity: \`${options.severity}\``,
+    `Approval ID: \`${options.approvalId}\``,
+    `External ID: \`${externalId}\``,
     `Repository: \`${repository}\``,
-    `Owner: \`${buildFleetReviewOwner(options.entry)}\``,
+    `Owner: \`${options.owner}\``,
     `Reason: ${options.entry.reason}`,
     "",
     "### State",
@@ -888,6 +947,7 @@ function buildFleetReviewTicket(options: {
   ].join("\n");
 
   return {
+    externalId,
     title: `AgentShield ${options.entry.route}: ${repository} (${options.entry.reason})`,
     body,
     labels,

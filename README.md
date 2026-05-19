@@ -462,8 +462,11 @@ agentshield evidence-pack fleet ./repo-a-evidence ./repo-b-evidence --json
 
 `operatorReadback` is the stable field for downstream GitHub App, Linear, or
 ECC Tools routing. It reports `ready`, `status`, `digest`, owner counts,
-blocking review counts, approval routes, and the next operator action so fleet
-promotion can be gated without parsing terminal prose.
+blocking review counts, approval routes, deterministic `approvalIds`, and the
+next operator action so fleet promotion can be gated without parsing terminal
+prose. Each review item also carries the same `approvalId` plus a
+Linear-friendly ticket `externalId`, allowing sync jobs to dedupe owner approval
+threads across reruns.
 
 ### JSON Report Shape
 

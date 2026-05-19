@@ -4372,9 +4372,9 @@ var AI_TOOL_PERSISTENCE_IOCS = [
     description: "Matches the fictitious @tanstack/setup dependency or malicious git ref from the May 2026 TanStack/Mini Shai-Hulud campaign."
   },
   {
-    name: "tanstack-payload-filename",
-    pattern: /\b(?:router_init\.js|tanstack_runner\.js)\b/gi,
-    description: "Matches payload filenames used by the May 2026 TanStack/Mini Shai-Hulud npm campaign."
+    name: "mini-shai-hulud-payload-filename",
+    pattern: /\b(?:router_init\.js|tanstack_runner\.js|opensearch_init\.js|vite_setup\.mjs|execution\.js|shai-hulud-workflow\.ya?ml)\b/gi,
+    description: "Matches payload and workflow filenames used by the May 2026 TanStack/Mini Shai-Hulud npm campaign and follow-on package waves."
   },
   {
     name: "tanstack-exfil-network",

@@ -760,6 +760,9 @@ describe("writeEvidencePack", () => {
       nextAction: "Route review items to listed owners and attach approval before promotion.",
     });
     expect(fleet.operatorReadback.digest).toMatch(/^sha256:[0-9a-f]{64}$/);
+    expect(fleet.operatorReadback.approvalIds).toEqual([
+      expect.stringMatching(/^agsr_[0-9a-f]{16}$/),
+    ]);
     expect(fleet.entries).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -794,6 +797,7 @@ describe("writeEvidencePack", () => {
         route: "security-blocker",
         severity: "high",
         priority: "urgent",
+        approvalId: fleet.operatorReadback.approvalIds[0],
         owner: "affaan-m/risky-repo security owner",
         repository: "affaan-m/risky-repo",
         outputDir: riskyOutputDir,
@@ -813,6 +817,7 @@ describe("writeEvidencePack", () => {
         ]),
         recommendation: "Route to security owner before promotion.",
         ticket: expect.objectContaining({
+          externalId: `agentshield-fleet-review:${fleet.operatorReadback.approvalIds[0]}`,
           title: "AgentShield security-blocker: affaan-m/risky-repo (1 critical findings)",
           priority: "urgent",
           labels: expect.arrayContaining([
@@ -825,6 +830,7 @@ describe("writeEvidencePack", () => {
         }),
       }),
     ]);
+    expect(fleet.reviewItems[0].ticket.body).toContain(`Approval ID: \`${fleet.operatorReadback.approvalIds[0]}\``);
   });
 
   it("routes current Mini Shai-Hulud supply-chain incident packs as security blockers", async () => {
@@ -1045,6 +1051,7 @@ describe("writeEvidencePack", () => {
     expect(text.stdout).toContain("high security-blocker affaan-m/risky-repo");
     expect(text.stdout).toContain("owner: affaan-m/risky-repo security owner");
     expect(text.stdout).toContain("priority: urgent");
+    expect(text.stdout).toMatch(/approval: agsr_[0-9a-f]{16}/);
     expect(text.stdout).toContain("ticket: AgentShield security-blocker: affaan-m/risky-repo (1 critical findings)");
     expect(text.stdout).toContain("before: Evidence pack has security blockers: 1 critical findings.");
     expect(text.stdout).toContain("after: Critical and high findings are fixed, accepted by policy, or explicitly routed with owner approval.");
@@ -1067,7 +1074,8 @@ describe("writeEvidencePack", () => {
     });
 
     expect(json.status).toBe(0);
-    expect(JSON.parse(json.stdout)).toMatchObject({
+    const parsedJson = JSON.parse(json.stdout);
+    expect(parsedJson).toMatchObject({
       ok: true,
       requiresAttention: true,
       summary: {
@@ -1088,6 +1096,7 @@ describe("writeEvidencePack", () => {
         ownerCount: 1,
         owners: ["affaan-m/risky-repo security owner"],
         routesRequiringApproval: ["security-blocker"],
+        approvalIds: [expect.stringMatching(/^agsr_[0-9a-f]{16}$/)],
         nextAction: "Route review items to listed owners and attach approval before promotion.",
       },
       reviewItems: [
@@ -1095,6 +1104,7 @@ describe("writeEvidencePack", () => {
           route: "security-blocker",
           severity: "high",
           priority: "urgent",
+          approvalId: expect.stringMatching(/^agsr_[0-9a-f]{16}$/),
           owner: "affaan-m/risky-repo security owner",
           repository: "affaan-m/risky-repo",
           beforeState: "Evidence pack has security blockers: 1 critical findings.",
@@ -1107,6 +1117,7 @@ describe("writeEvidencePack", () => {
           ],
           recommendation: "Route to security owner before promotion.",
           ticket: {
+            externalId: expect.stringMatching(/^agentshield-fleet-review:agsr_[0-9a-f]{16}$/),
             title: "AgentShield security-blocker: affaan-m/risky-repo (1 critical findings)",
             priority: "urgent",
             labels: [
@@ -1119,6 +1130,13 @@ describe("writeEvidencePack", () => {
         },
       ],
     });
-    expect(JSON.parse(json.stdout).operatorReadback.digest).toMatch(/^sha256:[0-9a-f]{64}$/);
+    expect(parsedJson.operatorReadback.digest).toMatch(/^sha256:[0-9a-f]{64}$/);
+    expect(parsedJson.reviewItems[0].approvalId).toBe(parsedJson.operatorReadback.approvalIds[0]);
+    expect(parsedJson.reviewItems[0].ticket.externalId).toBe(
+      `agentshield-fleet-review:${parsedJson.reviewItems[0].approvalId}`
+    );
+    expect(parsedJson.reviewItems[0].ticket.body).toContain(
+      `Approval ID: \`${parsedJson.reviewItems[0].approvalId}\``
+    );
   });
 });

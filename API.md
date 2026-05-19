@@ -231,6 +231,10 @@ or customer-review ingestion.
 `fleet` runs the same inspection across multiple evidence-pack directories and
 emits totals plus route suggestions: `invalid`, `security-blocker`,
 `policy-review`, `baseline-regression`, `supply-chain-review`, or `ready`.
+Fleet output includes `operatorReadback.approvalIds`; each non-ready
+`reviewItems[]` entry repeats its `approvalId` and exposes
+`ticket.externalId` in the form `agentshield-fleet-review:<approvalId>` for
+idempotent GitHub App or Linear sync.
 
 Top-level shape:
 
