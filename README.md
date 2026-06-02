@@ -858,3 +858,94 @@ MIT
 Built by [@affaanmustafa](https://x.com/affaanmustafa) · Part of [Everything Claude Code](https://github.com/affaan-m/everything-claude-code)
 
 </div>
+
+## FAQ
+
+### What is AgentShield?
+
+AgentShield is a **security auditor for AI agent configurations**. It scans Claude Code setups for hardcoded secrets, permission misconfigs, hook injection, MCP server risks, and agent prompt injection vectors.
+
+| Feature | Description |
+|---------|-------------|
+| **Security Auditor** | Scans `.claude/` directory for vulnerabilities |
+| **Multiple Formats** | CLI, GitHub Action, GitHub App integration |
+| **Auto-Fix** | Replaces hardcoded secrets with env var references |
+| **Graded Reports** | Security score (0-100) with findings breakdown |
+| **Opus Pipeline** | Three-agent adversarial analysis with Anthropic API |
+| **Evidence Pack** | Portable audit bundle for compliance |
+
+### What can AgentShield detect?
+
+| Category | Examples |
+|----------|----------|
+| **Secrets** | Hardcoded Anthropic API keys, tokens |
+| **Permissions** | Overly permissive allow rules like `Bash(*)` |
+| **Hooks** | Hook injection vectors, unsafe hooks |
+| **MCP Servers** | MCP server risks, malicious MCP configs |
+| **Agents** | Agent prompt injection vectors |
+
+### How to get started?
+
+**Quick Start (no install):**
+```bash
+npx ecc-agentshield scan
+```
+
+**Install globally:**
+```bash
+npm install -g ecc-agentshield
+agentshield scan
+```
+
+**Auto-fix safe issues:**
+```bash
+agentshield scan --fix
+```
+
+### What output formats are available?
+
+| Format | Use Case |
+|--------|----------|
+| **Default** | Terminal graded security report |
+| **JSON** | CI pipelines and automation |
+| **HTML** | Executive security report |
+| **Evidence Pack** | Portable audit bundle for compliance |
+
+### What is the Opus Pipeline?
+
+The Opus Pipeline is a **three-agent adversarial analysis** using Anthropic's Opus 4.6 model:
+1. **Analyzer Agent** — Deep analysis of findings
+2. **Adversarial Agent** — Attack simulation and impact assessment
+3. **Reviewer Agent** — Final recommendations and mitigation strategies
+
+**Usage:**
+```bash
+agentshield scan --opus --stream
+```
+
+### What is MiniClaw?
+
+MiniClaw is a **sandboxed agent runtime** included with AgentShield:
+- **Prompt Router** — Strips 12+ injection pattern categories
+- **Tool Whitelist** — Safe/Guarded/Restricted tiers
+- **Sandbox** — Isolated filesystem, path traversal blocked
+- **HTTP API** — REST endpoints for session management
+
+### Is AgentShield free and open source?
+
+Yes! AgentShield is **MIT licensed** and free to use. Built at the Claude Code Hackathon (Cerebral Valley x Anthropic, Feb 2026).
+
+### How to contribute?
+
+Contributions welcome! Check the [repository](https://github.com/affaan-m/agentshield) for issues and pull requests. See [CONTRIBUTING.md](./CONTRIBUTING.md) for guidelines.
+
+### Where to get help?
+
+| Resource | Link |
+|----------|------|
+| **Repository** | [github.com/affaan-m/agentshield](https://github.com/affaan-m/agentshield) |
+| **npm Package** | [npmjs.com/package/ecc-agentshield](https://www.npmjs.com/package/ecc-agentshield) |
+| **Changelog** | [CHANGELOG.md](./CHANGELOG.md) |
+| **Everything Claude Code** | [github.com/affaan-m/everything-claude-code](https://github.com/affaan-m/everything-claude-code) |
+| **Twitter** | [@affaanmustafa](https://x.com/affaanmustafa) |
+
