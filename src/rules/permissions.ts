@@ -150,6 +150,44 @@ function parsePermissionLists(content: string): {
   }
 }
 
+/**
+ * Locate the character spans of every `permissions.deny` and
+ * `permissions.ask` rule value in a settings JSON file. Matches of
+ * dangerous-flag patterns inside these spans are prohibitions (the rule
+ * blocks the flag), not usages. Returns no spans for non-settings files
+ * or unparseable JSON, so callers fail closed (matches stay flagged).
+ */
+function prohibitivePermissionRuleSpans(
+  file: ConfigFile,
+): ReadonlyArray<readonly [number, number]> {
+  if (file.type !== "settings-json") return [];
+
+  let config: unknown;
+  try {
+    config = JSON.parse(file.content);
+  } catch {
+    return [];
+  }
+
+  const perms = (config as { permissions?: { deny?: unknown; ask?: unknown } })
+    ?.permissions;
+  const entries = [
+    ...(Array.isArray(perms?.deny) ? perms.deny : []),
+    ...(Array.isArray(perms?.ask) ? perms.ask : []),
+  ].filter((entry): entry is string => typeof entry === "string");
+
+  const spans: Array<readonly [number, number]> = [];
+  for (const entry of entries) {
+    let from = 0;
+    let at: number;
+    while ((at = file.content.indexOf(entry, from)) !== -1) {
+      spans.push([at, at + entry.length]);
+      from = at + entry.length;
+    }
+  }
+  return spans;
+}
+
 interface ConfigPathValue {
   readonly path: string;
   readonly value: unknown;
@@ -459,6 +497,13 @@ export const permissionRules: ReadonlyArray<Rule> = [
         },
       ];
 
+      // Spans of deny/ask rule values in settings JSON. A dangerous flag
+      // inside a deny or ask rule is prohibitive context: the rule blocks
+      // (or gates) the flag rather than using it. Without this, the rule
+      // flags the scanner's own recommended remediation — adding a deny
+      // list — as CRITICAL (see #102).
+      const prohibitiveSpans = prohibitivePermissionRuleSpans(file);
+
       // Negation words that indicate the pattern is being PROHIBITED, not used
       const negationPatterns = [
         /\bnever\b/i,
@@ -480,6 +525,20 @@ export const permissionRules: ReadonlyArray<Rule> = [
 
         for (const match of matches) {
           const idx = match.index ?? 0;
+
+          if (prohibitiveSpans.some(([start, end]) => idx >= start && idx < end)) {
+            findings.push({
+              id: `permissions-deny-rule-${idx}`,
+              severity: "info",
+              category: "permissions",
+              title: `Deny/ask rule blocking ${match[0]} (good practice)`,
+              description: `Found "${match[0]}" inside a permissions deny/ask rule. This is correct — the rule prevents the agent from using this flag.`,
+              file: file.path,
+              line: findLineNumber(file.content, idx),
+              evidence: match[0],
+            });
+            continue;
+          }
 
           // Check surrounding context (100 chars before) for negation
           const contextStart = Math.max(0, idx - 100);
