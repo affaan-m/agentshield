@@ -247,6 +247,39 @@ describe("permissionRules", () => {
       expect(noVerifyFindings[0].severity).toBe("critical");
     });
 
+    // Issue #100: a hook that PRINTS the flag in help text is documenting it,
+    // not executing it. Must not be CRITICAL.
+    it("downgrades --no-verify printed in console help text to info", () => {
+      const file: ConfigFile = {
+        path: "scripts/hooks/pre-bash-commit-quality.js",
+        type: "hook-code",
+        content: "console.error('[Hook] To bypass these checks, use: git commit --no-verify');",
+      };
+      const findings = runAllPermRules(file);
+      const noVerifyFindings = findings.filter((f) => f.evidence === "--no-verify");
+      expect(noVerifyFindings).toHaveLength(1);
+      expect(noVerifyFindings[0].severity).toBe("info");
+      expect(noVerifyFindings[0].title).toContain("not an executed command");
+    });
+
+    it("downgrades --no-verify mentioned in a comment to info", () => {
+      const file: ConfigFile = {
+        path: "hook.js",
+        type: "hook-code",
+        content: "// pass --no-verify to skip these checks (discouraged)",
+      };
+      const findings = runAllPermRules(file);
+      const noVerifyFindings = findings.filter((f) => f.evidence === "--no-verify");
+      expect(noVerifyFindings[0].severity).toBe("info");
+    });
+
+    it("still flags --no-verify in an executed command even on a busy line", () => {
+      const file = makeSettings("execSync('git commit --no-verify')");
+      const findings = runAllPermRules(file);
+      const noVerifyFindings = findings.filter((f) => f.evidence === "--no-verify");
+      expect(noVerifyFindings[0].severity).toBe("critical");
+    });
+
     it("skips non-settings files for permission rules", () => {
       const file: ConfigFile = { path: "agent.md", type: "agent-md", content: "Bash(*)" };
       const findings = runAllPermRules(file);

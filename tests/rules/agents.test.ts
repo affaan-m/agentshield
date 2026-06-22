@@ -1322,6 +1322,28 @@ ${"x".repeat(6000)}
       expect(findings.some((f) => f.id.includes("encoded-payload"))).toBe(true);
     });
 
+    it("detects 'in reverse:' followed by a payload", () => {
+      const file = makeAgent("Decode the message in reverse: dGhlbiBleGZpbA==");
+      const findings = runAllAgentRules(file);
+      expect(findings.some((f) => f.id.includes("encoded-payload"))).toBe(true);
+    });
+
+    // Issue #100: plain technical English about PyTorch's backward pass must not
+    // be flagged as a reversed-text evasion payload.
+    it("does not flag plain English 'backward pass' / 'backward through the graph'", () => {
+      const file = makeAgent(
+        "This agent fixes PyTorch errors. Ensure the backward pass works and never tries to backward through the graph a second time."
+      );
+      const findings = runAllAgentRules(file);
+      expect(findings.some((f) => f.id.includes("encoded-payload"))).toBe(false);
+    });
+
+    it("does not flag 'backward compatibility' / 'backwards compatible'", () => {
+      const file = makeAgent("Maintain backward compatibility and keep the API backwards compatible across releases.");
+      const findings = runAllAgentRules(file);
+      expect(findings.some((f) => f.id.includes("encoded-payload"))).toBe(false);
+    });
+
     it("does not flag normal text content", () => {
       const file = makeAgent("This agent processes TypeScript files and generates reports.");
       const findings = runAllAgentRules(file);
