@@ -1,4 +1,5 @@
 import type { SecurityReport } from "../types.js";
+import { proCtaMarkdownLines } from "./cta.js";
 
 function formatRuntimeConfidence(value: string): string {
   switch (value) {
@@ -153,6 +154,12 @@ export function renderMarkdownReport(report: SecurityReport): string {
     lines.push("## No Issues Found");
     lines.push("");
     lines.push("No security issues were detected in the scanned configuration.");
+  }
+
+  const cta = proCtaMarkdownLines();
+  if (cta.length > 0) {
+    lines.push("");
+    lines.push(...cta);
   }
 
   return lines.join("\n");

@@ -156,6 +156,14 @@ describe("renderMarkdownReport", () => {
     expect(output).toContain("# AgentShield Security Report");
   });
 
+  it("appends the Pro CTA footer (human-facing markdown only)", () => {
+    const output = renderMarkdownReport(makeReport());
+    expect(output).toContain("ECC Tools Pro");
+    expect(output).toContain("https://github.com/apps/ecc-tools");
+    // JSON output stays machine-clean: no marketing string.
+    expect(renderJsonReport(makeReport())).not.toContain("ECC Tools Pro");
+  });
+
   it("includes grade and score", () => {
     const output = renderMarkdownReport(makeReport());
     expect(output).toContain("**Grade:** B (80/100)");
