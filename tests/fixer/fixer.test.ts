@@ -2,7 +2,12 @@ import { describe, it, expect } from "vitest";
 import { writeFileSync, readFileSync, mkdtempSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { applyFixes, renderFixSummary } from "../../src/fixer/index.js";
+import {
+  applyFixes,
+  renderFixSummary,
+  applyFixesVerified,
+  renderFixVerification,
+} from "../../src/fixer/index.js";
 import type { ScanResult } from "../../src/scanner/index.js";
 
 function createTempDir(): string {
@@ -256,5 +261,125 @@ describe("renderFixSummary", () => {
     expect(output).toContain("Auto-fixable: 2");
     expect(output).toContain("Applied: 1");
     expect(output).toContain("Skipped: 1");
+  });
+});
+
+describe("applyFixesVerified", () => {
+  function secretFinding(filePath: string) {
+    return {
+      id: "SEC-001",
+      severity: "critical" as const,
+      category: "secrets" as const,
+      title: "Hardcoded Anthropic key",
+      description: "Found key",
+      file: filePath,
+      fix: {
+        description: "Use env var",
+        before: "sk-ant-api03-abc123xyz",
+        after: "${ANTHROPIC_API_KEY}",
+        auto: true,
+      },
+    };
+  }
+
+  it("keeps fixes and emits a verified attestation when the score improves", () => {
+    const dir = createTempDir();
+    const filePath = join(dir, "CLAUDE.md");
+    writeFileSync(filePath, "key: sk-ant-api03-abc123xyz");
+
+    const verification = applyFixesVerified(makeScanResult([secretFinding(filePath)]), {
+      scoreBefore: 40,
+      rescan: () => makeScanResult([]), // re-scan finds nothing
+      score: () => 100,
+      version: "1.4.0",
+    });
+
+    expect(verification.verified).toBe(true);
+    expect(verification.reverted).toBe(false);
+    expect(verification.scoreAfter).toBe(100);
+    expect(verification.resolvedFindingIds).toContain("SEC-001");
+    expect(readFileSync(filePath, "utf-8")).toBe("key: ${ANTHROPIC_API_KEY}");
+    expect(verification.attestation.digest).toMatch(/^sha256:[0-9a-f]{64}$/);
+    expect(verification.attestation.verified).toBe(true);
+    expect(verification.attestation.fixesApplied).toBe(1);
+  });
+
+  it("rolls the file back when the re-scan score regresses", () => {
+    const dir = createTempDir();
+    const filePath = join(dir, "CLAUDE.md");
+    const original = "key: sk-ant-api03-abc123xyz";
+    writeFileSync(filePath, original);
+
+    const verification = applyFixesVerified(makeScanResult([secretFinding(filePath)]), {
+      scoreBefore: 80,
+      rescan: () => makeScanResult([]),
+      score: () => 50, // worse than before -> revert
+      version: "1.4.0",
+    });
+
+    expect(verification.verified).toBe(false);
+    expect(verification.reverted).toBe(true);
+    expect(verification.reason).toMatch(/regressed 80 -> 50/);
+    expect(readFileSync(filePath, "utf-8")).toBe(original); // restored
+    expect(verification.attestation.verified).toBe(false);
+    expect(verification.attestation.fixesApplied).toBe(0);
+  });
+
+  it("reverts when a fix would introduce a new high/critical finding (issue #102 shape)", () => {
+    const dir = createTempDir();
+    const filePath = join(dir, "settings.json");
+    writeFileSync(filePath, "key: sk-ant-api03-abc123xyz");
+
+    const introduced = {
+      id: "PERM-NEW",
+      severity: "critical" as const,
+      category: "permissions" as const,
+      title: "Newly flagged deny rule",
+      description: "introduced by the fix",
+      file: filePath,
+    };
+
+    const verification = applyFixesVerified(makeScanResult([secretFinding(filePath)]), {
+      scoreBefore: 70,
+      rescan: () => makeScanResult([introduced]),
+      score: () => 70, // same score, but a new critical appeared
+      version: "1.4.0",
+    });
+
+    expect(verification.reverted).toBe(true);
+    expect(verification.reason).toMatch(/new high\/critical/);
+    expect(verification.introducedFindings.some((f) => f.id === "PERM-NEW")).toBe(true);
+    expect(readFileSync(filePath, "utf-8")).toBe("key: sk-ant-api03-abc123xyz");
+  });
+
+  it("is a no-op (verified) when there is nothing to fix", () => {
+    let rescanned = false;
+    const verification = applyFixesVerified(makeScanResult([]), {
+      scoreBefore: 100,
+      rescan: () => {
+        rescanned = true;
+        return makeScanResult([]);
+      },
+      score: () => 100,
+    });
+    expect(verification.verified).toBe(true);
+    expect(verification.result.applied).toHaveLength(0);
+    expect(rescanned).toBe(false); // no re-scan needed when nothing was written
+    expect(verification.attestation.digest).toMatch(/^sha256:/);
+  });
+
+  it("renderFixVerification shows the verdict and attestation", () => {
+    const dir = createTempDir();
+    const filePath = join(dir, "CLAUDE.md");
+    writeFileSync(filePath, "key: sk-ant-api03-abc123xyz");
+    const verification = applyFixesVerified(makeScanResult([secretFinding(filePath)]), {
+      scoreBefore: 40,
+      rescan: () => makeScanResult([]),
+      score: () => 100,
+    });
+    const output = renderFixVerification(verification);
+    expect(output).toContain("[VERIFIED]");
+    expect(output).toContain("Score: 40 -> 100");
+    expect(output).toContain("Attestation: sha256:");
   });
 });
