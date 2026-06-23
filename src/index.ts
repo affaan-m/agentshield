@@ -18,6 +18,7 @@ import {
 } from "./evidence-pack/index.js";
 import { runOpusPipeline, renderOpusAnalysis } from "./opus/index.js";
 import { applyFixes, renderFixSummary } from "./fixer/index.js";
+import { mapFindingsToControls, parseFrameworks, renderComplianceReport } from "./compliance/index.js";
 import { runInit, renderInitSummary } from "./init/index.js";
 import { startMiniClaw } from "./miniclaw/index.js";
 import { startWatcher } from "./watch/index.js";
@@ -288,6 +289,7 @@ program
   .option("--gate", "Fail if new critical/high findings or score drops (use with --baseline)", false)
   .option("--supply-chain", "Verify MCP npm packages against known-bad list and typosquatting", false)
   .option("--supply-chain-online", "Also query npm registry for metadata (requires network)", false)
+  .option("--compliance <frameworks>", "Map findings to control IDs: soc2, pci, iso, all (comma-separated)")
   .option("--policy <path>", "Validate against an organization policy file")
   .option("--evidence-pack <dir>", "Write a portable evidence bundle for audits and security reviews")
   .option("--remediation-plan <path>", "Write a stable-fingerprint JSON remediation plan")
@@ -408,6 +410,23 @@ program
         renderedReport = renderTerminalReport(report);
     }
     emitReportOutput(renderedReport, options.output);
+
+    if (options.compliance) {
+      const frameworks = parseFrameworks(options.compliance);
+      if (frameworks.length === 0) {
+        console.error(`Error: --compliance expects soc2, pci, iso, or all (got "${options.compliance}")`);
+        process.exit(1);
+      }
+      for (const framework of frameworks) {
+        const complianceReport = mapFindingsToControls(filteredResult.findings, framework);
+        writeAuxiliaryOutput("\n" + renderComplianceReport(complianceReport));
+        logger.log({
+          level: "info",
+          phase: "compliance",
+          message: `${framework}: ${complianceReport.controls.length} controls mapped from ${complianceReport.mappedFindingCount} findings`,
+        });
+      }
+    }
 
     if (options.remediationPlan) {
       try {
