@@ -359,6 +359,37 @@ Automatically applies safe fixes:
 
 Only fixes marked `auto: true` are applied. Permission changes require human review.
 
+### External Rule Packs (`--rule-pack`)
+
+Run community or private detection rules alongside the built-ins, without recompiling:
+
+```bash
+agentshield scan --rule-pack ./my-pack.json
+agentshield scan --rule-pack ./pack-a.json --rule-pack ./pack-b.json   # repeatable
+```
+
+A pack is a JSON file validated with the same fail-closed approach as `--policy` (bad JSON, schema violations, duplicate ids, or an uncompilable regex abort the scan):
+
+```json
+{
+  "version": 1,
+  "name": "my-pack",
+  "rules": [
+    {
+      "id": "tool-poisoning-001",
+      "name": "Tool description poisoning",
+      "description": "Hidden instruction in a tool description",
+      "severity": "high",
+      "category": "injection",
+      "patterns": ["ignore (?:all )?previous instructions"],
+      "fileTypes": ["agent-md", "claude-md"]
+    }
+  ]
+}
+```
+
+Each pattern is a JS regex run against file content; `fileTypes` is optional and scopes a rule to specific config types. External findings count toward the overall grade. Anyone with a pack in this shape can plug in.
+
 ### Secure Init (`agentshield init`)
 
 Generates a hardened `.claude/` directory with scoped permissions, safety hooks, and security best practices. Existing files are never overwritten.
@@ -616,6 +647,7 @@ agentshield scan [options]         Scan configuration directory
   --gate                           Fail on new critical/high findings or score drop
   --supply-chain                   Verify MCP package provenance and risk
   --supply-chain-online            Include npm registry metadata
+  --rule-pack <path>               Load an external JSON rule pack (repeatable)
   --policy <path>                  Validate against an organization policy
   --evidence-pack <dir>            Write portable evidence bundle
   --remediation-plan <path>        Write stable-fingerprint JSON remediation plan
