@@ -1,3 +1,5 @@
+[![MseeP.ai Security Assessment Badge](https://mseep.net/pr/affaan-m-agentshield-badge.png)](https://mseep.ai/app/affaan-m-agentshield)
+
 <div align="center">
 
 <img src="./assets/agentshield-logo.png" alt="AgentShield" width="180" />
