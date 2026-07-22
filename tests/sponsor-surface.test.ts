@@ -12,7 +12,9 @@ describe("Ito compute sponsor surface", () => {
     expect(readme).toContain("assets/ito.svg");
     expect(readme).toContain(computeUrl);
     expect(readme).toMatch(/preferred compute sponsor/i);
+    expect(readme).toMatch(/run or self-host any open-source model/i);
     expect(readme).toMatch(/any GPU provider/i);
+    expect(readme).toMatch(/ECC only links to the Itô dashboard/i);
     expect(readme).toMatch(/managed inference[^\n.]*not live/i);
   });
 
