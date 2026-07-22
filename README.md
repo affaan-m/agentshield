@@ -18,6 +18,12 @@ Available as CLI, GitHub Action, and [GitHub App](https://github.com/apps/ecc-to
 
 [Quick Start](#quick-start) · [What It Catches](#what-it-catches) · [API Reference](#api-reference) · [Opus Pipeline](#opus-46-deep-analysis---opus) · [GitHub Action](#github-action) · [Distribution](#distribution) · [MiniClaw](#miniclaw) · [Changelog](./CHANGELOG.md)
 
+<a href="https://compute.itomarkets.com">
+  <img src="./assets/ito.svg" alt="Itô Markets" width="180" />
+</a>
+<br />
+<sub><strong>Preferred compute sponsor:</strong> Run or self-host any open-source model. Itô is ECC's suggested compute provider. Any GPU provider works. ECC only links to the Itô dashboard for sign-in and GPU rental or management; it does not create or manage rentals or provision compute or serving. Managed inference through Itô is not live yet.</sub>
+
 </div>
 
 ---
