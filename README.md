@@ -408,6 +408,29 @@ agentshield scan --opus --stream -v  # Verbose — see full agent reasoning
 
 Requires `ANTHROPIC_API_KEY` environment variable.
 
+### Compliance Mapping (`--compliance`)
+
+Map findings to audit-framework control IDs so GRC teams get an auditor-ready coverage artifact instead of a raw findings list:
+
+```bash
+agentshield scan --compliance soc2          # SOC 2 Trust Services Criteria
+agentshield scan --compliance pci,iso       # comma-separated
+agentshield scan --compliance all           # SOC 2 + PCI DSS + ISO 27001
+```
+
+Each framework prints a control-coverage table (control id, title, highest severity, finding count, examples), ordered by severity:
+
+```
+## Compliance Mapping: SOC 2 (Trust Services Criteria)
+
+Mapped 194/194 findings to 5 control(s). 0 finding(s) had no mapped control.
+
+| Control | Title                        | Highest  | Findings | Examples |
+| CC6.1   | Logical access - credentials | critical | 76       | Hardcoded Anthropic API key; ... |
+```
+
+Mapping is finding-category-level guidance (SOC 2, PCI DSS v4.0, ISO/IEC 27001:2022 Annex A), not a certified crosswalk; confirm control applicability with your auditor.
+
 ### Output Formats
 
 | Format | Flag | Use Case |
@@ -622,6 +645,7 @@ agentshield scan [options]         Scan configuration directory
   --gate                           Fail on new critical/high findings or score drop
   --supply-chain                   Verify MCP package provenance and risk
   --supply-chain-online            Include npm registry metadata
+  --compliance <frameworks>        Map findings to controls: soc2, pci, iso, all
   --policy <path>                  Validate against an organization policy
   --evidence-pack <dir>            Write portable evidence bundle
   --remediation-plan <path>        Write stable-fingerprint JSON remediation plan
