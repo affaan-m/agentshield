@@ -17,7 +17,7 @@ import {
   writeEvidencePack,
 } from "./evidence-pack/index.js";
 import { runOpusPipeline, renderOpusAnalysis } from "./opus/index.js";
-import { applyFixes, renderFixSummary } from "./fixer/index.js";
+import { applyFixesVerified, renderFixVerification } from "./fixer/index.js";
 import { runInit, renderInitSummary } from "./init/index.js";
 import { startMiniClaw } from "./miniclaw/index.js";
 import { startWatcher } from "./watch/index.js";
@@ -520,8 +520,21 @@ program
     // ── Phase 2: Auto-fix (if enabled) ──────────────────────
     if (options.fix) {
       logger.log({ level: "info", phase: "fix", message: "Applying auto-fixes" });
-      const fixResult = applyFixes(filteredResult);
-      console.log(renderFixSummary(fixResult));
+      const scoreBefore = calculateScore(result).score.numericScore;
+      const fixVerification = applyFixesVerified(result, {
+        scoreBefore,
+        rescan: () => scan(targetPath),
+        score: (rescanned) => calculateScore(rescanned).score.numericScore,
+        version: program.version() ?? "unknown",
+      });
+      console.log(renderFixVerification(fixVerification));
+      logger.log({
+        level: "info",
+        phase: "fix",
+        message: fixVerification.reverted
+          ? `Auto-fix reverted: ${fixVerification.reason}`
+          : `Auto-fix verified: ${fixVerification.result.applied.length} applied, score ${fixVerification.scoreBefore} -> ${fixVerification.scoreAfter}`,
+      });
     }
 
     // ── Phase 3: Taint analysis ─────────────────────────────

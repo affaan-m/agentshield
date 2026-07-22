@@ -365,6 +365,8 @@ Automatically applies safe fixes:
 
 Only fixes marked `auto: true` are applied. Permission changes require human review.
 
+**Verify-after-fix:** `--fix` does not trust itself. After applying fixes it re-scans the target, and if the posture score regressed or a new high/critical finding appeared (the kind of churn a naive permission tighten can cause), it rolls every modified file back to its original content. On success it prints a tamper-evident attestation digest binding the before/after score and finding deltas, so the kept fixes are provably non-regressing.
+
 ### Secure Init (`agentshield init`)
 
 Generates a hardened `.claude/` directory with scoped permissions, safety hooks, and security best practices. Existing files are never overwritten.
