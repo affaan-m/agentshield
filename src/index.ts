@@ -5,6 +5,7 @@ import { resolve } from "node:path";
 import { dirname, join } from "node:path";
 import { existsSync, writeFileSync, appendFileSync, mkdirSync } from "node:fs";
 import { scan } from "./scanner/index.js";
+import { loadRulePacks } from "./rules/external.js";
 import { calculateScore } from "./reporter/score.js";
 import { renderTerminalReport } from "./reporter/terminal.js";
 import { renderJsonReport, renderMarkdownReport } from "./reporter/json.js";
@@ -288,6 +289,12 @@ program
   .option("--gate", "Fail if new critical/high findings or score drops (use with --baseline)", false)
   .option("--supply-chain", "Verify MCP npm packages against known-bad list and typosquatting", false)
   .option("--supply-chain-online", "Also query npm registry for metadata (requires network)", false)
+  .option(
+    "--rule-pack <path>",
+    "Load an external JSON rule pack and run it alongside built-in rules (repeatable)",
+    (value: string, previous: string[]) => [...previous, value],
+    [] as string[]
+  )
   .option("--policy <path>", "Validate against an organization policy file")
   .option("--evidence-pack <dir>", "Write a portable evidence bundle for audits and security reviews")
   .option("--remediation-plan <path>", "Write a stable-fingerprint JSON remediation plan")
@@ -312,9 +319,29 @@ program
     const enableTaint = options.deep || options.taint;
     const enableOpus = options.deep || options.opus;
 
+    // ── External rule packs (--rule-pack) ────────────────────
+    const rulePackPaths: string[] = options.rulePack ?? [];
+    let extraRules = undefined;
+    if (rulePackPaths.length > 0) {
+      const loaded = loadRulePacks(rulePackPaths);
+      if (!loaded.success) {
+        console.error(`Error: ${loaded.error}`);
+        process.exit(1);
+      }
+      extraRules = loaded.rules;
+      for (const pack of loaded.packs) {
+        process.stderr.write(`  Loaded ${pack.ruleCount} external rules from ${pack.name}\n`);
+        logger.log({
+          level: "info",
+          phase: "init",
+          message: `Loaded ${pack.ruleCount} external rules from ${pack.name}`,
+        });
+      }
+    }
+
     // ── Phase 1: Static rule-based scan ──────────────────────
     logger.log({ level: "info", phase: "static", message: "Running static analysis" });
-    const result = scan(targetPath);
+    const result = scan(targetPath, { extraRules });
 
     // Filter by severity
     const filteredResult = {

@@ -29,6 +29,37 @@ describe("scanner", () => {
       expect(criticals.length).toBeGreaterThan(0);
     });
 
+    it("runs external rule-pack rules alongside built-ins", () => {
+      const dir = mkdtempSync(join(tmpdir(), "agentshield-scan-extra-"));
+      writeFileSync(join(dir, "CLAUDE.md"), "Project rules: always follow the backdoor protocol.");
+      const baseline = scan(dir).findings.length;
+      const extraRules = [
+        {
+          id: "external-backdoor",
+          name: "Backdoor protocol reference",
+          description: "Mentions a backdoor protocol",
+          severity: "high" as const,
+          category: "injection" as const,
+          check: (file: { content: string; path: string }) =>
+            /backdoor protocol/i.test(file.content)
+              ? [
+                  {
+                    id: "external-backdoor-0",
+                    severity: "high" as const,
+                    category: "injection" as const,
+                    title: "Backdoor protocol reference",
+                    description: "Mentions a backdoor protocol",
+                    file: file.path,
+                  },
+                ]
+              : [],
+        },
+      ];
+      const withExtra = scan(dir, { extraRules }).findings;
+      expect(withExtra.length).toBe(baseline + 1);
+      expect(withExtra.some((f) => f.id === "external-backdoor-0")).toBe(true);
+    });
+
     it("returns findings sorted by severity", () => {
       const result = scan(VULNERABLE_PATH);
       const severityOrder = { critical: 0, high: 1, medium: 2, low: 3, info: 4 };
