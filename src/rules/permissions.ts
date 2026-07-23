@@ -473,6 +473,17 @@ export const permissionRules: ReadonlyArray<Rule> = [
         /\bblock/i,
       ];
 
+      // Indicators that the flag is being MENTIONED (printed to the user, in a
+      // comment, or in help/guidance text) rather than passed to an executed
+      // command. A hook that prints "to bypass these checks, use: git commit
+      // --no-verify" is documenting the flag, not using it. See issue #100.
+      const mentionPatterns = [
+        /console\.(?:log|error|warn|info|debug)/i,
+        /\b(?:echo|printf|print|puts|write(?:line)?)\b/i,
+        /^\s*(?:\/\/|#|\*|\/\*)/,
+        /\b(?:to\s+bypass|to\s+skip|bypass\s+(?:these|the)\s+checks?|skip\s+(?:these|the)\s+checks?|use:|e\.g\.|for\s+example|instead\s+of)\b/i,
+      ];
+
       for (const { pattern, desc } of dangerousPatterns) {
         const matches = [...file.content.matchAll(
           new RegExp(pattern.source, pattern.flags.includes("g") ? pattern.flags : pattern.flags + "g")
@@ -495,6 +506,28 @@ export const permissionRules: ReadonlyArray<Rule> = [
               category: "permissions",
               title: `Prohibition of ${match[0]} (good practice)`,
               description: `Found "${match[0]}" in a negated/prohibitive context. This is correct — the config is telling the agent NOT to use this flag.`,
+              file: file.path,
+              line: findLineNumber(file.content, idx),
+              evidence: match[0],
+            });
+            continue;
+          }
+
+          // Extract the line containing the match to detect print/comment/help
+          // contexts. A printed string literal that documents the flag is not an
+          // executed command and must not be flagged CRITICAL.
+          const lineStart = file.content.lastIndexOf("\n", idx) + 1;
+          const lineEndRaw = file.content.indexOf("\n", idx);
+          const line = file.content.substring(lineStart, lineEndRaw === -1 ? file.content.length : lineEndRaw);
+          const isMention = mentionPatterns.some((m) => m.test(line) || m.test(context));
+
+          if (isMention) {
+            findings.push({
+              id: `permissions-mention-${idx}`,
+              severity: "info",
+              category: "permissions",
+              title: `Mention of ${match[0]} (not an executed command)`,
+              description: `Found "${match[0]}" in a printed/comment/help context, not as an argument to an executed command. This documents the flag rather than using it.`,
               file: file.path,
               line: findLineNumber(file.content, idx),
               evidence: match[0],
