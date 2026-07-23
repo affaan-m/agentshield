@@ -10,6 +10,7 @@ import type {
   CorpusValidationResult,
   DeepScanResult,
 } from "../types.js";
+import { proCtaPlainLines } from "./cta.js";
 
 /**
  * Render a security report to the terminal with colors and formatting.
@@ -125,6 +126,9 @@ export function renderTerminalReport(report: SecurityReport): string {
   // Footer
   lines.push(chalk.dim("  ─────────────────────────────────────────"));
   lines.push(chalk.dim("  AgentShield — Security auditor for AI agent configs"));
+  for (const cta of proCtaPlainLines()) {
+    lines.push(chalk.dim(`  ${cta}`));
+  }
   lines.push("");
 
   return lines.join("\n");
