@@ -17,7 +17,7 @@
     }
   },
   "scripts": {
-    "build": "tsup src/index.ts src/action.ts src/miniclaw/index.ts --format esm --dts --clean --no-splitting",
+    "build": "tsup",
     "prepublishOnly": "npm run build",
     "dev": "tsx src/index.ts",
     "test": "npm run test:batch:core && npm run test:batch:analysis && npm run test:batch:miniclaw-a && npm run test:batch:miniclaw-b && npm run test:batch:misc",
