@@ -1,5 +1,10 @@
 import Anthropic from "@anthropic-ai/sdk";
 import chalk from "chalk";
+import {
+  createLLMClient,
+  resolveModel,
+  type LLMProvider,
+} from "../llm/client.js";
 import type {
   OpusAnalysis,
   OpusPerspective,
@@ -26,6 +31,15 @@ import {
 } from "./prompts.js";
 
 const MODEL = "claude-opus-4-6";
+
+// ─── Opus Pipeline Options ─────────────────────────────────
+
+export interface OpusPipelineOptions {
+  readonly verbose: boolean;
+  readonly stream: boolean;
+  /** LLM provider to run analysis through. Defaults to Anthropic. */
+  readonly provider?: LLMProvider;
+}
 
 // ─── Phase Banner Rendering ─────────────────────────────────
 
@@ -356,9 +370,11 @@ function summarizeDefender(result: StructuredDefenderResult): string {
  */
 export async function runOpusPipeline(
   scanResult: ScanResult,
-  options: { readonly verbose: boolean; readonly stream: boolean }
+  options: OpusPipelineOptions
 ): Promise<OpusAnalysis> {
-  const client = new Anthropic();
+  const provider = options.provider ?? "anthropic";
+  const client = createLLMClient(provider);
+  const model = resolveModel(provider, MODEL);
 
   const configContext = buildConfigContext(
     scanResult.target.files.map((f) => ({ path: f.path, content: f.content }))
@@ -378,6 +394,7 @@ export async function runOpusPipeline(
 
     attackerResult = await runAttackerStreaming(
       client,
+      model,
       configContext,
       options.verbose,
       chalk.red
@@ -395,6 +412,7 @@ export async function runOpusPipeline(
 
     defenderResult = await runDefenderStreaming(
       client,
+      model,
       configContext,
       options.verbose,
       chalk.blue
@@ -404,8 +422,8 @@ export async function runOpusPipeline(
   } else {
     // Non-streaming: run attacker + defender in parallel for speed
     const [aResult, dResult] = await Promise.all([
-      runAttackerNonStreaming(client, configContext),
-      runDefenderNonStreaming(client, configContext),
+      runAttackerNonStreaming(client, model, configContext),
+      runDefenderNonStreaming(client, model, configContext),
     ]);
     attackerResult = aResult;
     defenderResult = dResult;
@@ -430,6 +448,7 @@ export async function runOpusPipeline(
 
     auditorResult = await runAuditorStreaming(
       client,
+      model,
       auditorContext,
       options.verbose
     );
@@ -437,7 +456,7 @@ export async function runOpusPipeline(
     renderPhaseComplete("Auditor synthesis", auditorResult.assessment.top_risks.length, chalk.cyan);
     process.stdout.write("\n");
   } else {
-    auditorResult = await runAuditorNonStreaming(client, auditorContext);
+    auditorResult = await runAuditorNonStreaming(client, model, auditorContext);
   }
 
   // Convert to backward-compatible format
@@ -452,12 +471,14 @@ export async function runOpusPipeline(
 
 async function runAttackerStreaming(
   client: Anthropic,
+  model: string,
   configContext: string,
   verbose: boolean,
   colorFn: typeof chalk.red
 ): Promise<StructuredAttackerResult> {
   const response = await runAgentStreaming(
     client,
+    model,
     ATTACKER_SYSTEM_PROMPT,
     `Analyze the following AI agent configuration from your attacker perspective. Use the report_attack_vector tool for each vulnerability you find.\n\n${configContext}`,
     ATTACKER_TOOLS,
@@ -473,12 +494,14 @@ async function runAttackerStreaming(
 
 async function runDefenderStreaming(
   client: Anthropic,
+  model: string,
   configContext: string,
   verbose: boolean,
   colorFn: typeof chalk.red
 ): Promise<StructuredDefenderResult> {
   const response = await runAgentStreaming(
     client,
+    model,
     DEFENDER_SYSTEM_PROMPT,
     `Analyze the following AI agent configuration from your defender perspective. Use the report_defense_gap and report_good_practice tools.\n\n${configContext}`,
     DEFENDER_TOOLS,
@@ -494,10 +517,12 @@ async function runDefenderStreaming(
 
 async function runAttackerNonStreaming(
   client: Anthropic,
+  model: string,
   configContext: string
 ): Promise<StructuredAttackerResult> {
   const response = await runAgentNonStreaming(
     client,
+    model,
     ATTACKER_SYSTEM_PROMPT,
     `Analyze the following AI agent configuration from your attacker perspective. Use the report_attack_vector tool for each vulnerability you find.\n\n${configContext}`,
     ATTACKER_TOOLS
@@ -510,10 +535,12 @@ async function runAttackerNonStreaming(
 
 async function runDefenderNonStreaming(
   client: Anthropic,
+  model: string,
   configContext: string
 ): Promise<StructuredDefenderResult> {
   const response = await runAgentNonStreaming(
     client,
+    model,
     DEFENDER_SYSTEM_PROMPT,
     `Analyze the following AI agent configuration from your defender perspective. Use the report_defense_gap and report_good_practice tools.\n\n${configContext}`,
     DEFENDER_TOOLS
@@ -526,11 +553,13 @@ async function runDefenderNonStreaming(
 
 async function runAuditorStreaming(
   client: Anthropic,
+  model: string,
   auditorContext: string,
   verbose: boolean
 ): Promise<StructuredAuditorResult> {
   const response = await runAgentStreaming(
     client,
+    model,
     AUDITOR_SYSTEM_PROMPT,
     `Produce your final security audit based on the following. Use the final_assessment tool for your verdict.\n\n${auditorContext}`,
     AUDITOR_TOOLS,
@@ -546,10 +575,12 @@ async function runAuditorStreaming(
 
 async function runAuditorNonStreaming(
   client: Anthropic,
+  model: string,
   auditorContext: string
 ): Promise<StructuredAuditorResult> {
   const response = await runAgentNonStreaming(
     client,
+    model,
     AUDITOR_SYSTEM_PROMPT,
     `Produce your final security audit based on the following. Use the final_assessment tool for your verdict.\n\n${auditorContext}`,
     AUDITOR_TOOLS
@@ -573,6 +604,7 @@ type ToolDef = ReadonlyArray<{
 
 async function runAgentStreaming(
   client: Anthropic,
+  model: string,
   systemPrompt: string,
   userMessage: string,
   tools: ToolDef,
@@ -587,7 +619,7 @@ async function runAgentStreaming(
   const pendingToolInputs: Map<number, { name: string; jsonStr: string }> = new Map();
 
   const stream = client.messages.stream({
-    model: MODEL,
+    model: model,
     max_tokens: 8192,
     system: systemPrompt,
     tools: tools as Anthropic.Messages.Tool[],
@@ -675,12 +707,13 @@ async function runAgentStreaming(
 
 async function runAgentNonStreaming(
   client: Anthropic,
+  model: string,
   systemPrompt: string,
   userMessage: string,
   tools: ToolDef
 ): Promise<AgentResponse> {
   const response = await client.messages.create({
-    model: MODEL,
+    model: model,
     max_tokens: 8192,
     system: systemPrompt,
     tools: tools as Anthropic.Messages.Tool[],

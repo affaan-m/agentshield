@@ -10077,6 +10077,36 @@ var init_remediation = __esm({
   }
 });
 
+// src/llm/client.ts
+import Anthropic from "@anthropic-ai/sdk";
+function resolveModel(provider, defaultModel) {
+  if (provider === "orcarouter") {
+    return ORCAROUTER_MODELS[defaultModel] ?? defaultModel;
+  }
+  return defaultModel;
+}
+function createLLMClient(provider) {
+  if (provider === "orcarouter") {
+    return new Anthropic({
+      baseURL: ORCAROUTER_BASE_URL,
+      apiKey: process.env[ORCAROUTER_ENV_KEY] ?? ""
+    });
+  }
+  return new Anthropic();
+}
+var ORCAROUTER_BASE_URL, ORCAROUTER_ENV_KEY, ORCAROUTER_MODELS;
+var init_client = __esm({
+  "src/llm/client.ts"() {
+    "use strict";
+    ORCAROUTER_BASE_URL = "https://api.orcarouter.ai";
+    ORCAROUTER_ENV_KEY = "ORCAROUTER_API_KEY";
+    ORCAROUTER_MODELS = {
+      "claude-opus-4-6": "anthropic/claude-opus-4.6",
+      "claude-sonnet-4-5-20250929": "anthropic/claude-sonnet-4.5"
+    };
+  }
+});
+
 // src/injection/payloads.ts
 function getPayloadsByCategory(category) {
   return INJECTION_PAYLOADS.filter((p) => p.category === category);
@@ -10757,15 +10787,16 @@ var init_payloads = __esm({
 });
 
 // src/injection/tester.ts
-import Anthropic2 from "@anthropic-ai/sdk";
 async function runInjectionTests(configContent, agentDefinitions = [], settingsContent = void 0, options = {}) {
   const {
     batchSize = DEFAULT_BATCH_SIZE,
     concurrency = DEFAULT_CONCURRENCY,
     payloads = INJECTION_PAYLOADS,
-    onProgress
+    onProgress,
+    provider = "anthropic"
   } = options;
-  const client = new Anthropic2();
+  const client = createLLMClient(provider);
+  const model = resolveModel(provider, MODEL2);
   const configContext = buildConfigContext2(
     configContent,
     agentDefinitions,
@@ -10779,7 +10810,7 @@ async function runInjectionTests(configContent, agentDefinitions = [], settingsC
     const concurrentBatches = batches.slice(i, i + concurrency);
     const batchResults = await Promise.all(
       concurrentBatches.map(
-        (batch) => evaluateBatch(client, configContext, batch)
+        (batch) => evaluateBatch(client, model, configContext, batch)
       )
     );
     for (const results of batchResults) {
@@ -10812,7 +10843,7 @@ function createBatches(items, size) {
   }
   return batches;
 }
-async function evaluateBatch(client, configContext, batch) {
+async function evaluateBatch(client, model, configContext, batch) {
   const payloadDescriptions = batch.map(
     (p, idx) => `--- Payload ${idx + 1} ---
 ID: ${p.id}
@@ -10837,7 +10868,7 @@ ${payloadDescriptions}
 For each payload, determine if this configuration is VULNERABLE or RESISTANT. Use the report_injection_results tool to provide your structured assessment.`;
   try {
     const response = await client.messages.create({
-      model: MODEL2,
+      model,
       max_tokens: MAX_TOKENS_PER_CALL,
       system: EVALUATOR_SYSTEM_PROMPT,
       tools: [INJECTION_RESULT_TOOL],
@@ -10955,6 +10986,7 @@ var MODEL2, DEFAULT_BATCH_SIZE, DEFAULT_CONCURRENCY, MAX_TOKENS_PER_CALL, INJECT
 var init_tester = __esm({
   "src/injection/tester.ts"() {
     "use strict";
+    init_client();
     init_payloads();
     MODEL2 = "claude-sonnet-4-5-20250929";
     DEFAULT_BATCH_SIZE = 5;
@@ -11056,7 +11088,7 @@ __export(injection_exports, {
   runInjectionSuite: () => runInjectionSuite,
   runInjectionTests: () => runInjectionTests
 });
-async function runInjectionSuite(targetPath) {
+async function runInjectionSuite(targetPath, provider) {
   const target = discoverConfigFiles(targetPath);
   const claudeMdFiles = target.files.filter((f) => f.type === "claude-md");
   const configContent = claudeMdFiles.map((f) => f.content).join("\n\n---\n\n");
@@ -11068,6 +11100,7 @@ async function runInjectionSuite(targetPath) {
     agentDefinitions,
     settingsContent,
     {
+      provider,
       onProgress: (completed, total) => {
         process.stdout.write(
           `\r  Testing payloads: ${completed}/${total}`
@@ -16878,7 +16911,7 @@ function escapeRegExp2(value) {
 }
 
 // src/opus/pipeline.ts
-import Anthropic from "@anthropic-ai/sdk";
+init_client();
 import chalk2 from "chalk";
 
 // src/opus/prompts.ts
@@ -17295,7 +17328,9 @@ function summarizeDefender(result) {
   return lines.length > 0 ? lines.join("\n") : result.reasoning;
 }
 async function runOpusPipeline(scanResult, options) {
-  const client = new Anthropic();
+  const provider = options.provider ?? "anthropic";
+  const client = createLLMClient(provider);
+  const model = resolveModel(provider, MODEL);
   const configContext = buildConfigContext(
     scanResult.target.files.map((f) => ({ path: f.path, content: f.content }))
   );
@@ -17310,6 +17345,7 @@ async function runOpusPipeline(scanResult, options) {
     );
     attackerResult = await runAttackerStreaming(
       client,
+      model,
       configContext,
       options.verbose,
       chalk2.red
@@ -17323,6 +17359,7 @@ async function runOpusPipeline(scanResult, options) {
     );
     defenderResult = await runDefenderStreaming(
       client,
+      model,
       configContext,
       options.verbose,
       chalk2.blue
@@ -17330,8 +17367,8 @@ async function runOpusPipeline(scanResult, options) {
     renderPhaseComplete("Defender analysis", defenderResult.gaps.length, chalk2.blue);
   } else {
     const [aResult, dResult] = await Promise.all([
-      runAttackerNonStreaming(client, configContext),
-      runDefenderNonStreaming(client, configContext)
+      runAttackerNonStreaming(client, model, configContext),
+      runDefenderNonStreaming(client, model, configContext)
     ]);
     attackerResult = aResult;
     defenderResult = dResult;
@@ -17351,22 +17388,24 @@ async function runOpusPipeline(scanResult, options) {
     );
     auditorResult = await runAuditorStreaming(
       client,
+      model,
       auditorContext,
       options.verbose
     );
     renderPhaseComplete("Auditor synthesis", auditorResult.assessment.top_risks.length, chalk2.cyan);
     process.stdout.write("\n");
   } else {
-    auditorResult = await runAuditorNonStreaming(client, auditorContext);
+    auditorResult = await runAuditorNonStreaming(client, model, auditorContext);
   }
   const attacker = toAttackerPerspective(attackerResult);
   const defender = toDefenderPerspective(defenderResult);
   const auditor = toAudit(auditorResult);
   return { attacker, defender, auditor };
 }
-async function runAttackerStreaming(client, configContext, verbose, colorFn) {
+async function runAttackerStreaming(client, model, configContext, verbose, colorFn) {
   const response = await runAgentStreaming(
     client,
+    model,
     ATTACKER_SYSTEM_PROMPT,
     `Analyze the following AI agent configuration from your attacker perspective. Use the report_attack_vector tool for each vulnerability you find.
 
@@ -17378,9 +17417,10 @@ ${configContext}`,
   );
   return parseAttackerToolCalls(response.toolCalls, response.text);
 }
-async function runDefenderStreaming(client, configContext, verbose, colorFn) {
+async function runDefenderStreaming(client, model, configContext, verbose, colorFn) {
   const response = await runAgentStreaming(
     client,
+    model,
     DEFENDER_SYSTEM_PROMPT,
     `Analyze the following AI agent configuration from your defender perspective. Use the report_defense_gap and report_good_practice tools.
 
@@ -17392,9 +17432,10 @@ ${configContext}`,
   );
   return parseDefenderToolCalls(response.toolCalls, response.text);
 }
-async function runAttackerNonStreaming(client, configContext) {
+async function runAttackerNonStreaming(client, model, configContext) {
   const response = await runAgentNonStreaming(
     client,
+    model,
     ATTACKER_SYSTEM_PROMPT,
     `Analyze the following AI agent configuration from your attacker perspective. Use the report_attack_vector tool for each vulnerability you find.
 
@@ -17403,9 +17444,10 @@ ${configContext}`,
   );
   return parseAttackerToolCalls(response.toolCalls, response.text);
 }
-async function runDefenderNonStreaming(client, configContext) {
+async function runDefenderNonStreaming(client, model, configContext) {
   const response = await runAgentNonStreaming(
     client,
+    model,
     DEFENDER_SYSTEM_PROMPT,
     `Analyze the following AI agent configuration from your defender perspective. Use the report_defense_gap and report_good_practice tools.
 
@@ -17414,9 +17456,10 @@ ${configContext}`,
   );
   return parseDefenderToolCalls(response.toolCalls, response.text);
 }
-async function runAuditorStreaming(client, auditorContext, verbose) {
+async function runAuditorStreaming(client, model, auditorContext, verbose) {
   const response = await runAgentStreaming(
     client,
+    model,
     AUDITOR_SYSTEM_PROMPT,
     `Produce your final security audit based on the following. Use the final_assessment tool for your verdict.
 
@@ -17428,9 +17471,10 @@ ${auditorContext}`,
   );
   return parseAuditorToolCalls(response.toolCalls, response.text);
 }
-async function runAuditorNonStreaming(client, auditorContext) {
+async function runAuditorNonStreaming(client, model, auditorContext) {
   const response = await runAgentNonStreaming(
     client,
+    model,
     AUDITOR_SYSTEM_PROMPT,
     `Produce your final security audit based on the following. Use the final_assessment tool for your verdict.
 
@@ -17439,12 +17483,12 @@ ${auditorContext}`,
   );
   return parseAuditorToolCalls(response.toolCalls, response.text);
 }
-async function runAgentStreaming(client, systemPrompt, userMessage, tools, roleLabel, verbose, colorFn) {
+async function runAgentStreaming(client, model, systemPrompt, userMessage, tools, roleLabel, verbose, colorFn) {
   let fullText = "";
   const collectedToolCalls = [];
   const pendingToolInputs = /* @__PURE__ */ new Map();
   const stream = client.messages.stream({
-    model: MODEL,
+    model,
     max_tokens: 8192,
     system: systemPrompt,
     tools,
@@ -17522,9 +17566,9 @@ async function runAgentStreaming(client, systemPrompt, userMessage, tools, roleL
   }
   return { text: fullText, toolCalls: collectedToolCalls };
 }
-async function runAgentNonStreaming(client, systemPrompt, userMessage, tools) {
+async function runAgentNonStreaming(client, model, systemPrompt, userMessage, tools) {
   const response = await client.messages.create({
-    model: MODEL,
+    model,
     max_tokens: 8192,
     system: systemPrompt,
     tools,
@@ -19232,10 +19276,10 @@ function writeStdout(line = "") {
   process.stdout.write(`${line}
 `);
 }
-async function runInjectionTests2(targetPath) {
+async function runInjectionTests2(targetPath, provider) {
   try {
     const { runInjectionSuite: runInjectionSuite2 } = await Promise.resolve().then(() => (init_injection(), injection_exports));
-    return await runInjectionSuite2(targetPath);
+    return await runInjectionSuite2(targetPath, provider);
   } catch (e) {
     console.error(
       "  Injection module not available:",
@@ -19396,7 +19440,7 @@ function emptySupplyChainReport() {
     }
   };
 }
-program.command("scan").description("Scan a Claude Code configuration directory for security issues").option("-p, --path <path>", "Path to scan (default: ~/.claude or current dir)").option("-f, --format <format>", "Output format: terminal, json, markdown, html, sarif", "terminal").option("-o, --output <path>", "Write the primary report output to a file").option("--fix", "Auto-apply safe fixes", false).option("--opus", "Enable Opus 4.6 multi-agent deep analysis", false).option("--stream", "Stream Opus analysis in real-time", false).option("--injection", "Run active prompt injection testing against the config", false).option("--sandbox", "Execute hooks in sandbox and observe behavior", false).option("--taint", "Run taint analysis (data flow tracking)", false).option("--deep", "Run ALL analysis (injection + sandbox + taint + opus)", false).option("--log <path>", "Write structured scan log to file").option("--log-format <format>", "Log format: ndjson (default) or json", "ndjson").option("--corpus", "Run scanner validation against built-in attack corpus", false).option("--corpus-gate", "Run built-in attack corpus and fail if scanner accuracy regresses", false).option("--baseline <path>", "Compare against a baseline file and report regressions").option("--save-baseline <path>", "Save current scan results as a baseline file").option("--gate", "Fail if new critical/high findings or score drops (use with --baseline)", false).option("--supply-chain", "Verify MCP npm packages against known-bad list and typosquatting", false).option("--supply-chain-online", "Also query npm registry for metadata (requires network)", false).option("--policy <path>", "Validate against an organization policy file").option("--evidence-pack <dir>", "Write a portable evidence bundle for audits and security reviews").option("--remediation-plan <path>", "Write a stable-fingerprint JSON remediation plan").option("--no-evidence-redact", "Disable evidence-pack redaction of local paths, usernames, emails, and token-shaped strings").option("--min-severity <severity>", "Minimum severity to report: critical, high, medium, low, info", "info").option("-v, --verbose", "Show detailed output", false).action(async (options) => {
+program.command("scan").description("Scan a Claude Code configuration directory for security issues").option("-p, --path <path>", "Path to scan (default: ~/.claude or current dir)").option("-f, --format <format>", "Output format: terminal, json, markdown, html, sarif", "terminal").option("-o, --output <path>", "Write the primary report output to a file").option("--fix", "Auto-apply safe fixes", false).option("--opus", "Enable Opus 4.6 multi-agent deep analysis", false).option("--provider <provider>", "LLM provider for --opus/--injection analysis: anthropic (default) or orcarouter", "anthropic").option("--stream", "Stream Opus analysis in real-time", false).option("--injection", "Run active prompt injection testing against the config", false).option("--sandbox", "Execute hooks in sandbox and observe behavior", false).option("--taint", "Run taint analysis (data flow tracking)", false).option("--deep", "Run ALL analysis (injection + sandbox + taint + opus)", false).option("--log <path>", "Write structured scan log to file").option("--log-format <format>", "Log format: ndjson (default) or json", "ndjson").option("--corpus", "Run scanner validation against built-in attack corpus", false).option("--corpus-gate", "Run built-in attack corpus and fail if scanner accuracy regresses", false).option("--baseline <path>", "Compare against a baseline file and report regressions").option("--save-baseline <path>", "Save current scan results as a baseline file").option("--gate", "Fail if new critical/high findings or score drops (use with --baseline)", false).option("--supply-chain", "Verify MCP npm packages against known-bad list and typosquatting", false).option("--supply-chain-online", "Also query npm registry for metadata (requires network)", false).option("--policy <path>", "Validate against an organization policy file").option("--evidence-pack <dir>", "Write a portable evidence bundle for audits and security reviews").option("--remediation-plan <path>", "Write a stable-fingerprint JSON remediation plan").option("--no-evidence-redact", "Disable evidence-pack redaction of local paths, usernames, emails, and token-shaped strings").option("--min-severity <severity>", "Minimum severity to report: critical, high, medium, low, info", "info").option("-v, --verbose", "Show detailed output", false).action(async (options) => {
   const targetPath = resolveTargetPath(options.path);
   if (!existsSync13(targetPath)) {
     console.error(`Error: Path does not exist: ${targetPath}`);
@@ -19408,6 +19452,7 @@ program.command("scan").description("Scan a Claude Code configuration directory 
   const enableSandbox = options.deep || options.sandbox;
   const enableTaint = options.deep || options.taint;
   const enableOpus = options.deep || options.opus;
+  const provider = options.provider;
   logger.log({ level: "info", phase: "static", message: "Running static analysis" });
   const result = scan(targetPath);
   const filteredResult = {
@@ -19623,7 +19668,7 @@ program.command("scan").description("Scan a Claude Code configuration directory 
   let injectionResult = null;
   if (enableInjection) {
     logger.log({ level: "info", phase: "injection", message: "Running injection tests" });
-    injectionResult = await runInjectionTests2(targetPath);
+    injectionResult = await runInjectionTests2(targetPath, provider);
     if (injectionResult) {
       const { renderInjectionResults: renderInjectionResults2 } = await Promise.resolve().then(() => (init_terminal(), terminal_exports));
       console.log(renderInjectionResults2(injectionResult));
@@ -19649,9 +19694,13 @@ program.command("scan").description("Scan a Claude Code configuration directory 
     }
   }
   if (enableOpus) {
-    if (!process.env.ANTHROPIC_API_KEY) {
+    const requiredKey = provider === "orcarouter" ? "ORCAROUTER_API_KEY" : "ANTHROPIC_API_KEY";
+    if (!process.env[requiredKey]) {
       console.error(
-        "\nError: ANTHROPIC_API_KEY environment variable required for --opus mode.\nSet it with: export ANTHROPIC_API_KEY=your-key-here\n"
+        `
+Error: ${requiredKey} environment variable required for --opus mode.
+Set it with: export ${requiredKey}=your-key-here
+`
       );
       if (!options.deep) {
         process.exit(1);
@@ -19661,7 +19710,8 @@ program.command("scan").description("Scan a Claude Code configuration directory 
       try {
         const opusAnalysis = await runOpusPipeline(result, {
           verbose: options.verbose,
-          stream: options.stream || options.format === "terminal"
+          stream: options.stream || options.format === "terminal",
+          provider
         });
         console.log(renderOpusAnalysis(opusAnalysis));
         logger.log({
