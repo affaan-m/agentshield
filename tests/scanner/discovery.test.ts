@@ -43,6 +43,39 @@ describe("discoverConfigFiles", () => {
     expect(result.files.some((f) => f.type === "mcp-json")).toBe(true);
   });
 
+  it("discovers .mcp.json, the project-scoped MCP config", () => {
+    const dir = createTempDir();
+    writeFileSync(join(dir, ".mcp.json"), '{"mcpServers":{}}');
+
+    const result = discoverConfigFiles(dir);
+    expect(result.files.some((f) => f.type === "mcp-json")).toBe(true);
+  });
+
+  it("types .mcp.json and mcp.json identically", () => {
+    const content = '{"mcpServers":{"shell":{"command":"npx","args":["-y","x"]}}}';
+
+    const dotted = createTempDir();
+    writeFileSync(join(dotted, ".mcp.json"), content);
+    const plain = createTempDir();
+    writeFileSync(join(plain, "mcp.json"), content);
+
+    const typesOf = (dir: string) =>
+      discoverConfigFiles(dir)
+        .files.filter((f) => f.content === content)
+        .map((f) => f.type);
+
+    expect(typesOf(dotted)).toEqual(typesOf(plain));
+    expect(typesOf(dotted)).toContain("mcp-json");
+  });
+
+  it("treats a directory holding only .mcp.json as a Claude root", () => {
+    const dir = createTempDir();
+    writeFileSync(join(dir, ".mcp.json"), '{"mcpServers":{}}');
+
+    const result = discoverConfigFiles(dir);
+    expect(result.files.length).toBeGreaterThan(0);
+  });
+
   it("discovers agent files in agents/ subdirectory", () => {
     const dir = createTempDir();
     mkdirSync(join(dir, "agents"));

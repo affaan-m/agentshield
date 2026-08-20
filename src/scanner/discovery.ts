@@ -24,6 +24,7 @@ const CLAUDE_ROOT_MARKERS = new Set([
   "settings.json",
   "settings.local.json",
   "mcp.json",
+  ".mcp.json",
   ".claude.json",
 ]);
 
@@ -143,6 +144,7 @@ function isExampleOnlyClaudeRoot(
     "settings.json",
     "settings.local.json",
     "mcp.json",
+    ".mcp.json",
     ".claude.json",
   ].some((name) => existsSync(join(dirPath, name))) || existsSync(join(dirPath, ".claude"));
 
@@ -183,6 +185,7 @@ function scanClaudeRoot(
     [".local/bin/gh-token-monitor.sh", "hook-script"],
     ["Library/LaunchAgents/com.user.gh-token-monitor.plist", "settings-json"],
     ["mcp.json", "mcp-json"],
+    [".mcp.json", "mcp-json"],
     [".claude/mcp.json", "mcp-json"],
     [".claude.json", "mcp-json"],
   ];
@@ -245,7 +248,8 @@ function inferType(filename: string, defaultType: ConfigFileType): ConfigFileTyp
   if (PACKAGE_MANAGER_CONFIG_FILES.has(name)) return "package-manager-config";
   if (name === "claude.md") return "claude-md";
   if (name === "settings.json" || name === "settings.local.json") return "settings-json";
-  if (name === "mcp.json" || name === ".claude.json") return "mcp-json";
+  if (name === "mcp.json" || name === ".mcp.json" || name === ".claude.json")
+    return "mcp-json";
 
   if (HOOK_SHELL_EXTENSIONS.has(ext) && defaultType === "hook-script") return "hook-script";
   if (HOOK_CODE_EXTENSIONS.has(ext) && defaultType === "hook-script") return "hook-code";
