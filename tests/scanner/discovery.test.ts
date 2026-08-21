@@ -70,10 +70,17 @@ describe("discoverConfigFiles", () => {
 
   it("treats a directory holding only .mcp.json as a Claude root", () => {
     const dir = createTempDir();
-    writeFileSync(join(dir, ".mcp.json"), '{"mcpServers":{}}');
+    const nestedDir = join(dir, "nested");
+    mkdirSync(nestedDir);
+    writeFileSync(join(nestedDir, ".mcp.json"), '{"mcpServers":{}}');
 
     const result = discoverConfigFiles(dir);
-    expect(result.files.length).toBeGreaterThan(0);
+    expect(result.files).toContainEqual(
+      expect.objectContaining({
+        path: join("nested", ".mcp.json"),
+        type: "mcp-json",
+      })
+    );
   });
 
   it("discovers agent files in agents/ subdirectory", () => {

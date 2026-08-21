@@ -238,6 +238,36 @@ describe("scanner", () => {
       expect(finding?.description).toContain("not confirmed active runtime exposure");
     });
 
+    it("applies docs-example context to project MCP examples without downgrading secrets", () => {
+      const tempDir = mkdtempSync(join(tmpdir(), "agentshield-scan-"));
+      const exampleDir = join(tempDir, "examples", "demo");
+      mkdirSync(exampleDir, { recursive: true });
+      writeFileSync(
+        join(exampleDir, ".mcp.json"),
+        JSON.stringify({
+          mcpServers: {
+            filesystem: {
+              command: "node",
+              env: { API_AUTH_TOKEN: "hardcoded-secret-value-here" },
+            },
+          },
+        }),
+      );
+
+      const result = scan(tempDir);
+      const structuralFinding = result.findings.find((f) => f.id === "mcp-risky-filesystem");
+      const secretFinding = result.findings.find((f) => f.id.includes("mcp-hardcoded-env"));
+
+      expect(structuralFinding?.runtimeConfidence).toBe("docs-example");
+      expect(structuralFinding?.severity).toBe("medium");
+      expect(structuralFinding?.title).toBe("Example config: HIGH risk MCP server: filesystem");
+      expect(secretFinding?.runtimeConfidence).toBe("docs-example");
+      expect(secretFinding?.severity).toBe("critical");
+      expect(secretFinding?.title).toBe(
+        'Example config: Hardcoded secret in MCP server "filesystem": API_AUTH_TOKEN'
+      );
+    });
+
     it("marks examples/ trees as docs examples when runtime companions exist", () => {
       const tempDir = mkdtempSync(join(tmpdir(), "agentshield-scan-"));
       mkdirSync(join(tempDir, "examples"));

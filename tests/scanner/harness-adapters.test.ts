@@ -32,6 +32,25 @@ describe("harness adapter registry", () => {
     expect(summary.matched).toEqual([]);
   });
 
+  it.each(["mcp.json", ".mcp.json", ".claude/mcp.json"] as ReadonlyArray<string>)(
+    "treats %s as supporting Claude evidence",
+    (markerPath) => {
+      const dir = createTempDir();
+      const pathSegments = markerPath.split("/");
+      const parentSegments = pathSegments.slice(0, -1);
+      if (parentSegments.length > 0) {
+        mkdirSync(join(dir, ...parentSegments), { recursive: true });
+      }
+      writeFileSync(join(dir, ...pathSegments), '{"mcpServers":{}}');
+
+      const summary = detectHarnessAdapters(dir);
+      const claude = summary.matched.find((adapter) => adapter.id === "claude-code");
+
+      expect(claude?.confidence).toBe("partial");
+      expect(claude?.evidence).toEqual([markerPath]);
+    }
+  );
+
   it("detects multiple harnesses from explicit local markers", () => {
     const dir = createTempDir();
     mkdirSync(join(dir, ".claude"), { recursive: true });
