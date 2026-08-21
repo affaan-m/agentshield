@@ -195,7 +195,7 @@ package has been uninstalled.
 
 AgentShield scans both active MCP config and repository-shipped MCP templates.
 
-- Findings from `.mcp.json`, `mcp.json`, `.claude/mcp.json`, `.claude.json`, and active `settings.json` should be treated as the highest-confidence runtime exposure.
+- Findings from `.mcp.json`, `mcp.json`, `.claude/mcp.json`, `.claude.json`, and active `settings.json` are highest-confidence runtime exposure only under active Claude configuration roots; copies in docs, examples, or template directories are classified separately.
 - Findings from `settings.local.json` are emitted as `runtimeConfidence: project-local-optional`.
 - Findings from locations such as `mcp-configs/`, `config/mcp/`, or `configs/mcp/` indicate risky MCP definitions present in repository templates, not guaranteed active runtime enablement.
 - JSON, markdown, terminal, and HTML outputs now expose source context via `runtimeConfidence: active-runtime | project-local-optional | template-example | docs-example | plugin-cache | plugin-manifest | hook-code`.
