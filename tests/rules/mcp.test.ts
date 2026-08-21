@@ -209,6 +209,24 @@ describe("mcpRules", () => {
       expect(hardcodedFindings).toHaveLength(0);
     });
 
+    it("skips placeholder secrets in docs example MCP files", () => {
+      const file: ConfigFile = {
+        path: "docs/examples/.mcp.json",
+        type: "mcp-json",
+        content: JSON.stringify({
+          mcpServers: {
+            example: {
+              command: "npx",
+              env: { API_TOKEN: "YOUR_API_TOKEN" },
+            },
+          },
+        }),
+      };
+      const findings = runAllMcpRules(file);
+      const hardcodedFindings = findings.filter((f) => f.id.includes("hardcoded-env"));
+      expect(hardcodedFindings).toHaveLength(0);
+    });
+
     it("preserves critical severity for real secrets in MCP template files", () => {
       const file: ConfigFile = {
         path: "mcp-configs/mcp-servers.json",
