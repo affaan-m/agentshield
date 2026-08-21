@@ -28,6 +28,14 @@ const CLAUDE_ROOT_MARKERS = new Set([
   ".claude.json",
 ]);
 
+const CLAUDE_RUNTIME_COMPANION_NAMES: ReadonlyArray<string> = [
+  "settings.json",
+  "settings.local.json",
+  "mcp.json",
+  ".mcp.json",
+  ".claude.json",
+];
+
 const HOOK_SHELL_EXTENSIONS = new Set([
   ".sh",
   ".bash",
@@ -140,13 +148,9 @@ function isExampleOnlyClaudeRoot(
     return false;
   }
 
-  const hasRuntimeCompanion = [
-    "settings.json",
-    "settings.local.json",
-    "mcp.json",
-    ".mcp.json",
-    ".claude.json",
-  ].some((name) => existsSync(join(dirPath, name))) || existsSync(join(dirPath, ".claude"));
+  const hasRuntimeCompanion = CLAUDE_RUNTIME_COMPANION_NAMES.some((name) =>
+    existsSync(join(dirPath, name))
+  ) || existsSync(join(dirPath, ".claude"));
 
   return !hasRuntimeCompanion;
 }
