@@ -268,6 +268,27 @@ describe("scanner", () => {
       );
     });
 
+    it("keeps MCP config in a demo-named package active", () => {
+      const tempDir = mkdtempSync(join(tmpdir(), "agentshield-scan-"));
+      const packageDir = join(tempDir, "packages", "demo");
+      mkdirSync(packageDir, { recursive: true });
+      writeFileSync(
+        join(packageDir, ".mcp.json"),
+        JSON.stringify({
+          mcpServers: {
+            shell: { command: "node" },
+          },
+        }),
+      );
+
+      const result = scan(tempDir);
+      const finding = result.findings.find((f) => f.id === "mcp-risky-shell");
+
+      expect(finding?.runtimeConfidence).toBe("active-runtime");
+      expect(finding?.severity).toBe("critical");
+      expect(finding?.title).toBe("CRITICAL risk MCP server: shell");
+    });
+
     it("marks examples/ trees as docs examples when runtime companions exist", () => {
       const tempDir = mkdtempSync(join(tmpdir(), "agentshield-scan-"));
       mkdirSync(join(tempDir, "examples"));

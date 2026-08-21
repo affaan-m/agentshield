@@ -22,6 +22,15 @@ const EXAMPLE_LIKE_PATH_PATTERN = new RegExp(
   "i"
 );
 
+const STRONG_DOCUMENTATION_EXAMPLE_SEGMENTS = EXAMPLE_LIKE_SEGMENTS.filter(
+  (segment) => segment !== "demo" && segment !== "demos"
+);
+
+const STRONG_DOCUMENTATION_EXAMPLE_PATH_PATTERN = new RegExp(
+  `(^|/)(${STRONG_DOCUMENTATION_EXAMPLE_SEGMENTS.join("|")})(/|$)`,
+  "i"
+);
+
 const CLAUDE_PLUGIN_CACHE_PATH_PATTERN = /(^|\/)\.claude\/plugins\/cache(\/|$)/i;
 const CLAUDE_SCAN_ROOT_PLUGIN_CACHE_PATH_PATTERN = /^plugins\/cache(\/|$)/i;
 
@@ -32,6 +41,10 @@ function findAllMatches(content: string, pattern: RegExp): Array<RegExpMatchArra
 
 export function isExampleLikePath(path: string): boolean {
   return EXAMPLE_LIKE_PATH_PATTERN.test(path.replace(/\\/g, "/"));
+}
+
+export function isStrongDocumentationExamplePath(path: string): boolean {
+  return STRONG_DOCUMENTATION_EXAMPLE_PATH_PATTERN.test(path.replace(/\\/g, "/"));
 }
 
 export function isPluginCachePath(path: string, scanRoot?: string): boolean {

@@ -112,6 +112,24 @@ describe("mcpRules", () => {
       const finding = findings.find((f) => f.id === "mcp-risky-filesystem");
       expect(finding?.runtimeConfidence).toBe("active-runtime");
     });
+
+    it("keeps MCP config in a demo-named project active", () => {
+      const file: ConfigFile = {
+        path: "packages/demo/.mcp.json",
+        type: "mcp-json",
+        content: JSON.stringify({
+          mcpServers: {
+            shell: { command: "node" },
+          },
+        }),
+      };
+
+      const findings = runAllMcpRules(file);
+      const finding = findings.find((f) => f.id === "mcp-risky-shell");
+      expect(finding?.runtimeConfidence).toBe("active-runtime");
+      expect(finding?.severity).toBe("critical");
+      expect(finding?.title).toBe("CRITICAL risk MCP server: shell");
+    });
   });
 
   describe("project MCP auto-approval", () => {
@@ -225,6 +243,26 @@ describe("mcpRules", () => {
       const findings = runAllMcpRules(file);
       const hardcodedFindings = findings.filter((f) => f.id.includes("hardcoded-env"));
       expect(hardcodedFindings).toHaveLength(0);
+    });
+
+    it("does not suppress placeholder-shaped secrets in a demo-named project", () => {
+      const file: ConfigFile = {
+        path: "packages/demo/.mcp.json",
+        type: "mcp-json",
+        content: JSON.stringify({
+          mcpServers: {
+            service: {
+              command: "node",
+              env: { API_TOKEN: "YOUR_API_TOKEN" },
+            },
+          },
+        }),
+      };
+
+      const findings = runAllMcpRules(file);
+      const finding = findings.find((f) => f.id.includes("hardcoded-env"));
+      expect(finding?.runtimeConfidence).toBe("active-runtime");
+      expect(finding?.severity).toBe("critical");
     });
 
     it("preserves critical severity for real secrets in MCP template files", () => {
