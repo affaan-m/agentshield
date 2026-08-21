@@ -305,7 +305,7 @@ const rawMcpRules: ReadonlyArray<Rule> = [
                 /key|token|secret|password|credential|auth/i.test(key);
               if (isSecret) {
                 if (
-                  isLikelyMcpTemplatePath(file.path) &&
+                  (isLikelyMcpTemplatePath(file.path) || isExampleLikePath(file.path)) &&
                   isPlaceholderSecretValue(value)
                 ) {
                   continue;
