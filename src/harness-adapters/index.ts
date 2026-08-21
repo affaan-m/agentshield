@@ -48,7 +48,7 @@ const ADAPTERS: ReadonlyArray<HarnessAdapterDefinition> = [
       { path: "settings.json", kind: "file", strength: "strong" },
       { path: ".claude/settings.json", kind: "file", strength: "strong" },
       { path: "mcp.json", kind: "file", strength: "supporting" },
-      { path: ".mcp.json", kind: "file", strength: "strong" },
+      { path: ".mcp.json", kind: "file", strength: "supporting" },
       { path: ".claude/mcp.json", kind: "file", strength: "supporting" },
       { path: ".claude/agents", kind: "directory", strength: "supporting" },
       { path: ".claude/skills", kind: "directory", strength: "supporting" },
