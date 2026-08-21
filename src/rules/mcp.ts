@@ -1,4 +1,5 @@
 import type { ConfigFile, Finding, Rule, RuntimeConfidence, Severity } from "../types.js";
+import { isExampleLikePath } from "../source-context.js";
 
 /**
  * Known MCP servers and their risk profiles.
@@ -110,6 +111,10 @@ function classifyMcpRuntimeConfidence(file: ConfigFile): RuntimeConfidence {
   const normalizedPath = file.path.toLowerCase();
   if (normalizedPath === "settings.local.json" || normalizedPath.endsWith("/settings.local.json")) {
     return "project-local-optional";
+  }
+
+  if (isExampleLikePath(file.path)) {
+    return "docs-example";
   }
 
   return "active-runtime";
