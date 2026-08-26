@@ -1,4 +1,5 @@
 import type { ConfigFile, Finding, Rule, RuntimeConfidence, Severity } from "../types.js";
+import { isStrongDocumentationExamplePath } from "../source-context.js";
 
 /**
  * Known MCP servers and their risk profiles.
@@ -110,6 +111,10 @@ function classifyMcpRuntimeConfidence(file: ConfigFile): RuntimeConfidence {
   const normalizedPath = file.path.toLowerCase();
   if (normalizedPath === "settings.local.json" || normalizedPath.endsWith("/settings.local.json")) {
     return "project-local-optional";
+  }
+
+  if (isStrongDocumentationExamplePath(file.path)) {
+    return "docs-example";
   }
 
   return "active-runtime";
@@ -300,7 +305,8 @@ const rawMcpRules: ReadonlyArray<Rule> = [
                 /key|token|secret|password|credential|auth/i.test(key);
               if (isSecret) {
                 if (
-                  isLikelyMcpTemplatePath(file.path) &&
+                  (isLikelyMcpTemplatePath(file.path) ||
+                    isStrongDocumentationExamplePath(file.path)) &&
                   isPlaceholderSecretValue(value)
                 ) {
                   continue;

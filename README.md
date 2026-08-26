@@ -195,7 +195,7 @@ package has been uninstalled.
 
 AgentShield scans both active MCP config and repository-shipped MCP templates.
 
-- Findings from `mcp.json`, `.claude/mcp.json`, `.claude.json`, and active `settings.json` should be treated as the highest-confidence runtime exposure.
+- Findings from `.mcp.json`, `mcp.json`, `.claude/mcp.json`, `.claude.json`, and active `settings.json` are highest-confidence runtime exposure only under active Claude configuration roots; copies in docs, examples, or template directories are classified separately.
 - Findings from `settings.local.json` are emitted as `runtimeConfidence: project-local-optional`.
 - Findings from locations such as `mcp-configs/`, `config/mcp/`, or `configs/mcp/` indicate risky MCP definitions present in repository templates, not guaranteed active runtime enablement.
 - JSON, markdown, terminal, and HTML outputs now expose source context via `runtimeConfidence: active-runtime | project-local-optional | template-example | docs-example | plugin-cache | plugin-manifest | hook-code`.
@@ -522,7 +522,7 @@ Notes:
 - `runtimeConfidence` is emitted for active runtime config, `settings.local.json`, docs/examples, installed Claude plugin caches, plugin manifests, and manifest-resolved non-shell hook code.
 - `harnessAdapters` is local marker evidence only. It does not call external services or imply a hosted/team entitlement.
 - Adapter `confidence` is `strong` when a primary harness marker exists, and `partial` when only supporting directories or secondary markers are present.
-- `active-runtime` means active config such as `mcp.json`, `.claude/mcp.json`, `.claude.json`, or active `settings.json`.
+- `active-runtime` means active config such as `.mcp.json`, `mcp.json`, `.claude/mcp.json`, `.claude.json`, or active `settings.json`.
 - `project-local-optional` means project-local settings such as `settings.local.json`.
 - `template-example` means template/catalog files such as `mcp-configs/` or `config/mcp/`.
 - `docs-example` means docs/tutorial/example content such as `docs/guide/settings.json` or `commands/*.md`.
