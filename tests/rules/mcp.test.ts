@@ -2,11 +2,15 @@ import { describe, it, expect } from "vitest";
 import { mcpRules } from "../../src/rules/mcp.js";
 import type { ConfigFile } from "../../src/types.js";
 
-function makeMcpConfig(servers: Record<string, unknown>): ConfigFile {
+function makeMcpConfig(
+  servers: Record<string, unknown>,
+  overrides: Partial<ConfigFile> = {},
+): ConfigFile {
   return {
     path: "mcp.json",
     type: "mcp-json",
     content: JSON.stringify({ mcpServers: servers }),
+    ...overrides,
   };
 }
 
@@ -114,15 +118,10 @@ describe("mcpRules", () => {
     });
 
     it("keeps MCP config in a demo-named project active", () => {
-      const file: ConfigFile = {
-        path: "packages/demo/.mcp.json",
-        type: "mcp-json",
-        content: JSON.stringify({
-          mcpServers: {
-            shell: { command: "node" },
-          },
-        }),
-      };
+      const file = makeMcpConfig(
+        { shell: { command: "node" } },
+        { path: "packages/demo/.mcp.json" },
+      );
 
       const findings = runAllMcpRules(file);
       const finding = findings.find((f) => f.id === "mcp-risky-shell");
@@ -246,18 +245,15 @@ describe("mcpRules", () => {
     });
 
     it("does not suppress placeholder-shaped secrets in a demo-named project", () => {
-      const file: ConfigFile = {
-        path: "packages/demo/.mcp.json",
-        type: "mcp-json",
-        content: JSON.stringify({
-          mcpServers: {
-            service: {
-              command: "node",
-              env: { API_TOKEN: "YOUR_API_TOKEN" },
-            },
+      const file = makeMcpConfig(
+        {
+          service: {
+            command: "node",
+            env: { API_TOKEN: "YOUR_API_TOKEN" },
           },
-        }),
-      };
+        },
+        { path: "packages/demo/.mcp.json" },
+      );
 
       const findings = runAllMcpRules(file);
       const finding = findings.find((f) => f.id.includes("hardcoded-env"));
