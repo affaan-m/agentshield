@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { scan } from "../../src/scanner/index.js";
 import { resolve } from "node:path";
-import { mkdtempSync, writeFileSync, mkdirSync } from "node:fs";
+import { mkdtempSync, writeFileSync, mkdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -270,23 +270,27 @@ describe("scanner", () => {
 
     it("keeps MCP config in a demo-named package active", () => {
       const tempDir = mkdtempSync(join(tmpdir(), "agentshield-scan-"));
-      const packageDir = join(tempDir, "packages", "demo");
-      mkdirSync(packageDir, { recursive: true });
-      writeFileSync(
-        join(packageDir, ".mcp.json"),
-        JSON.stringify({
-          mcpServers: {
-            shell: { command: "node" },
-          },
-        }),
-      );
+      try {
+        const packageDir = join(tempDir, "packages", "demo");
+        mkdirSync(packageDir, { recursive: true });
+        writeFileSync(
+          join(packageDir, ".mcp.json"),
+          JSON.stringify({
+            mcpServers: {
+              shell: { command: "node" },
+            },
+          }),
+        );
 
-      const result = scan(tempDir);
-      const finding = result.findings.find((f) => f.id === "mcp-risky-shell");
+        const result = scan(tempDir);
+        const finding = result.findings.find((f) => f.id === "mcp-risky-shell");
 
-      expect(finding?.runtimeConfidence).toBe("active-runtime");
-      expect(finding?.severity).toBe("critical");
-      expect(finding?.title).toBe("CRITICAL risk MCP server: shell");
+        expect(finding?.runtimeConfidence).toBe("active-runtime");
+        expect(finding?.severity).toBe("critical");
+        expect(finding?.title).toBe("CRITICAL risk MCP server: shell");
+      } finally {
+        rmSync(tempDir, { recursive: true, force: true });
+      }
     });
 
     it("marks examples/ trees as docs examples when runtime companions exist", () => {
