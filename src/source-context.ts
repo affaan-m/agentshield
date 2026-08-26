@@ -22,9 +22,9 @@ const EXAMPLE_LIKE_PATH_PATTERN = new RegExp(
   "i"
 );
 
-const STRONG_DOCUMENTATION_EXAMPLE_SEGMENTS = EXAMPLE_LIKE_SEGMENTS.filter(
-  (segment) => segment !== "demo" && segment !== "demos"
-);
+const STRONG_DOCUMENTATION_EXAMPLE_SEGMENTS: ReadonlyArray<
+  (typeof EXAMPLE_LIKE_SEGMENTS)[number]
+> = EXAMPLE_LIKE_SEGMENTS.filter((segment) => segment !== "demo" && segment !== "demos");
 
 const STRONG_DOCUMENTATION_EXAMPLE_PATH_PATTERN = new RegExp(
   `(^|/)(${STRONG_DOCUMENTATION_EXAMPLE_SEGMENTS.join("|")})(/|$)`,
@@ -44,7 +44,9 @@ export function isExampleLikePath(path: string): boolean {
 }
 
 export function isStrongDocumentationExamplePath(path: string): boolean {
-  return STRONG_DOCUMENTATION_EXAMPLE_PATH_PATTERN.test(path.replace(/\\/g, "/"));
+  return (
+    findAllMatches(path.replace(/\\/g, "/"), STRONG_DOCUMENTATION_EXAMPLE_PATH_PATTERN).length > 0
+  );
 }
 
 export function isPluginCachePath(path: string, scanRoot?: string): boolean {
