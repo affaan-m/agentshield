@@ -260,6 +260,13 @@ function isLikelyPlaceholderConnectionString(file: ConfigFile, rawValue: string)
   }
 }
 
+function isExplicitBearerTokenPlaceholder(rawValue: string): boolean {
+  const match = rawValue.match(/^["']Bearer\s+([A-Z0-9_]+)["']$/);
+  if (!match) return false;
+
+  return /^YOUR_[A-Z0-9]+(?:_[A-Z0-9]+)*_HERE$/.test(match[1]);
+}
+
 export const secretRules: ReadonlyArray<Rule> = [
   {
     id: "secrets-hardcoded",
@@ -292,6 +299,13 @@ export const secretRules: ReadonlyArray<Rule> = [
             secretPattern.name === "connection-string"
               ? extractDelimitedToken(file.content, idx)
               : match[0];
+
+          if (
+            secretPattern.name === "bearer-token" &&
+            isExplicitBearerTokenPlaceholder(rawValue)
+          ) {
+            continue;
+          }
 
           if (
             secretPattern.name === "connection-string" &&

@@ -1558,7 +1558,18 @@ export const agentRules: ReadonlyArray<Rule> = [
           desc: "Hex-encoded byte sequence — could contain hidden instructions",
         },
         {
-          pattern: /(?:read\s+(?:this|the\s+following)\s+)?(?:backwards?|in\s+reverse|from\s+right\s+to\s+left)\s*[:=]?\s*[a-zA-Z\s]{10,}/gi,
+          // Require an explicit instruction to read/interpret some text backward,
+          // not the bare word "backward(s)". Plain technical English ("backward
+          // pass", "backward through the graph", "backward compatibility") is
+          // extremely common in ML/graphics/compat docs and must not match.
+          // See issue #100 — the directive verb + object is mandatory.
+          pattern: /(?:read|interpret|parse|decode|process|reverse)\s+(?:this|it|the\s+(?:following|text|string|message|instructions?|payload))\s+(?:backwards?|in\s+reverse|from\s+right[\s-]to[\s-]left)/gi,
+          desc: "Reversed text instruction — evasion technique to hide commands from pattern matching",
+        },
+        {
+          // Inverse phrasing: "... backwards: <payload>" / "in reverse = <payload>"
+          // where a reversal directive is immediately followed by a payload.
+          pattern: /(?:backwards?|in\s+reverse|from\s+right[\s-]to[\s-]left)\s*[:=]\s*["'`]?[A-Za-z0-9+/=]{10,}/gi,
           desc: "Reversed text instruction — evasion technique to hide commands from pattern matching",
         },
       ];

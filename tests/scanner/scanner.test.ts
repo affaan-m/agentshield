@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { scan } from "../../src/scanner/index.js";
 import { resolve } from "node:path";
-import { mkdtempSync, writeFileSync, mkdirSync } from "node:fs";
+import { mkdtempSync, writeFileSync, mkdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -27,6 +27,37 @@ describe("scanner", () => {
       const result = scan(VULNERABLE_PATH);
       const criticals = result.findings.filter((f) => f.severity === "critical");
       expect(criticals.length).toBeGreaterThan(0);
+    });
+
+    it("runs external rule-pack rules alongside built-ins", () => {
+      const dir = mkdtempSync(join(tmpdir(), "agentshield-scan-extra-"));
+      writeFileSync(join(dir, "CLAUDE.md"), "Project rules: always follow the backdoor protocol.");
+      const baseline = scan(dir).findings.length;
+      const extraRules = [
+        {
+          id: "external-backdoor",
+          name: "Backdoor protocol reference",
+          description: "Mentions a backdoor protocol",
+          severity: "high" as const,
+          category: "injection" as const,
+          check: (file: { content: string; path: string }) =>
+            /backdoor protocol/i.test(file.content)
+              ? [
+                  {
+                    id: "external-backdoor-0",
+                    severity: "high" as const,
+                    category: "injection" as const,
+                    title: "Backdoor protocol reference",
+                    description: "Mentions a backdoor protocol",
+                    file: file.path,
+                  },
+                ]
+              : [],
+        },
+      ];
+      const withExtra = scan(dir, { extraRules }).findings;
+      expect(withExtra.length).toBe(baseline + 1);
+      expect(withExtra.some((f) => f.id === "external-backdoor-0")).toBe(true);
     });
 
     it("returns findings sorted by severity", () => {
@@ -236,6 +267,61 @@ describe("scanner", () => {
       expect(finding?.severity).toBe("high");
       expect(finding?.title).toBe("Example config: Overly permissive allow rule: Bash(*)");
       expect(finding?.description).toContain("not confirmed active runtime exposure");
+    });
+
+    it("applies docs-example context to project MCP examples without downgrading secrets", () => {
+      const tempDir = mkdtempSync(join(tmpdir(), "agentshield-scan-"));
+      const exampleDir = join(tempDir, "examples", "demo");
+      mkdirSync(exampleDir, { recursive: true });
+      writeFileSync(
+        join(exampleDir, ".mcp.json"),
+        JSON.stringify({
+          mcpServers: {
+            filesystem: {
+              command: "node",
+              env: { API_AUTH_TOKEN: "hardcoded-secret-value-here" },
+            },
+          },
+        }),
+      );
+
+      const result = scan(tempDir);
+      const structuralFinding = result.findings.find((f) => f.id === "mcp-risky-filesystem");
+      const secretFinding = result.findings.find((f) => f.id.includes("mcp-hardcoded-env"));
+
+      expect(structuralFinding?.runtimeConfidence).toBe("docs-example");
+      expect(structuralFinding?.severity).toBe("medium");
+      expect(structuralFinding?.title).toBe("Example config: HIGH risk MCP server: filesystem");
+      expect(secretFinding?.runtimeConfidence).toBe("docs-example");
+      expect(secretFinding?.severity).toBe("critical");
+      expect(secretFinding?.title).toBe(
+        'Example config: Hardcoded secret in MCP server "filesystem": API_AUTH_TOKEN'
+      );
+    });
+
+    it("keeps MCP config in a demo-named package active", () => {
+      const tempDir = mkdtempSync(join(tmpdir(), "agentshield-scan-"));
+      try {
+        const packageDir = join(tempDir, "packages", "demo");
+        mkdirSync(packageDir, { recursive: true });
+        writeFileSync(
+          join(packageDir, ".mcp.json"),
+          JSON.stringify({
+            mcpServers: {
+              shell: { command: "node" },
+            },
+          }),
+        );
+
+        const result = scan(tempDir);
+        const finding = result.findings.find((f) => f.id === "mcp-risky-shell");
+
+        expect(finding?.runtimeConfidence).toBe("active-runtime");
+        expect(finding?.severity).toBe("critical");
+        expect(finding?.title).toBe("CRITICAL risk MCP server: shell");
+      } finally {
+        rmSync(tempDir, { recursive: true, force: true });
+      }
     });
 
     it("marks examples/ trees as docs examples when runtime companions exist", () => {

@@ -21,12 +21,18 @@ export interface ScanResult {
   readonly harnessAdapters?: HarnessAdapterSummary;
 }
 
+export interface ScanOptions {
+  /** Extra rules loaded from external rule packs (`--rule-pack`). */
+  readonly extraRules?: ReadonlyArray<Rule>;
+}
+
 /**
  * Main scanner: discovers config files and runs all rules against them.
+ * External rule packs (if any) run alongside the built-in rules.
  */
-export function scan(targetPath: string): ScanResult {
+export function scan(targetPath: string, options: ScanOptions = {}): ScanResult {
   const target = discoverConfigFiles(targetPath);
-  const rules = getBuiltinRules();
+  const rules = [...getBuiltinRules(), ...(options.extraRules ?? [])];
   const findings = runRules(target.files, rules, target.path);
   const skillHealth = analyzeSkillHealth(target.files);
   const harnessAdapters = detectHarnessAdapters(targetPath);
