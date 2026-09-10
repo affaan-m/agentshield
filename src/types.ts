@@ -344,6 +344,7 @@ export interface SandboxResult {
   readonly hooksExecuted: number;
   readonly behaviors: ReadonlyArray<SandboxBehavior>;
   readonly riskFindings: ReadonlyArray<Finding>;
+  readonly warnings: ReadonlyArray<string>;
 }
 
 // ─── Taint Analysis Results ───────────────────────────────

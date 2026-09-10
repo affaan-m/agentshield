@@ -3,6 +3,7 @@ import {
   executeHookInSandbox,
   executeAllHooks,
   parseHooks,
+  hasHookDefinitions,
   cleanupSandbox,
 } from "../../src/sandbox/executor.js";
 import { analyzeExecution, analyzeAllExecutions } from "../../src/sandbox/analyzer.js";
@@ -90,6 +91,160 @@ describe("parseHooks", () => {
     });
     const hooks = parseHooks(settings);
     expect(hooks).toHaveLength(3);
+  });
+
+  it("parses the standard Claude Code schema with nested command hooks", () => {
+    const settings = JSON.stringify({
+      hooks: {
+        PreToolUse: [
+          {
+            matcher: "Bash",
+            hooks: [
+              { type: "command", command: "echo standard-schema-hook", timeout: 30 },
+            ],
+          },
+        ],
+      },
+    });
+    const hooks = parseHooks(settings);
+    expect(hooks).toHaveLength(1);
+    expect(hooks[0].type).toBe("PreToolUse");
+    expect(hooks[0].command).toBe("echo standard-schema-hook");
+    expect(hooks[0].matcher).toBe("Bash");
+    expect(hooks[0].timeout).toBe(30);
+  });
+
+  it("parses multiple nested commands under one matcher", () => {
+    const settings = JSON.stringify({
+      hooks: {
+        PostToolUse: [
+          {
+            matcher: "Edit|Write",
+            hooks: [
+              { type: "command", command: "echo first" },
+              { type: "command", command: "echo second" },
+            ],
+          },
+        ],
+      },
+    });
+    const hooks = parseHooks(settings);
+    expect(hooks.map((h) => h.command)).toEqual(["echo first", "echo second"]);
+    expect(hooks.every((h) => h.matcher === "Edit|Write")).toBe(true);
+  });
+
+  it("parses standard-schema event names beyond the legacy four", () => {
+    const settings = JSON.stringify({
+      hooks: {
+        UserPromptSubmit: [{ hooks: [{ type: "command", command: "echo prompt" }] }],
+        SessionEnd: [{ hooks: [{ type: "command", command: "echo end" }] }],
+        SubagentStop: [{ hooks: [{ type: "command", command: "echo sub" }] }],
+        PreCompact: [{ hooks: [{ type: "command", command: "echo compact" }] }],
+        Notification: [{ hooks: [{ type: "command", command: "echo notify" }] }],
+      },
+    });
+    const hooks = parseHooks(settings);
+    expect(hooks.map((h) => h.type)).toEqual([
+      "UserPromptSubmit",
+      "Notification",
+      "SessionEnd",
+      "SubagentStop",
+      "PreCompact",
+    ]);
+  });
+
+  it("skips nested hooks that are not command hooks or have no command", () => {
+    const settings = JSON.stringify({
+      hooks: {
+        PreToolUse: [
+          {
+            matcher: "Bash",
+            hooks: [
+              { type: "prompt", prompt: "Is this safe?" },
+              { type: "command", command: "" },
+              { type: "command" },
+              null,
+              { type: "command", command: "echo ok" },
+            ],
+          },
+        ],
+      },
+    });
+    const hooks = parseHooks(settings);
+    expect(hooks).toHaveLength(1);
+    expect(hooks[0].command).toBe("echo ok");
+  });
+
+  it("parses a mix of legacy flat and standard nested shapes", () => {
+    const settings = JSON.stringify({
+      hooks: {
+        PreToolUse: [
+          { matcher: "Bash", hook: "echo legacy" },
+          {
+            matcher: "Edit",
+            hooks: [{ type: "command", command: "echo standard" }],
+          },
+        ],
+        Stop: [{ hook: "echo legacy-stop" }],
+      },
+    });
+    const hooks = parseHooks(settings);
+    expect(hooks.map((h) => h.command)).toEqual([
+      "echo legacy",
+      "echo standard",
+      "echo legacy-stop",
+    ]);
+    expect(hooks[1].matcher).toBe("Edit");
+  });
+
+  it("does not crash on malformed entries", () => {
+    const settings = JSON.stringify({
+      hooks: {
+        PreToolUse: [null, 42, "echo string", { hooks: "not-an-array" }, { hook: 7 }],
+        Stop: "not-an-array",
+      },
+    });
+    expect(parseHooks(settings)).toHaveLength(0);
+  });
+});
+
+// ─── hasHookDefinitions ───────────────────────────────────
+
+describe("hasHookDefinitions", () => {
+  it("returns false when there is no hooks block", () => {
+    expect(hasHookDefinitions(JSON.stringify({ permissions: {} }))).toBe(false);
+  });
+
+  it("returns false for invalid JSON", () => {
+    expect(hasHookDefinitions("not json")).toBe(false);
+  });
+
+  it("returns false when the hooks block has only empty event arrays", () => {
+    expect(hasHookDefinitions(JSON.stringify({ hooks: { PreToolUse: [] } }))).toBe(false);
+  });
+
+  it("returns true for a standard-schema hooks block", () => {
+    const settings = JSON.stringify({
+      hooks: {
+        PreToolUse: [{ matcher: "Bash", hooks: [{ type: "command", command: "echo hi" }] }],
+      },
+    });
+    expect(hasHookDefinitions(settings)).toBe(true);
+    expect(parseHooks(settings)).toHaveLength(1);
+  });
+
+  it("flags a non-empty hooks block whose entries parse to zero hooks", () => {
+    // Unknown event name and unrecognized entry shape: nothing executable,
+    // but the block is present, so the sandbox should warn rather than
+    // silently report zero hooks.
+    const settings = JSON.stringify({
+      hooks: {
+        SomethingElse: [{ matcher: "Bash", run: "echo hi" }],
+        PreToolUse: [{ matcher: "Bash", hooks: [{ type: "prompt", prompt: "check" }] }],
+      },
+    });
+    expect(hasHookDefinitions(settings)).toBe(true);
+    expect(parseHooks(settings)).toHaveLength(0);
   });
 });
 

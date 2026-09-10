@@ -67,7 +67,7 @@ async function runSandboxAnalysis(
   targetPath: string
 ): Promise<SandboxResult | null> {
   try {
-    const { executeAllHooks, analyzeAllExecutions } = await import("./sandbox/index.js");
+    const { executeAllHooks, analyzeAllExecutions, hasHookDefinitions } = await import("./sandbox/index.js");
     const { discoverConfigFiles } = await import("./scanner/index.js");
 
     const target = discoverConfigFiles(targetPath);
@@ -109,7 +109,15 @@ async function runSandboxAnalysis(
       }
     }
 
-    return { hooksExecuted: executions.length, behaviors, riskFindings };
+    const warnings: string[] = [];
+    if (executions.length === 0 && hasHookDefinitions(settingsFile.content)) {
+      warnings.push(
+        `${settingsFile.path} declares a hooks block but no hook commands were recognized for sandbox execution. ` +
+          'Supported shapes: { "matcher", "hooks": [{ "type": "command", "command": "..." }] } and legacy { "hook": "..." }.'
+      );
+    }
+
+    return { hooksExecuted: executions.length, behaviors, riskFindings, warnings };
   } catch (e) {
     console.error(
       "  Sandbox module not available:",
