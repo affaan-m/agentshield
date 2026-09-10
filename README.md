@@ -18,6 +18,12 @@ Available as CLI, GitHub Action, and [GitHub App](https://github.com/apps/ecc-to
 
 [Quick Start](#quick-start) · [What It Catches](#what-it-catches) · [API Reference](#api-reference) · [Opus Pipeline](#opus-46-deep-analysis---opus) · [GitHub Action](#github-action) · [Distribution](#distribution) · [MiniClaw](#miniclaw) · [Changelog](./CHANGELOG.md)
 
+<a href="https://compute.itomarkets.com">
+  <img src="./assets/ito.svg" alt="Itô Markets" width="180" />
+</a>
+<br />
+<sub><strong>Preferred compute sponsor:</strong> Run or self-host any open-source model. Itô is ECC's suggested compute provider. Any GPU provider works. ECC only links to the Itô dashboard for sign-in and GPU rental or management; it does not create or manage rentals or provision compute or serving. Managed inference through Itô is not live yet.</sub>
+
 </div>
 
 ---
@@ -189,7 +195,7 @@ package has been uninstalled.
 
 AgentShield scans both active MCP config and repository-shipped MCP templates.
 
-- Findings from `mcp.json`, `.claude/mcp.json`, `.claude.json`, and active `settings.json` should be treated as the highest-confidence runtime exposure.
+- Findings from `.mcp.json`, `mcp.json`, `.claude/mcp.json`, `.claude.json`, and active `settings.json` are highest-confidence runtime exposure only under active Claude configuration roots; copies in docs, examples, or template directories are classified separately.
 - Findings from `settings.local.json` are emitted as `runtimeConfidence: project-local-optional`.
 - Findings from locations such as `mcp-configs/`, `config/mcp/`, or `configs/mcp/` indicate risky MCP definitions present in repository templates, not guaranteed active runtime enablement.
 - JSON, markdown, terminal, and HTML outputs now expose source context via `runtimeConfidence: active-runtime | project-local-optional | template-example | docs-example | plugin-cache | plugin-manifest | hook-code`.
@@ -358,6 +364,37 @@ Automatically applies safe fixes:
 - Tightens wildcard permissions (`Bash(*)` → scoped `Bash(git *)`, `Bash(npm *)`)
 
 Only fixes marked `auto: true` are applied. Permission changes require human review.
+
+### External Rule Packs (`--rule-pack`)
+
+Run community or private detection rules alongside the built-ins, without recompiling:
+
+```bash
+agentshield scan --rule-pack ./my-pack.json
+agentshield scan --rule-pack ./pack-a.json --rule-pack ./pack-b.json   # repeatable
+```
+
+A pack is a JSON file validated with the same fail-closed approach as `--policy` (bad JSON, schema violations, duplicate ids, or an uncompilable regex abort the scan):
+
+```json
+{
+  "version": 1,
+  "name": "my-pack",
+  "rules": [
+    {
+      "id": "tool-poisoning-001",
+      "name": "Tool description poisoning",
+      "description": "Hidden instruction in a tool description",
+      "severity": "high",
+      "category": "injection",
+      "patterns": ["ignore (?:all )?previous instructions"],
+      "fileTypes": ["agent-md", "claude-md"]
+    }
+  ]
+}
+```
+
+Each pattern is a JS regex run against file content; `fileTypes` is optional and scopes a rule to specific config types. External findings count toward the overall grade. Anyone with a pack in this shape can plug in.
 
 ### Secure Init (`agentshield init`)
 
@@ -539,7 +576,7 @@ Notes:
 - `runtimeConfidence` is emitted for active runtime config, `settings.local.json`, docs/examples, installed Claude plugin caches, plugin manifests, and manifest-resolved non-shell hook code.
 - `harnessAdapters` is local marker evidence only. It does not call external services or imply a hosted/team entitlement.
 - Adapter `confidence` is `strong` when a primary harness marker exists, and `partial` when only supporting directories or secondary markers are present.
-- `active-runtime` means active config such as `mcp.json`, `.claude/mcp.json`, `.claude.json`, or active `settings.json`.
+- `active-runtime` means active config such as `.mcp.json`, `mcp.json`, `.claude/mcp.json`, `.claude.json`, or active `settings.json`.
 - `project-local-optional` means project-local settings such as `settings.local.json`.
 - `template-example` means template/catalog files such as `mcp-configs/` or `config/mcp/`.
 - `docs-example` means docs/tutorial/example content such as `docs/guide/settings.json` or `commands/*.md`.
@@ -640,6 +677,8 @@ agentshield scan [options]         Scan configuration directory
   --supply-chain                   Verify MCP package provenance and risk
   --supply-chain-online            Include npm registry metadata
   --compliance <frameworks>        Map findings to controls: soc2, pci, iso, all
+
+  --rule-pack <path>               Load an external JSON rule pack (repeatable)
   --policy <path>                  Validate against an organization policy
   --evidence-pack <dir>            Write portable evidence bundle
   --remediation-plan <path>        Write stable-fingerprint JSON remediation plan

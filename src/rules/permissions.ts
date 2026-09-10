@@ -150,6 +150,44 @@ function parsePermissionLists(content: string): {
   }
 }
 
+/**
+ * Locate the character spans of every `permissions.deny` and
+ * `permissions.ask` rule value in a settings JSON file. Matches of
+ * dangerous-flag patterns inside these spans are prohibitions (the rule
+ * blocks the flag), not usages. Returns no spans for non-settings files
+ * or unparseable JSON, so callers fail closed (matches stay flagged).
+ */
+function prohibitivePermissionRuleSpans(
+  file: ConfigFile,
+): ReadonlyArray<readonly [number, number]> {
+  if (file.type !== "settings-json") return [];
+
+  let config: unknown;
+  try {
+    config = JSON.parse(file.content);
+  } catch {
+    return [];
+  }
+
+  const perms = (config as { permissions?: { deny?: unknown; ask?: unknown } })
+    ?.permissions;
+  const entries = [
+    ...(Array.isArray(perms?.deny) ? perms.deny : []),
+    ...(Array.isArray(perms?.ask) ? perms.ask : []),
+  ].filter((entry): entry is string => typeof entry === "string");
+
+  const spans: Array<readonly [number, number]> = [];
+  for (const entry of entries) {
+    let from = 0;
+    let at: number;
+    while ((at = file.content.indexOf(entry, from)) !== -1) {
+      spans.push([at, at + entry.length]);
+      from = at + entry.length;
+    }
+  }
+  return spans;
+}
+
 interface ConfigPathValue {
   readonly path: string;
   readonly value: unknown;
@@ -459,6 +497,13 @@ export const permissionRules: ReadonlyArray<Rule> = [
         },
       ];
 
+      // Spans of deny/ask rule values in settings JSON. A dangerous flag
+      // inside a deny or ask rule is prohibitive context: the rule blocks
+      // (or gates) the flag rather than using it. Without this, the rule
+      // flags the scanner's own recommended remediation — adding a deny
+      // list — as CRITICAL (see #102).
+      const prohibitiveSpans = prohibitivePermissionRuleSpans(file);
+
       // Negation words that indicate the pattern is being PROHIBITED, not used
       const negationPatterns = [
         /\bnever\b/i,
@@ -473,6 +518,28 @@ export const permissionRules: ReadonlyArray<Rule> = [
         /\bblock/i,
       ];
 
+      // Indicators that the flag is being MENTIONED (printed to the user, in a
+      // comment, or in help/guidance text) rather than passed to an executed
+      // command. A hook that prints "to bypass these checks, use: git commit
+      // --no-verify" is documenting the flag, not using it. See issue #100.
+      const printPattern = /console\.(?:log|error|warn|info|debug)|\b(?:echo|printf|print|puts|write(?:line)?)\b/i;
+      const commentPattern = /^\s*(?:\/\/|#|\*|\/\*|<!--)/;
+      const helpPhrasePattern = /\b(?:to\s+bypass|to\s+skip|bypass\s+(?:these|the)\s+checks?|skip\s+(?:these|the)\s+checks?|use:|e\.g\.|for\s+example|instead\s+of)\b/i;
+      // Anything on the line that hands text to a shell or interpreter means
+      // the "printed" flag can still execute (echo ... | sh, eval, $(...)).
+      const execIndicatorPattern = /\|\s*(?:ba|z|da|k)?sh\b|\b(?:exec(?:Sync|File|FileSync)?|spawn(?:Sync)?|system|popen|eval)\s*\(|\beval\s|\bsubprocess\b|\$\(|`/;
+      const insideStringLiteral = (line: string, col: number): boolean => {
+        let single = 0;
+        let double = 0;
+        for (let i = 0; i < col && i < line.length; i += 1) {
+          const ch = line[i];
+          if (ch === "\\") { i += 1; continue; }
+          if (ch === "'" && double % 2 === 0) single += 1;
+          else if (ch === '"' && single % 2 === 0) double += 1;
+        }
+        return single % 2 === 1 || double % 2 === 1;
+      };
+
       for (const { pattern, desc } of dangerousPatterns) {
         const matches = [...file.content.matchAll(
           new RegExp(pattern.source, pattern.flags.includes("g") ? pattern.flags : pattern.flags + "g")
@@ -480,6 +547,20 @@ export const permissionRules: ReadonlyArray<Rule> = [
 
         for (const match of matches) {
           const idx = match.index ?? 0;
+
+          if (prohibitiveSpans.some(([start, end]) => idx >= start && idx < end)) {
+            findings.push({
+              id: `permissions-deny-rule-${idx}`,
+              severity: "info",
+              category: "permissions",
+              title: `Deny/ask rule blocking ${match[0]} (good practice)`,
+              description: `Found "${match[0]}" inside a permissions deny/ask rule. This is correct — the rule prevents the agent from using this flag.`,
+              file: file.path,
+              line: findLineNumber(file.content, idx),
+              evidence: match[0],
+            });
+            continue;
+          }
 
           // Check surrounding context (100 chars before) for negation
           const contextStart = Math.max(0, idx - 100);
@@ -495,6 +576,33 @@ export const permissionRules: ReadonlyArray<Rule> = [
               category: "permissions",
               title: `Prohibition of ${match[0]} (good practice)`,
               description: `Found "${match[0]}" in a negated/prohibitive context. This is correct — the config is telling the agent NOT to use this flag.`,
+              file: file.path,
+              line: findLineNumber(file.content, idx),
+              evidence: match[0],
+            });
+            continue;
+          }
+
+          // Extract the line containing the match to detect print/comment/help
+          // contexts. A printed string literal that documents the flag is not an
+          // executed command and must not be flagged CRITICAL.
+          const lineStart = file.content.lastIndexOf("\n", idx) + 1;
+          const lineEndRaw = file.content.indexOf("\n", idx);
+          const line = file.content.substring(lineStart, lineEndRaw === -1 ? file.content.length : lineEndRaw);
+          const col = idx - lineStart;
+          const quoted = insideStringLiteral(line, col);
+          const isMention =
+            !execIndicatorPattern.test(line) &&
+            (commentPattern.test(line) ||
+              (quoted && (printPattern.test(line) || helpPhrasePattern.test(line))));
+
+          if (isMention) {
+            findings.push({
+              id: `permissions-mention-${idx}`,
+              severity: "info",
+              category: "permissions",
+              title: `Mention of ${match[0]} (not an executed command)`,
+              description: `Found "${match[0]}" in a printed/comment/help context, not as an argument to an executed command. This documents the flag rather than using it.`,
               file: file.path,
               line: findLineNumber(file.content, idx),
               evidence: match[0],

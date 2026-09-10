@@ -1,45 +1,33 @@
-# AgentShield Next Release Draft
+# AgentShield v1.5.0
 
-This release train moves AgentShield from local scan output toward an
-enterprise routing surface: package-manager hardening evidence, policy-pack
-promotion review, and fleet-level operator readback that downstream GitHub App,
-Linear, and ECC Tools flows can consume directly.
+Fixes the GitHub Action startup failure shipped in 1.4.0, closes the `.mcp.json` discovery gap, and adds evidence-pack, policy-pack, and supply-chain surfaces.
 
-## Highlights
+## Fixed
 
-- Updated the GitHub Action metadata to use GitHub's Node.js 24 JavaScript
-  action runtime ahead of the Node.js 20 runner deprecation window.
-- Added end-to-end scan coverage and operator guidance for AI developer-tool
-  persistence IOCs across Claude Code hooks, VS Code tasks, GitHub workflow
-  drop-ins, and OS startup artifacts.
-- Added evidence-pack fleet `operatorReadback` output with ready/blocked status,
-  deterministic review digest, owner counts, approval routes, blocking counts,
-  deterministic approval IDs, and next-action guidance for promotion gates.
-- Added review-item approval IDs and ticket external IDs so downstream GitHub
-  App, Linear, and ECC Tools sync jobs can dedupe owner-approval threads across
-  repeated fleet inspections.
-- Added `agentshield policy promote` to verify exported policy-pack manifests,
-  reject tampered policy JSON by SHA-256 digest, and promote a selected pack
-  into the active policy path with dry-run and JSON review modes.
-- Added GitHub Action package-manager hardening outputs and job-summary
-  evidence for registry credentials, lifecycle-script drift, and release-age
-  gate drift.
-- Added GitHub Action policy-promotion review outputs and job-summary evidence
-  so CI can route owner approval, protected rollout, and runtime-smoke
-  `reviewItems` from checksum-verified policy exports.
-- Expanded enterprise credential detection and evidence-pack redaction for
-  OpenAI legacy keys, xAI keys, Linear tokens, and labeled Cloudflare tokens.
+- The GitHub Action now bundles its runtime dependencies. Every `v1.4.0` action run failed before scanning with `ERR_MODULE_NOT_FOUND: zod` (#118).
+- Project-root `.mcp.json` is discovered and fed to the 23 MCP rules. Repos whose only Claude artifact was `.mcp.json` previously scanned as grade A with zero files (#123, closes #112 and #122).
+- Docs and example MCP configs are labeled as examples; real hardcoded secrets in them keep critical severity.
+
+## Added
+
+- Evidence packs with integrity manifests, remediation plans, CI context, fleet summaries, review items, approval IDs, and operator readback.
+- Policy packs: enterprise exceptions, action policy gate, SARIF policy violations, presets, `policy export`, and `policy promote` with SHA-256 manifest verification.
+- Supply chain: npm manifest scanning, provenance reporting, action supply-chain gate, package-manager hardening drift, npx shell execution detection in MCP servers.
+- Threat intel: Mini Shai-Hulud IOCs, `gh-token-monitor` persistence, AI developer-tool persistence IOCs, workflow secrets serialization, expanded enterprise token detection and redaction.
+- SARIF code scanning output, executive HTML summary, corpus accuracy gate, baseline write CLI and drift outputs, harness adapter registry (Claude Code, Zed, VS Code), `runtime status`, and the `prompt-defense-posture` rule.
+
+## Changed
+
+- Action runtime is Node.js 24. Workflow actions are SHA pinned and CI installs use `--ignore-scripts`.
+- Build config moved to `tsup.config.ts` with separate library and action targets.
 
 ## Validation
 
-- `npm run typecheck`
-- `npm test`
-- `npm run build`
-- `npm run lint`
+- `npm run typecheck`, `npm run lint`, `npm test` (1841 tests), `npm run build`, `npm run corpus:gate`
+- `dist/action.js` executed from a directory with no `node_modules`
 
 ## Upgrade Notes
 
-- The GitHub Action bundle under `dist/` must be committed before tagging a release.
-- The release workflow verifies that the pushed tag matches `package.json`, reruns the full gate, rebuilds `dist/`, and refuses to publish if generated action artifacts are out of sync.
-- Recommended version bump for this train is still open until the final release
-  audit confirms whether this is `1.4.1` or the next minor.
+- Move action pins from `@v1.4.0` to `@v1.5.0`. The floating `v1` tag points at this release.
+
+Full changelog: https://github.com/affaan-m/agentshield/blob/v1.5.0/CHANGELOG.md
