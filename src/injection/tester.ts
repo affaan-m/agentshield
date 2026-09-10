@@ -42,7 +42,7 @@ export interface InjectionTestOptions {
 
 // ─── Constants ────────────────────────────────────────────
 
-const MODEL = "claude-sonnet-4-5-20250929";
+const MODEL = "claude-sonnet-5";
 const DEFAULT_BATCH_SIZE = 5;
 const DEFAULT_CONCURRENCY = 2;
 const MAX_TOKENS_PER_CALL = 4096;

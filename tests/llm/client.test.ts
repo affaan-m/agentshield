@@ -11,6 +11,11 @@ afterEach(() => {
 });
 
 describe("resolveModel", () => {
+  it("maps the current default models to their gateway ids", () => {
+    expect(resolveModel("orcarouter", "claude-opus-5")).toBe("anthropic/claude-opus-5");
+    expect(resolveModel("orcarouter", "claude-sonnet-5")).toBe("anthropic/claude-sonnet-5");
+  });
+
   it("returns the default model for the anthropic provider", () => {
     expect(resolveModel("anthropic", "claude-opus-4-6")).toBe("claude-opus-4-6");
     expect(resolveModel("anthropic", "claude-sonnet-4-5-20250929")).toBe(

@@ -33,7 +33,7 @@ src/
     index.ts        # Format dispatcher
   opus/
     prompts.ts      # System prompts for Attacker/Defender/Auditor
-    pipeline.ts     # Opus 4.6 three-agent adversarial pipeline
+    pipeline.ts     # Claude Opus three-agent adversarial pipeline
     render.ts       # Opus analysis terminal + markdown rendering
     index.ts        # Pipeline entry point
   miniclaw/
@@ -69,7 +69,7 @@ Grades: A (>=90), B (>=75), C (>=60), D (>=40), F (<40)
 
 ```bash
 agentshield scan [path]              # Static analysis
-agentshield scan --opus              # + Opus 4.6 adversarial pipeline
+agentshield scan --opus              # + Claude Opus adversarial pipeline
 agentshield scan --format json|md    # Output format
 agentshield scan --fix               # Show auto-fix suggestions
 agentshield miniclaw start           # Launch MiniClaw secure agent server

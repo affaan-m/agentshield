@@ -23,6 +23,8 @@ export const ORCAROUTER_ENV_KEY = "ORCAROUTER_API_KEY";
 /** Model ids the OrcaRouter gateway exposes for the same Anthropic models
  * AgentShield uses by default. The gateway requires the `anthropic/` prefix. */
 const ORCAROUTER_MODELS: Readonly<Record<string, string>> = {
+  "claude-opus-5": "anthropic/claude-opus-5",
+  "claude-sonnet-5": "anthropic/claude-sonnet-5",
   "claude-opus-4-6": "anthropic/claude-opus-4.6",
   "claude-sonnet-4-5-20250929": "anthropic/claude-sonnet-4.5",
 };

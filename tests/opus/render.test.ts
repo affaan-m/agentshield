@@ -27,7 +27,7 @@ function makeAnalysis(overrides: Partial<OpusAnalysis> = {}): OpusAnalysis {
 describe("renderOpusAnalysis", () => {
   it("includes header", () => {
     const output = renderOpusAnalysis(makeAnalysis());
-    expect(output).toContain("Opus 4.6 Multi-Agent Security Analysis");
+    expect(output).toContain("Claude Opus Multi-Agent Security Analysis");
   });
 
   it("renders attacker findings", () => {
@@ -80,7 +80,7 @@ describe("renderOpusAnalysis", () => {
 describe("renderOpusMarkdown", () => {
   it("includes markdown heading", () => {
     const output = renderOpusMarkdown(makeAnalysis());
-    expect(output).toContain("## Opus 4.6 Multi-Agent Analysis");
+    expect(output).toContain("## Claude Opus Multi-Agent Analysis");
   });
 
   it("includes all three sections", () => {

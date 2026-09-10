@@ -390,7 +390,7 @@ describe("Tester Internals", () => {
         id: "msg_123",
         type: "message" as const,
         role: "assistant" as const,
-        model: "claude-sonnet-4-5-20250929",
+        model: "claude-sonnet-5",
         content: [
           {
             type: "tool_use" as const,
@@ -441,7 +441,7 @@ describe("Tester Internals", () => {
         id: "msg_123",
         type: "message" as const,
         role: "assistant" as const,
-        model: "claude-sonnet-4-5-20250929",
+        model: "claude-sonnet-5",
         content: [
           {
             type: "text" as const,
@@ -469,7 +469,7 @@ describe("Tester Internals", () => {
         id: "msg_123",
         type: "message" as const,
         role: "assistant" as const,
-        model: "claude-sonnet-4-5-20250929",
+        model: "claude-sonnet-5",
         content: [
           {
             type: "tool_use" as const,
@@ -510,7 +510,7 @@ describe("Tester Internals", () => {
         id: "msg_123",
         type: "message" as const,
         role: "assistant" as const,
-        model: "claude-sonnet-4-5-20250929",
+        model: "claude-sonnet-5",
         content: [
           {
             type: "tool_use" as const,
