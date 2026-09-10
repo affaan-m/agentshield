@@ -18,6 +18,7 @@ import {
   writeEvidencePack,
 } from "./evidence-pack/index.js";
 import { runOpusPipeline, renderOpusAnalysis } from "./opus/index.js";
+import type { LLMProvider } from "./llm/client.js";
 import { applyFixesVerified, renderFixVerification } from "./fixer/index.js";
 import { mapFindingsToControls, parseFrameworks, renderComplianceReport } from "./compliance/index.js";
 import { runInit, renderInitSummary } from "./init/index.js";
@@ -49,11 +50,12 @@ function writeStdout(line = ""): void {
 // if a module isn't ready yet.
 
 async function runInjectionTests(
-  targetPath: string
+  targetPath: string,
+  provider?: LLMProvider
 ): Promise<InjectionSuiteResult | null> {
   try {
     const { runInjectionSuite } = await import("./injection/index.js");
-    return await runInjectionSuite(targetPath);
+    return await runInjectionSuite(targetPath, provider);
   } catch (e) {
     console.error(
       "  Injection module not available:",
@@ -284,6 +286,7 @@ program
   .option("-o, --output <path>", "Write the primary report output to a file")
   .option("--fix", "Auto-apply safe fixes", false)
   .option("--opus", "Enable Opus 4.6 multi-agent deep analysis", false)
+  .option("--provider <provider>", "LLM provider for --opus/--injection analysis: anthropic (default) or orcarouter", "anthropic")
   .option("--stream", "Stream Opus analysis in real-time", false)
   .option("--injection", "Run active prompt injection testing against the config", false)
   .option("--sandbox", "Execute hooks in sandbox and observe behavior", false)
@@ -328,6 +331,13 @@ program
     const enableSandbox = options.deep || options.sandbox;
     const enableTaint = options.deep || options.taint;
     const enableOpus = options.deep || options.opus;
+    if (options.provider !== "anthropic" && options.provider !== "orcarouter") {
+      console.error(
+        `Error: unknown --provider "${options.provider}". Expected "anthropic" or "orcarouter".`
+      );
+      process.exit(1);
+    }
+    const provider = options.provider as LLMProvider;
 
     // ── External rule packs (--rule-pack) ────────────────────
     const rulePackPaths: string[] = options.rulePack ?? [];
@@ -611,7 +621,7 @@ program
     let injectionResult: InjectionSuiteResult | null = null;
     if (enableInjection) {
       logger.log({ level: "info", phase: "injection", message: "Running injection tests" });
-      injectionResult = await runInjectionTests(targetPath);
+      injectionResult = await runInjectionTests(targetPath, provider);
       if (injectionResult) {
         const { renderInjectionResults } = await import("./reporter/terminal.js");
         console.log(renderInjectionResults(injectionResult));
@@ -641,10 +651,12 @@ program
 
     // ── Phase 6: Opus multi-agent analysis (if enabled) ─────
     if (enableOpus) {
-      if (!process.env.ANTHROPIC_API_KEY) {
+      const requiredKey =
+        provider === "orcarouter" ? "ORCAROUTER_API_KEY" : "ANTHROPIC_API_KEY";
+      if (!process.env[requiredKey]) {
         console.error(
-          "\nError: ANTHROPIC_API_KEY environment variable required for --opus mode.\n" +
-            "Set it with: export ANTHROPIC_API_KEY=your-key-here\n"
+          `\nError: ${requiredKey} environment variable required for --opus mode.\n` +
+            `Set it with: export ${requiredKey}=your-key-here\n`
         );
         if (!options.deep) {
           process.exit(1);
@@ -655,6 +667,7 @@ program
           const opusAnalysis = await runOpusPipeline(result, {
             verbose: options.verbose,
             stream: options.stream || options.format === "terminal",
+            provider,
           });
 
           console.log(renderOpusAnalysis(opusAnalysis));

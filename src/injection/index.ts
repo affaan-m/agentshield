@@ -1,4 +1,5 @@
 import { discoverConfigFiles } from "../scanner/discovery.js";
+import type { LLMProvider } from "../llm/client.js";
 import type {
   InjectionSuiteResult,
   InjectionTestResult as SuiteTestResult,
@@ -30,7 +31,8 @@ export type {
 //   runInjectionSuite(targetPath: string) => Promise<InjectionSuiteResult>
 
 export async function runInjectionSuite(
-  targetPath: string
+  targetPath: string,
+  provider?: LLMProvider
 ): Promise<InjectionSuiteResult> {
   // Discover config files from the target path
   const target = discoverConfigFiles(targetPath);
@@ -54,6 +56,7 @@ export async function runInjectionSuite(
     agentDefinitions,
     settingsContent,
     {
+      provider,
       onProgress: (completed, total) => {
         process.stdout.write(
           `\r  Testing payloads: ${completed}/${total}`

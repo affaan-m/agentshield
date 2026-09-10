@@ -1,4 +1,9 @@
 import Anthropic from "@anthropic-ai/sdk";
+import {
+  createLLMClient,
+  resolveModel,
+  type LLMProvider,
+} from "../llm/client.js";
 import type { Severity } from "../types.js";
 import type { InjectionPayload } from "./payloads.js";
 import { INJECTION_PAYLOADS } from "./payloads.js";
@@ -31,6 +36,8 @@ export interface InjectionTestOptions {
   readonly concurrency?: number; // parallel API calls (default: 2)
   readonly payloads?: ReadonlyArray<InjectionPayload>; // override payload list
   readonly onProgress?: (completed: number, total: number) => void;
+  /** LLM provider to run the evaluation through. Defaults to Anthropic. */
+  readonly provider?: LLMProvider;
 }
 
 // ─── Constants ────────────────────────────────────────────
@@ -149,9 +156,11 @@ export async function runInjectionTests(
     concurrency = DEFAULT_CONCURRENCY,
     payloads = INJECTION_PAYLOADS,
     onProgress,
+    provider = "anthropic",
   } = options;
 
-  const client = new Anthropic();
+  const client = createLLMClient(provider);
+  const model = resolveModel(provider, MODEL);
 
   // Build config context for the evaluator
   const configContext = buildConfigContext(
@@ -173,7 +182,7 @@ export async function runInjectionTests(
 
     const batchResults = await Promise.all(
       concurrentBatches.map((batch) =>
-        evaluateBatch(client, configContext, batch)
+        evaluateBatch(client, model, configContext, batch)
       )
     );
 
@@ -220,6 +229,7 @@ function createBatches<T>(
 
 async function evaluateBatch(
   client: Anthropic,
+  model: string,
   configContext: string,
   batch: ReadonlyArray<InjectionPayload>
 ): Promise<ReadonlyArray<InjectionTestResult>> {
@@ -245,7 +255,7 @@ async function evaluateBatch(
 
   try {
     const response = await client.messages.create({
-      model: MODEL,
+      model: model,
       max_tokens: MAX_TOKENS_PER_CALL,
       system: EVALUATOR_SYSTEM_PROMPT,
       tools: [INJECTION_RESULT_TOOL],

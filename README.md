@@ -441,6 +441,26 @@ agentshield scan --opus --stream -v  # Verbose — see full agent reasoning
 
 Requires `ANTHROPIC_API_KEY` environment variable.
 
+#### OrcaRouter provider
+
+The `--opus` and `--injection` analysis modes can also run through
+[OrcaRouter](https://www.orcarouter.ai), an OpenAI/Anthropic-compatible gateway
+that routes each request to the most cost-effective upstream model:
+
+```bash
+export ORCAROUTER_API_KEY=your-key-here
+agentshield scan --opus --provider orcarouter
+agentshield scan --injection --provider orcarouter
+```
+
+The provider points the Anthropic client at `https://api.orcarouter.ai` and
+uses the gateway's namespaced model ids (e.g. `anthropic/claude-sonnet-4.5`,
+`anthropic/claude-opus-4.6`). The default provider remains Anthropic.
+
+With `--provider orcarouter` the scanned configuration contents are sent to
+OrcaRouter's API instead of Anthropic's, so do not use it on configs containing
+secrets you have not redacted.
+
 ### Compliance Mapping (`--compliance`)
 
 Map findings to audit-framework control IDs so GRC teams get an auditor-ready coverage artifact instead of a raw findings list:
@@ -664,6 +684,7 @@ agentshield scan [options]         Scan configuration directory
   -o, --output <path>              Write the primary report output to a file
   --fix                            Auto-apply safe fixes
   --opus                           Enable Opus 4.6 multi-agent analysis
+  --provider <provider>            LLM provider for --opus/--injection: anthropic or orcarouter
   --stream                         Stream Opus analysis in real-time
   --injection                      Run active prompt injection testing
   --sandbox                        Execute hooks in a sandbox and observe behavior
