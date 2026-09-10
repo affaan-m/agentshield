@@ -217,7 +217,7 @@ AgentShield scans both active MCP config and repository-shipped MCP templates.
 | Prompt reflection | `ignore previous instructions`, `you are now`, DAN jailbreak, fake system prompts |
 | Output manipulation | `always report ok`, `remove warnings from output`, suppress security findings |
 
-Structured JSON under `.claude/subagents/` and `.claude/slash-commands/` is analyzed like agent config when it declares `allowedTools` or similar tool metadata. Freeform `skill-md` prompt text still has narrower security coverage than `agent-md` and `CLAUDE.md`.
+Structured JSON under `.claude/subagents/` and `.claude/slash-commands/` is analyzed like agent config when it declares `allowedTools` or similar tool metadata. Slash commands under `commands/` and `slash-commands/` are typed `command-md`: they get the injection and dangerous-instruction rules but not the skill packaging hygiene rules, which only apply to `SKILL.md`. Freeform `skill-md` prompt text still has narrower security coverage than `agent-md` and `CLAUDE.md`.
 
 #### Scanner Accuracy Notes
 

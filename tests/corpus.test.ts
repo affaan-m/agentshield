@@ -65,6 +65,7 @@ describe("corpus structure", () => {
       "mcp-json",
       "agent-md",
       "skill-md",
+      "command-md",
       "hook-script",
       "hook-code",
       "rule-md",

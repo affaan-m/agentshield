@@ -4,7 +4,7 @@ import type { ConfigFile } from "../../src/types.js";
 
 function makeSkill(
   content: string,
-  path = "skills/self-improver.md"
+  path = "skills/self-improver/SKILL.md"
 ): ConfigFile {
   return {
     path,
@@ -115,7 +115,7 @@ metadata:
 ---
 `),
       {
-        path: "skills/self-improver.history.json",
+        path: "skills/self-improver/self-improver.history.json",
         type: "skill-md",
         content: JSON.stringify([{ success: true, feedbackScore: 5 }]),
       } satisfies ConfigFile,
@@ -317,5 +317,45 @@ metadata:
   ])("formats %s correctly", (_label, content, expectedText) => {
     const findings = runRules([makeSkill(content)]);
     expect(findings.some((finding) => finding.title.includes(expectedText) || finding.description.includes(expectedText))).toBe(true);
+  });
+
+  describe("file scoping", () => {
+    const bareSkillBody = `---
+name: bare
+description: No hygiene metadata at all
+---
+
+Do the thing.
+`;
+
+    it("fires on a skill-md file named SKILL.md that lacks hygiene metadata", () => {
+      const findings = runRules([makeSkill(bareSkillBody, "skills/bare/SKILL.md")]);
+      expect(findings.map((f) => f.id)).toEqual([
+        "skills-missing-telemetry-skills/bare/SKILL.md",
+        "skills-missing-governance-skills/bare/SKILL.md",
+      ]);
+    });
+
+    it("does not fire on a command-md slash command", () => {
+      const command: ConfigFile = {
+        path: ".claude/commands/hello.md",
+        type: "command-md",
+        content: "---\ndescription: Say hello\n---\n\nGreet the user by name.\n",
+      };
+      expect(runRules([command])).toHaveLength(0);
+    });
+
+    it("does not fire on a skill-md file that is not named SKILL.md", () => {
+      const findings = runRules([
+        makeSkill(bareSkillBody, "skills/bare/README.md"),
+        makeSkill(bareSkillBody, "skills/notes.md"),
+      ]);
+      expect(findings).toHaveLength(0);
+    });
+
+    it("matches SKILL.md case-insensitively", () => {
+      const findings = runRules([makeSkill(bareSkillBody, "skills/bare/skill.md")]);
+      expect(findings).toHaveLength(2);
+    });
   });
 });

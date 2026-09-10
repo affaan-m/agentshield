@@ -1,5 +1,18 @@
-import type { Rule } from "../types.js";
+import { basename } from "node:path";
+import type { ConfigFile, Rule } from "../types.js";
 import { getSkillProfiles, isSkillDefinitionFile } from "../skills/health.js";
+
+/**
+ * Packaging hygiene only applies to a skill manifest, which is the SKILL.md
+ * file at the root of a skill. Slash commands (command-md) and supporting
+ * markdown inside a skill directory have no version, rollback, or
+ * observation-hook concept, so they are excluded.
+ */
+function isSkillManifestFile(file: ConfigFile): boolean {
+  if (!isSkillDefinitionFile(file)) return false;
+  const name = basename(file.path.replace(/\\/g, "/")).toLowerCase();
+  return name === "skill.md";
+}
 
 function buildMissingFieldsLabel(missingFields: string[]): string {
   if (missingFields.length === 1) {
@@ -17,7 +30,7 @@ export const skillRules: ReadonlyArray<Rule> = [
     severity: "medium",
     category: "skills",
     check(file, allFiles = []) {
-      if (!isSkillDefinitionFile(file)) return [];
+      if (!isSkillManifestFile(file)) return [];
 
       const profile = getSkillProfiles(allFiles).find((entry) => entry.file.path === file.path);
       if (!profile) return [];
@@ -49,7 +62,7 @@ export const skillRules: ReadonlyArray<Rule> = [
     severity: "medium",
     category: "skills",
     check(file, allFiles = []) {
-      if (!isSkillDefinitionFile(file)) return [];
+      if (!isSkillManifestFile(file)) return [];
 
       const profile = getSkillProfiles(allFiles).find((entry) => entry.file.path === file.path);
       if (!profile) return [];
