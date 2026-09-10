@@ -30,7 +30,7 @@ The release that modernizes the scanner. Every open issue closed, every open pul
 
 ## Validation
 
-- typecheck, lint, build, corpus gate; 2403 tests across 82 files on macOS, Linux (Node 18, 20, 22), and Windows (Node 22).
+- typecheck, lint, build, corpus gate; 2403 tests across 82 files on macOS, Linux (Node 20 and 22), and Windows (Node 22).
 
 ## Upgrade Notes
 
