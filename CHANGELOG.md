@@ -54,8 +54,8 @@ All notable changes to this project will be documented in this file.
 ### Validation
 
 - npm run typecheck, npm run lint, npm run build, npm run corpus:gate
-- npm test: 2403 tests across 82 files, on macOS locally and on Linux (Node 20 and 22) and Windows (Node 22) in CI
-- 268 rule ids across 14 modules
+- npm test: 2444 tests across 84 files, on macOS locally and on Linux (Node 20 and 22) and Windows (Node 22) in CI
+- 268 rule ids across 15 modules
 
 ### Upgrade Notes
 

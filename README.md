@@ -112,7 +112,7 @@ JSON reports now expose `findings[].runtimeConfidence` when AgentShield can dist
 
 ## What It Catches
 
-**268 rules** across 14 modules, graded A to F with a 0 to 100 numeric score. Recognized defenses are listed and never penalized.
+**268 rules** across 15 modules, graded A to F with a 0 to 100 numeric score. Recognized defenses are listed and never penalized.
 
 #### Scoring and recognized defenses
 
@@ -857,10 +857,10 @@ src/
 ├── rules/
 │   ├── index.ts          Rule registry
 │   ├── secrets.ts        Secret detection (10 rules, 14 patterns)
-│   ├── permissions.ts    Permission audit (10 rules)
-│   ├── mcp.ts            MCP server security (23 rules)
-│   ├── hooks.ts          Hook analysis (34 rules)
-│   └── agents.ts         Agent config review (25 rules)
+│   ├── permissions.ts    Permission audit (17 rules)
+│   ├── mcp.ts            MCP server security (26 rules)
+│   ├── hooks.ts          Hook analysis (40 rules)
+│   └── agents.ts         Agent config review (41 rules)
 ├── reporter/
 │   ├── score.ts          Scoring engine (A-F grades)
 │   ├── terminal.ts       Color terminal output

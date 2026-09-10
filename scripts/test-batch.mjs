@@ -15,8 +15,9 @@ const BATCHES = {
     "tests/action-supply-chain.test.ts",
     "tests/action-hardening.test.ts",
     "tests/action-promotion.test.ts",
+    "tests/action-baseline.test.ts",
   ],
-  "miniclaw-a": ["tests/miniclaw/index.test.ts", "tests/miniclaw/server.test.ts"],
+  "miniclaw-a": ["tests/miniclaw/index.test.ts", "tests/miniclaw/server.test.ts", "tests/miniclaw/integration.test.ts"],
   "miniclaw-b": ["tests/miniclaw/cli.test.ts", "tests/miniclaw/sandbox.test.ts"],
   misc: [
     "tests/corpus.test.ts",

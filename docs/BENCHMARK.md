@@ -2,29 +2,34 @@
 
 Source: this repository at the 1.6.0 release train. Competitor data from the GitHub API and each project's README or docs, fetched 2026-09-10. Anything not read from source or a README is marked UNVERIFIED. Competitor data from the GitHub API and each project's README or docs, fetched today. Web search was unavailable; anything not read from source or README is marked UNVERIFIED.
 
-## 1. AgentShield detection surface (from source)
+## 1. AgentShield detection surface (from source, 1.6.0)
 
 | Module (`src/rules/`) | Unique ids | Focus |
 |---|---|---|
-| agents.ts | 41 | subagent prompts: injection, exfil, persistence, obfuscation, tool escalation |
-| hooks.ts | 38 | hook commands: reverse shells, cron, env exfil, credential access, IOCs |
+| agents.ts | 41 | subagent and instruction prompts: injection, exfil, persistence, obfuscation, tool escalation |
+| hooks.ts | 40 | hook commands: reverse shells, cron, env exfil, credential access, IOCs, guard-pattern aware |
+| claude-code.ts | 34 | Claude Code 2026 settings, hook entries, skills, subagent frontmatter |
 | mcp.ts | 26 | MCP config hygiene: npx supply chain, transports, env, CORS, bind-all |
-| package-manager.ts | 13 | lifecycle scripts, release-age gates, registry credentials |
-| permissions.ts | 13 | `permissions.allow/deny`, skip-permissions, sensitive paths |
+| harnesses.ts | 25 | plugin manifests, Gemini, OpenCode, Cursor hooks, Copilot agents, instruction imports |
+| permissions.ts | 17 | normalized allow and deny analysis, shadowing, skip-permissions, sensitive paths |
+| codex.ts | 17 | Codex CLI approval and sandbox policy, MCP tables, hooks, providers |
+| mcp-remote.ts | 16 | remote MCP auth, OAuth, bridges, auto-approve wildcards, tool-description injection, shadowing |
+| package-manager.ts | 15 | lifecycle scripts, release-age gates, registry credentials |
 | prompt-defense.ts | 13 | missing defenses in CLAUDE.md, agent prompts, rules |
 | secrets.ts | 10 | hardcoded keys, URL creds, private keys, webhooks |
-| mcp-tool-poisoning.ts | 5 | description poisoning, exfil URLs in env/args (config text only) |
-| mcp-cve.ts | 2 | known vulnerable or malicious MCP packages (21 CVEs in `threat-intel/cve-database.ts`) |
-| skills.ts | 2 | observation hooks, version rollback metadata |
-| **Total** | **163** | README says 102; source has 163 |
+| hermes.ts | 8 | Hermes approvals, allowlists, terminal backends, platform toolsets, gateways |
+| mcp-tool-poisoning.ts | 5 | description poisoning, exfil URLs in env and args (config text only) |
+| mcp-cve.ts | 2 | known vulnerable or malicious MCP packages |
+| skills.ts | 2 | observation hooks, version rollback metadata (SKILL.md only) |
+| **Total** | **268** | 15 modules |
 
-File types (`ConfigFileType` in `src/types.ts`, discovery in `src/scanner/discovery.ts`): `claude-md`, `settings-json` (settings.json, settings.local.json, .vscode/tasks.json, .zed/*, LaunchAgents plist, CodeQL workflow), `mcp-json` (mcp.json, .mcp.json, .claude.json), `agent-md`, `skill-md`, `hook-script` (.sh/.bash/.zsh), `hook-code` (.js/.ts), `package-manager-config` (package.json, lockfiles, .npmrc, .yarnrc, pnpm-workspace), `rule-md`, `context-md`. Nine harness adapters: claude-code, codex, gemini, opencode, zed, vscode, dmux, generic-terminal, project-local-template.
+File types (`ConfigFileType` in `src/types.ts`, discovery in `src/scanner/discovery.ts`): `claude-md`, `settings-json` (settings.json, settings.local.json, .vscode/tasks.json, .zed/*, LaunchAgents plist, CodeQL workflow), `mcp-json` (mcp.json, .mcp.json, .claude.json), `agent-md`, `skill-md`, `hook-script` (.sh/.bash/.zsh), `hook-code` (.js/.ts), `package-manager-config` (package.json, lockfiles, .npmrc, .yarnrc, pnpm-workspace), `rule-md`, `context-md`. Harness adapters: claude-code, codex, gemini, opencode, zed, vscode, dmux, generic-terminal, project-local-template.
 
 CLI (`src/index.ts`): `scan`, `init`, `evidence-pack`, `inspect`, `fleet`, `verify`, `baseline write`, `watch`, `runtime install|uninstall|status|repair`, `policy init|export|promote`, `miniclaw start`. Formats: text, json, markdown, html, sarif. Extras: taint analyzer, injection tester, Opus pipeline, npm supply-chain verify (typosquat, postinstall, package age, maintainers, downloads, unpinned git).
 
 GitHub Action (`action.yml`): 19 inputs, 32 outputs covering score/grade, sarif-path, baseline drift (7), policy (2), supply chain (4), package-manager hardening (7), evidence pack (3), policy promotion (5).
 
-One structural fact drives the comparison: **AgentShield never connects to an MCP server.** No `tools/list`, `listTools`, or MCP SDK usage exists in `src/` outside miniclaw. Poisoning rules run over config JSON, not live tool descriptions.
+One structural fact drives the comparison: **AgentShield never connects to an MCP server.** 1.6.0 adds config-side tool-description injection and cross-server shadowing checks, but live tool lists are still out of scope. No `tools/list`, `listTools`, or MCP SDK usage exists in `src/` outside miniclaw. Poisoning rules run over config JSON, not live tool descriptions.
 
 ## 2. Comparable tools
 
