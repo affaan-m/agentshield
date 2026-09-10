@@ -291,7 +291,6 @@ program
   .option("--supply-chain", "Verify MCP npm packages against known-bad list and typosquatting", false)
   .option("--supply-chain-online", "Also query npm registry for metadata (requires network)", false)
   .option("--compliance <frameworks>", "Map findings to control IDs: soc2, pci, iso, all (comma-separated)")
-
   .option(
     "--rule-pack <path>",
     "Load an external JSON rule pack and run it alongside built-in rules (repeatable)",
