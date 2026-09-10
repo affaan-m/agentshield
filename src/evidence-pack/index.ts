@@ -1311,9 +1311,11 @@ function createRedactor(
 
   const redactString = (value: string): string => {
     if (!enabled) return value;
-    return replacements.reduce(
-      (redacted, [pattern, replacement]) => redacted.replace(pattern, replacement),
-      value
+    return normalizeRedactedPathSeparators(
+      replacements.reduce(
+        (redacted, [pattern, replacement]) => redacted.replace(pattern, replacement),
+        value
+      )
     );
   };
 
@@ -1335,12 +1337,12 @@ function buildReplacements(targetPath: string): ReadonlyArray<[RegExp, string]> 
   const home = homedir();
   const targetReplacements: ReadonlyArray<[RegExp, string]> = targetPath
     ? [
-        [literalPattern(resolve(targetPath)), "<target-path>"],
-        [literalPattern(targetPath), "<target-path>"],
+        ...pathPatterns(resolve(targetPath)).map((pattern): [RegExp, string] => [pattern, "<target-path>"]),
+        ...pathPatterns(targetPath).map((pattern): [RegExp, string] => [pattern, "<target-path>"]),
       ]
     : [];
   const homeReplacements: ReadonlyArray<[RegExp, string]> = home && home !== "/"
-    ? [[literalPattern(home), "<home>"]]
+    ? pathPatterns(home).map((pattern): [RegExp, string] => [pattern, "<home>"])
     : [];
   const userNames: ReadonlyArray<string> = [
     basename(home),
@@ -1379,6 +1381,29 @@ function buildReplacements(targetPath: string): ReadonlyArray<[RegExp, string]> 
 
 function literalPattern(value: string): RegExp {
   return new RegExp(escapeRegExp(value), "g");
+}
+
+/**
+ * Patterns for a filesystem path as it may appear in report text: native
+ * form, forward-slash form, and the JSON-escaped form Windows paths take
+ * once serialized. Evidence packs must redact all three to stay portable.
+ */
+function pathPatterns(value: string): ReadonlyArray<RegExp> {
+  const backslash = String.fromCharCode(92);
+  const variants = new Set<string>([
+    value,
+    value.split(backslash).join("/"),
+    value.split(backslash).join(backslash + backslash),
+  ]);
+  return [...variants].filter((variant) => variant.length > 0).map(literalPattern);
+}
+
+/** Forward-slash the remainder of any redacted path so packs match across platforms. */
+function normalizeRedactedPathSeparators(text: string): string {
+  const backslash = String.fromCharCode(92);
+  const tail = new RegExp("(<target-path>|<home>)((?:" + backslash + backslash + backslash + backslash + "|" + backslash + backslash + ")[^\\s\"'<>]*)", "g");
+  const separators = new RegExp(backslash + backslash + backslash + backslash + "|" + backslash + backslash, "g");
+  return text.replace(tail, (_match, placeholder: string, rest: string) => placeholder + rest.replace(separators, "/"));
 }
 
 function escapeRegExp(value: string): string {
