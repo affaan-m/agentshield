@@ -522,12 +522,23 @@ export const permissionRules: ReadonlyArray<Rule> = [
       // comment, or in help/guidance text) rather than passed to an executed
       // command. A hook that prints "to bypass these checks, use: git commit
       // --no-verify" is documenting the flag, not using it. See issue #100.
-      const mentionPatterns = [
-        /console\.(?:log|error|warn|info|debug)/i,
-        /\b(?:echo|printf|print|puts|write(?:line)?)\b/i,
-        /^\s*(?:\/\/|#|\*|\/\*)/,
-        /\b(?:to\s+bypass|to\s+skip|bypass\s+(?:these|the)\s+checks?|skip\s+(?:these|the)\s+checks?|use:|e\.g\.|for\s+example|instead\s+of)\b/i,
-      ];
+      const printPattern = /console\.(?:log|error|warn|info|debug)|\b(?:echo|printf|print|puts|write(?:line)?)\b/i;
+      const commentPattern = /^\s*(?:\/\/|#|\*|\/\*|<!--)/;
+      const helpPhrasePattern = /\b(?:to\s+bypass|to\s+skip|bypass\s+(?:these|the)\s+checks?|skip\s+(?:these|the)\s+checks?|use:|e\.g\.|for\s+example|instead\s+of)\b/i;
+      // Anything on the line that hands text to a shell or interpreter means
+      // the "printed" flag can still execute (echo ... | sh, eval, $(...)).
+      const execIndicatorPattern = /\|\s*(?:ba|z|da|k)?sh\b|\b(?:exec(?:Sync|File|FileSync)?|spawn(?:Sync)?|system|popen|eval)\s*\(|\beval\s|\bsubprocess\b|\$\(|`/;
+      const insideStringLiteral = (line: string, col: number): boolean => {
+        let single = 0;
+        let double = 0;
+        for (let i = 0; i < col && i < line.length; i += 1) {
+          const ch = line[i];
+          if (ch === "\\") { i += 1; continue; }
+          if (ch === "'" && double % 2 === 0) single += 1;
+          else if (ch === '"' && single % 2 === 0) double += 1;
+        }
+        return single % 2 === 1 || double % 2 === 1;
+      };
 
       for (const { pattern, desc } of dangerousPatterns) {
         const matches = [...file.content.matchAll(
@@ -578,7 +589,12 @@ export const permissionRules: ReadonlyArray<Rule> = [
           const lineStart = file.content.lastIndexOf("\n", idx) + 1;
           const lineEndRaw = file.content.indexOf("\n", idx);
           const line = file.content.substring(lineStart, lineEndRaw === -1 ? file.content.length : lineEndRaw);
-          const isMention = mentionPatterns.some((m) => m.test(line) || m.test(context));
+          const col = idx - lineStart;
+          const quoted = insideStringLiteral(line, col);
+          const isMention =
+            !execIndicatorPattern.test(line) &&
+            (commentPattern.test(line) ||
+              (quoted && (printPattern.test(line) || helpPhrasePattern.test(line))));
 
           if (isMention) {
             findings.push({

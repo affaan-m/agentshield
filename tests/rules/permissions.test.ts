@@ -342,6 +342,39 @@ describe("permissionRules", () => {
       expect(noVerifyFindings[0].severity).toBe("critical");
     });
 
+    it("keeps --no-verify CRITICAL when an echoed string is piped to a shell", () => {
+      const file: ConfigFile = {
+        path: "hook.sh",
+        type: "hook-script",
+        content: "echo 'git commit --no-verify' | sh",
+      };
+      const findings = runAllPermRules(file);
+      const noVerifyFindings = findings.filter((f) => f.evidence === "--no-verify");
+      expect(noVerifyFindings[0].severity).toBe("critical");
+    });
+
+    it("keeps --no-verify CRITICAL when it runs after a print on the same line", () => {
+      const file: ConfigFile = {
+        path: "hook.sh",
+        type: "hook-script",
+        content: "echo 'committing'; git commit --no-verify -m wip",
+      };
+      const findings = runAllPermRules(file);
+      const noVerifyFindings = findings.filter((f) => f.evidence === "--no-verify");
+      expect(noVerifyFindings[0].severity).toBe("critical");
+    });
+
+    it("keeps --no-verify CRITICAL when a print appears on the previous line", () => {
+      const file: ConfigFile = {
+        path: "hook.sh",
+        type: "hook-script",
+        content: "echo 'committing'\ngit commit --no-verify -m wip",
+      };
+      const findings = runAllPermRules(file);
+      const noVerifyFindings = findings.filter((f) => f.evidence === "--no-verify");
+      expect(noVerifyFindings[0].severity).toBe("critical");
+    });
+
     it("skips non-settings files for permission rules", () => {
       const file: ConfigFile = { path: "agent.md", type: "agent-md", content: "Bash(*)" };
       const findings = runAllPermRules(file);
