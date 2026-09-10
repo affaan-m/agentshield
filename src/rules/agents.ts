@@ -9,6 +9,23 @@ function findAllMatches(content: string, pattern: RegExp): Array<RegExpMatchArra
   return [...content.matchAll(new RegExp(pattern.source, flags))];
 }
 
+/**
+ * One HTML comment. The lazy quantifier stops at the first closing marker,
+ * so a match can never span two comments. The keyword test is applied to
+ * the captured body separately, never inside this span.
+ */
+const HTML_COMMENT_PATTERN = /<!--([\s\S]*?)-->/g;
+
+/** One markdown reference-style comment: `[//]: # (body)`. */
+const MARKDOWN_REFERENCE_COMMENT_PATTERN = /\[\/\/\]:\s*#\s*\(([^)\n]*)\)/g;
+
+/**
+ * Imperative instruction shapes that carry injection signal inside a comment.
+ * Bare words like "system" or "run" do not match on their own.
+ */
+const SUSPICIOUS_COMMENT_INSTRUCTION_PATTERN =
+  /(?:ignore|disregard|override)\s+(?:all|any|previous|prior|the|your|these)?\s*(?:instructions?|rules?|guidelines?|system\s+prompt)|(?:run|execute|install|download|send|post|upload|curl|wget|exfiltrate)\s+[^\s]{2,}|system\s*prompt|you\s+are\s+now|do\s+not\s+(?:tell|mention|reveal)/i;
+
 function normalizeConfigPath(filePath: string): string {
   return filePath.replace(/\\/g, "/");
 }
@@ -157,10 +174,19 @@ function getAgentMetadata(content: string): {
 
 function isSlashCommandConfig(file: ConfigFile, isStructuredDefinition: boolean): boolean {
   return (
-    file.type === "skill-md" &&
+    file.type === "command-md" &&
     isStructuredDefinition &&
     file.path.toLowerCase().includes("slash-commands/")
   );
+}
+
+/**
+ * Files whose body is consumed as agent instructions: agent definitions,
+ * CLAUDE.md, and slash commands. Injection and dangerous-instruction rules
+ * apply to all of them.
+ */
+function isInstructionFile(file: ConfigFile): boolean {
+  return file.type === "agent-md" || file.type === "claude-md" || file.type === "command-md";
 }
 
 function isAgentLikeToolConfig(
@@ -171,7 +197,7 @@ function isAgentLikeToolConfig(
 }
 
 function configSubject(file: ConfigFile): string {
-  return file.type === "skill-md" ? "Slash command" : "Agent";
+  return file.type === "command-md" ? "Slash command" : "Agent";
 }
 
 function isSubagentConfig(file: ConfigFile): boolean {
@@ -388,7 +414,7 @@ export const agentRules: ReadonlyArray<Rule> = [
     severity: "high",
     category: "injection",
     check(file: ConfigFile): ReadonlyArray<Finding> {
-      if (file.type !== "agent-md") return [];
+      if (file.type !== "agent-md" && file.type !== "command-md") return [];
 
       const findings: Finding[] = [];
 
@@ -441,7 +467,7 @@ export const agentRules: ReadonlyArray<Rule> = [
     severity: "critical",
     category: "injection",
     check(file: ConfigFile): ReadonlyArray<Finding> {
-      if (file.type !== "agent-md" && file.type !== "claude-md") return [];
+      if (!isInstructionFile(file)) return [];
 
       const findings: Finding[] = [];
 
@@ -723,35 +749,36 @@ export const agentRules: ReadonlyArray<Rule> = [
     severity: "high",
     category: "injection",
     check(file: ConfigFile): ReadonlyArray<Finding> {
-      if (file.type !== "agent-md" && file.type !== "claude-md") return [];
+      if (!isInstructionFile(file)) return [];
 
       const findings: Finding[] = [];
 
-      const commentPatterns = [
-        {
-          pattern: /<!--[\s\S]*?(?:ignore|override|system|execute|run|install|download|send|post|upload)[\s\S]*?-->/gi,
+      const commentBodies = [
+        ...findAllMatches(file.content, HTML_COMMENT_PATTERN).map((match) => ({
+          index: match.index ?? 0,
+          body: match[1] ?? "",
           desc: "HTML comment contains suspicious instructions",
-        },
-        {
-          pattern: /\[\/\/\]:\s*#\s*\(.*(?:ignore|override|execute|run|install|download).*\)/gi,
+        })),
+        ...findAllMatches(file.content, MARKDOWN_REFERENCE_COMMENT_PATTERN).map((match) => ({
+          index: match.index ?? 0,
+          body: match[1] ?? "",
           desc: "Markdown reference-style comment contains suspicious instructions",
-        },
+        })),
       ];
 
-      for (const { pattern, desc } of commentPatterns) {
-        const matches = findAllMatches(file.content, pattern);
-        for (const match of matches) {
-          findings.push({
-            id: `agents-comment-injection-${match.index}`,
-            severity: "high",
-            category: "injection",
-            title: `Suspicious instruction in comment: ${file.path}`,
-            description: `${desc}. Attackers may hide malicious instructions in comments that won't be visible in rendered markdown but will be processed by the AI agent.`,
-            file: file.path,
-            line: findLineNumber(file.content, match.index ?? 0),
-            evidence: match[0].substring(0, 100),
-          });
-        }
+      for (const { index, body, desc } of commentBodies) {
+        if (findAllMatches(body, SUSPICIOUS_COMMENT_INSTRUCTION_PATTERN).length === 0) continue;
+
+        findings.push({
+          id: `agents-comment-injection-${index}`,
+          severity: "high",
+          category: "injection",
+          title: `Suspicious instruction in comment: ${file.path}`,
+          description: `${desc}. Attackers may hide malicious instructions in comments that won't be visible in rendered markdown but will be processed by the AI agent.`,
+          file: file.path,
+          line: findLineNumber(file.content, index),
+          evidence: body.trim().substring(0, 200),
+        });
       }
 
       return findings;
@@ -837,7 +864,7 @@ export const agentRules: ReadonlyArray<Rule> = [
     severity: "critical",
     category: "injection",
     check(file: ConfigFile): ReadonlyArray<Finding> {
-      if (file.type !== "agent-md") return [];
+      if (file.type !== "agent-md" && file.type !== "command-md") return [];
 
       const findings: Finding[] = [];
 
@@ -886,7 +913,7 @@ export const agentRules: ReadonlyArray<Rule> = [
     severity: "critical",
     category: "injection",
     check(file: ConfigFile): ReadonlyArray<Finding> {
-      if (file.type !== "agent-md" && file.type !== "claude-md") return [];
+      if (!isInstructionFile(file)) return [];
 
       const findings: Finding[] = [];
 
@@ -935,7 +962,7 @@ export const agentRules: ReadonlyArray<Rule> = [
     severity: "high",
     category: "injection",
     check(file: ConfigFile): ReadonlyArray<Finding> {
-      if (file.type !== "agent-md" && file.type !== "claude-md") return [];
+      if (!isInstructionFile(file)) return [];
 
       const findings: Finding[] = [];
 
@@ -980,7 +1007,7 @@ export const agentRules: ReadonlyArray<Rule> = [
     severity: "high",
     category: "injection",
     check(file: ConfigFile): ReadonlyArray<Finding> {
-      if (file.type !== "agent-md" && file.type !== "claude-md") return [];
+      if (!isInstructionFile(file)) return [];
 
       const findings: Finding[] = [];
 
@@ -1025,7 +1052,7 @@ export const agentRules: ReadonlyArray<Rule> = [
     severity: "critical",
     category: "injection",
     check(file: ConfigFile): ReadonlyArray<Finding> {
-      if (file.type !== "agent-md" && file.type !== "claude-md") return [];
+      if (!isInstructionFile(file)) return [];
 
       const findings: Finding[] = [];
 
@@ -1070,7 +1097,7 @@ export const agentRules: ReadonlyArray<Rule> = [
     severity: "critical",
     category: "injection",
     check(file: ConfigFile): ReadonlyArray<Finding> {
-      if (file.type !== "agent-md" && file.type !== "claude-md") return [];
+      if (!isInstructionFile(file)) return [];
 
       const findings: Finding[] = [];
 
@@ -1115,7 +1142,7 @@ export const agentRules: ReadonlyArray<Rule> = [
     severity: "high",
     category: "injection",
     check(file: ConfigFile): ReadonlyArray<Finding> {
-      if (file.type !== "agent-md" && file.type !== "claude-md") return [];
+      if (!isInstructionFile(file)) return [];
 
       const findings: Finding[] = [];
 
@@ -1164,7 +1191,7 @@ export const agentRules: ReadonlyArray<Rule> = [
     severity: "critical",
     category: "injection",
     check(file: ConfigFile): ReadonlyArray<Finding> {
-      if (file.type !== "agent-md" && file.type !== "claude-md") return [];
+      if (!isInstructionFile(file)) return [];
 
       const findings: Finding[] = [];
 
@@ -1209,7 +1236,7 @@ export const agentRules: ReadonlyArray<Rule> = [
     severity: "critical",
     category: "injection",
     check(file: ConfigFile): ReadonlyArray<Finding> {
-      if (file.type !== "agent-md" && file.type !== "claude-md") return [];
+      if (!isInstructionFile(file)) return [];
 
       const findings: Finding[] = [];
 
@@ -1254,7 +1281,7 @@ export const agentRules: ReadonlyArray<Rule> = [
     severity: "high",
     category: "injection",
     check(file: ConfigFile): ReadonlyArray<Finding> {
-      if (file.type !== "agent-md" && file.type !== "claude-md") return [];
+      if (!isInstructionFile(file)) return [];
 
       const findings: Finding[] = [];
 
@@ -1299,7 +1326,7 @@ export const agentRules: ReadonlyArray<Rule> = [
     severity: "critical",
     category: "injection",
     check(file: ConfigFile): ReadonlyArray<Finding> {
-      if (file.type !== "agent-md" && file.type !== "claude-md") return [];
+      if (!isInstructionFile(file)) return [];
 
       const findings: Finding[] = [];
 
@@ -1348,7 +1375,7 @@ export const agentRules: ReadonlyArray<Rule> = [
     severity: "high",
     category: "injection",
     check(file: ConfigFile): ReadonlyArray<Finding> {
-      if (file.type !== "agent-md" && file.type !== "claude-md") return [];
+      if (!isInstructionFile(file)) return [];
 
       const findings: Finding[] = [];
 
@@ -1393,7 +1420,7 @@ export const agentRules: ReadonlyArray<Rule> = [
     severity: "critical",
     category: "injection",
     check(file: ConfigFile): ReadonlyArray<Finding> {
-      if (file.type !== "agent-md" && file.type !== "claude-md") return [];
+      if (!isInstructionFile(file)) return [];
 
       const findings: Finding[] = [];
 
@@ -1446,7 +1473,7 @@ export const agentRules: ReadonlyArray<Rule> = [
     severity: "high",
     category: "injection",
     check(file: ConfigFile): ReadonlyArray<Finding> {
-      if (file.type !== "agent-md" && file.type !== "claude-md") return [];
+      if (!isInstructionFile(file)) return [];
 
       const findings: Finding[] = [];
 
@@ -1495,7 +1522,7 @@ export const agentRules: ReadonlyArray<Rule> = [
     severity: "high",
     category: "injection",
     check(file: ConfigFile): ReadonlyArray<Finding> {
-      if (file.type !== "agent-md" && file.type !== "claude-md") return [];
+      if (!isInstructionFile(file)) return [];
 
       const findings: Finding[] = [];
 
@@ -1540,7 +1567,7 @@ export const agentRules: ReadonlyArray<Rule> = [
     severity: "high",
     category: "injection",
     check(file: ConfigFile): ReadonlyArray<Finding> {
-      if (file.type !== "agent-md" && file.type !== "claude-md") return [];
+      if (!isInstructionFile(file)) return [];
 
       const findings: Finding[] = [];
 
@@ -1649,7 +1676,7 @@ export const agentRules: ReadonlyArray<Rule> = [
     severity: "high",
     category: "injection",
     check(file: ConfigFile): ReadonlyArray<Finding> {
-      if (file.type !== "agent-md" && file.type !== "claude-md") return [];
+      if (!isInstructionFile(file)) return [];
 
       const findings: Finding[] = [];
 
@@ -1694,7 +1721,7 @@ export const agentRules: ReadonlyArray<Rule> = [
     severity: "critical",
     category: "injection",
     check(file: ConfigFile): ReadonlyArray<Finding> {
-      if (file.type !== "agent-md" && file.type !== "claude-md") return [];
+      if (!isInstructionFile(file)) return [];
 
       const findings: Finding[] = [];
 
@@ -1747,7 +1774,7 @@ export const agentRules: ReadonlyArray<Rule> = [
     severity: "critical",
     category: "injection",
     check(file: ConfigFile): ReadonlyArray<Finding> {
-      if (file.type !== "agent-md" && file.type !== "claude-md") return [];
+      if (!isInstructionFile(file)) return [];
 
       const findings: Finding[] = [];
 
@@ -1800,7 +1827,7 @@ export const agentRules: ReadonlyArray<Rule> = [
     severity: "critical",
     category: "injection",
     check(file: ConfigFile): ReadonlyArray<Finding> {
-      if (file.type !== "agent-md" && file.type !== "claude-md") return [];
+      if (!isInstructionFile(file)) return [];
 
       const findings: Finding[] = [];
 
@@ -1849,7 +1876,7 @@ export const agentRules: ReadonlyArray<Rule> = [
     severity: "high",
     category: "injection",
     check(file: ConfigFile): ReadonlyArray<Finding> {
-      if (file.type !== "agent-md" && file.type !== "claude-md") return [];
+      if (!isInstructionFile(file)) return [];
 
       const findings: Finding[] = [];
 
@@ -1898,7 +1925,7 @@ export const agentRules: ReadonlyArray<Rule> = [
     severity: "critical",
     category: "secrets",
     check(file: ConfigFile): ReadonlyArray<Finding> {
-      if (file.type !== "agent-md" && file.type !== "claude-md") return [];
+      if (!isInstructionFile(file)) return [];
 
       const findings: Finding[] = [];
 
@@ -1943,7 +1970,7 @@ export const agentRules: ReadonlyArray<Rule> = [
     severity: "high",
     category: "secrets",
     check(file: ConfigFile): ReadonlyArray<Finding> {
-      if (file.type !== "agent-md" && file.type !== "claude-md") return [];
+      if (!isInstructionFile(file)) return [];
 
       const findings: Finding[] = [];
 
@@ -1988,7 +2015,7 @@ export const agentRules: ReadonlyArray<Rule> = [
     severity: "high",
     category: "injection",
     check(file: ConfigFile): ReadonlyArray<Finding> {
-      if (file.type !== "agent-md" && file.type !== "claude-md") return [];
+      if (!isInstructionFile(file)) return [];
       if (isAgentDocumentationFile(file)) return [];
 
       const findings: Finding[] = [];
@@ -2034,7 +2061,7 @@ export const agentRules: ReadonlyArray<Rule> = [
     severity: "high",
     category: "injection",
     check(file: ConfigFile): ReadonlyArray<Finding> {
-      if (file.type !== "agent-md" && file.type !== "claude-md") return [];
+      if (!isInstructionFile(file)) return [];
 
       const findings: Finding[] = [];
 
@@ -2087,7 +2114,7 @@ export const agentRules: ReadonlyArray<Rule> = [
     severity: "high",
     category: "injection",
     check(file: ConfigFile): ReadonlyArray<Finding> {
-      if (file.type !== "agent-md" && file.type !== "claude-md") return [];
+      if (!isInstructionFile(file)) return [];
 
       const findings: Finding[] = [];
 
@@ -2136,7 +2163,7 @@ export const agentRules: ReadonlyArray<Rule> = [
     severity: "high",
     category: "injection",
     check(file: ConfigFile): ReadonlyArray<Finding> {
-      if (file.type !== "agent-md" && file.type !== "claude-md") return [];
+      if (!isInstructionFile(file)) return [];
 
       const findings: Finding[] = [];
 

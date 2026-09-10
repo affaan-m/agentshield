@@ -346,7 +346,24 @@ describe("discoverConfigFiles", () => {
     writeFileSync(join(dir, "commands", "deploy.md"), "Deploy command");
 
     const result = discoverConfigFiles(dir);
-    expect(result.files.some((f) => f.type === "skill-md")).toBe(true);
+    expect(result.files.some((f) => f.path === "commands/deploy.md" && f.type === "command-md")).toBe(true);
+    expect(result.files.some((f) => f.type === "skill-md")).toBe(false);
+  });
+
+  it("types .claude/commands and slash-commands markdown as command-md", () => {
+    const dir = createTempDir();
+    mkdirSync(join(dir, ".claude"));
+    mkdirSync(join(dir, ".claude", "commands"));
+    mkdirSync(join(dir, "slash-commands"));
+    writeFileSync(join(dir, ".claude", "commands", "hello.md"), "---\ndescription: Say hello\n---\n\nGreet the user.\n");
+    writeFileSync(join(dir, "slash-commands", "review.md"), "Review the diff.");
+
+    const result = discoverConfigFiles(dir);
+    const hello = result.files.find((f) => f.path === ".claude/commands/hello.md");
+    const review = result.files.find((f) => f.path === "slash-commands/review.md");
+    expect(hello?.type).toBe("command-md");
+    expect(review?.type).toBe("command-md");
+    expect(result.files.some((f) => f.type === "skill-md")).toBe(false);
   });
 
   it("discovers JSON subagents and slash commands in .claude directories", () => {
@@ -368,7 +385,7 @@ describe("discoverConfigFiles", () => {
       result.files.some((f) => f.path === ".claude/subagents/reviewer.json" && f.type === "agent-md")
     ).toBe(true);
     expect(
-      result.files.some((f) => f.path === ".claude/slash-commands/review.json" && f.type === "skill-md")
+      result.files.some((f) => f.path === ".claude/slash-commands/review.json" && f.type === "command-md")
     ).toBe(true);
   });
 

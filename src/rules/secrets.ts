@@ -178,6 +178,7 @@ function isMarkdownLikeFile(file: ConfigFile): boolean {
     "claude-md",
     "agent-md",
     "skill-md",
+    "command-md",
     "rule-md",
     "context-md",
   ].includes(file.type);

@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { scan } from "../../src/scanner/index.js";
+import { calculateScore } from "../../src/reporter/score.js";
 import { resolve } from "node:path";
 import { mkdtempSync, writeFileSync, mkdirSync, rmSync, symlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -562,6 +563,29 @@ describe("scanner", () => {
         }
       }
     );
+
+    it("scores agents 100 with zero findings for 100 trivial slash commands", () => {
+      const tempDir = mkdtempSync(join(tmpdir(), "agentshield-commands-"));
+      try {
+        mkdirSync(join(tempDir, ".claude", "commands"), { recursive: true });
+        for (let i = 1; i <= 100; i++) {
+          writeFileSync(
+            join(tempDir, ".claude", "commands", `cmd${i}.md`),
+            `---\ndescription: Command ${i}\n---\n\nDo thing ${i}.\n`
+          );
+        }
+
+        const result = scan(join(tempDir, ".claude"));
+        expect(result.target.files).toHaveLength(100);
+        expect(result.target.files.every((f) => f.type === "command-md")).toBe(true);
+        expect(result.findings).toHaveLength(0);
+        const report = calculateScore(result);
+        expect(report.score.breakdown.agents).toBe(100);
+        expect(report.score.numericScore).toBe(100);
+      } finally {
+        rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
 
     it("does not emit dangling symlink findings for a clean tree", () => {
       const result = scan(VULNERABLE_PATH);

@@ -83,6 +83,7 @@ export type ConfigFileType =
   | "mcp-json"
   | "agent-md"
   | "skill-md"
+  | "command-md"
   | "hook-script"
   | "hook-code"
   | "package-manager-config"

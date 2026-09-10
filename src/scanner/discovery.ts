@@ -254,10 +254,10 @@ function scanClaudeRoot(
     [".claude/rules", "rule-md"],
     ["contexts", "context-md"],
     [".claude/contexts", "context-md"],
-    ["commands", "skill-md"],
-    [".claude/commands", "skill-md"],
-    ["slash-commands", "skill-md"],
-    [".claude/slash-commands", "skill-md"],
+    ["commands", "command-md"],
+    [".claude/commands", "command-md"],
+    ["slash-commands", "command-md"],
+    [".claude/slash-commands", "command-md"],
   ];
 
   for (const [subdir, type] of subdirs) {
@@ -309,6 +309,7 @@ function inferType(filename: string, defaultType: ConfigFileType): ConfigFileTyp
   }
   if (defaultType === "agent-md" && ext === ".json") return "agent-md";
   if (defaultType === "skill-md" && ext === ".json") return "skill-md";
+  if (defaultType === "command-md" && ext === ".json") return "command-md";
   if (ext === ".json") return "settings-json";
   if (ext === ".md" || ext === ".markdown") return defaultType;
 
