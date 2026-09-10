@@ -1,4 +1,5 @@
 import type { ConfigFile, Finding, Rule } from "../types.js";
+import { hasDenySignalInBlock, isGuardPatternContext } from "./guard-context.js";
 
 /**
  * Patterns in hooks that could enable injection or information disclosure.
@@ -81,11 +82,23 @@ interface HookSearchTarget {
   readonly baseLine: number;
 }
 
+interface HookGuardContext {
+  /** True when the enclosing block emits a deny decision or non-zero exit. */
+  readonly denySignal: boolean;
+}
+
 interface HookMatch {
   readonly match: RegExpMatchArray;
   readonly line: number;
   readonly content: string;
   readonly commandContext: string;
+  /** Set when the match sits inside a guard pattern (grep/case/[[ ]] check) rather than an executed command. */
+  readonly guard: HookGuardContext | null;
+}
+
+interface HookMatchOptions {
+  /** Detect guard-pattern context so the caller can downgrade defensive matches. */
+  readonly guardAware?: boolean;
 }
 
 interface HookCodeLineMatch {
@@ -505,7 +518,48 @@ function isBlockingGuardCommand(content: string): boolean {
   return /\bexit\s+2\b/.test(content);
 }
 
-function findAllHookMatches(file: ConfigFile, pattern: RegExp): Array<HookMatch> {
+function isHookConfigFile(file: ConfigFile): boolean {
+  return file.type === "settings-json" || /hooks?\.json$/i.test(file.path);
+}
+
+function getHookGuardContext(
+  file: ConfigFile,
+  content: string,
+  matchIndex: number,
+  options: HookMatchOptions
+): HookGuardContext | null {
+  if (options.guardAware !== true) return null;
+  if (!isGuardPatternContext(content, matchIndex, { isHookConfig: isHookConfigFile(file) })) return null;
+  return { denySignal: hasDenySignalInBlock(content, matchIndex) };
+}
+
+/**
+ * Rewrites a finding whose match sits in a guard pattern: severity drops to
+ * info and the title/description explain that the token is checked for and
+ * blocked by the hook, not executed. Findings without guard context pass
+ * through unchanged.
+ */
+function withGuardContext(finding: Finding, hookMatch: HookMatch): Finding {
+  if (hookMatch.guard === null) return finding;
+
+  const token = hookMatch.match[0].trim();
+  const confidence = hookMatch.guard.denySignal
+    ? "The enclosing block emits a deny decision or non-zero exit, which is consistent with a defensive PreToolUse guard."
+    : "No deny decision or non-zero exit was found near the match; confirm the hook actually blocks the command.";
+
+  return {
+    ...finding,
+    severity: "info",
+    title: `Guard pattern: ${finding.title}`,
+    description: `The token "${token}" appears only as a pattern this hook checks for and blocks, not as an executed command. ${confidence} Original concern: ${finding.description}`,
+  };
+}
+
+function findAllHookMatches(
+  file: ConfigFile,
+  pattern: RegExp,
+  options: HookMatchOptions = {}
+): Array<HookMatch> {
   const matches: HookMatch[] = [];
 
   for (const target of getHookSearchTargets(file)) {
@@ -532,6 +586,7 @@ function findAllHookMatches(file: ConfigFile, pattern: RegExp): Array<HookMatch>
         line: target.baseLine + findLineNumber(target.content, matchIndex) - 1,
         content: target.content,
         commandContext: getCommandContext(target.content, matchIndex),
+        guard: getHookGuardContext(file, target.content, matchIndex, options),
       });
     }
   }
@@ -1098,9 +1153,10 @@ export const hookRules: ReadonlyArray<Rule> = [
       ];
 
       for (const { pattern, desc } of sensitivePathPatterns) {
-        const matches = findAllHookMatches(file, pattern);
-        for (const { match, line } of matches) {
-          findings.push({
+        const matches = findAllHookMatches(file, pattern, { guardAware: true });
+        for (const hookMatch of matches) {
+          const { match, line } = hookMatch;
+          findings.push(withGuardContext({
             id: `hooks-sensitive-file-${match.index}`,
             severity: "high",
             category: "exposure",
@@ -1109,7 +1165,7 @@ export const hookRules: ReadonlyArray<Rule> = [
             file: file.path,
             line,
             evidence: match[0],
-          });
+          }, hookMatch));
         }
       }
 
@@ -1177,40 +1233,59 @@ export const hookRules: ReadonlyArray<Rule> = [
             pattern: /\b(curl|wget)\b.*\|\s*(sh|bash|zsh|node|python)/i,
             desc: "Downloads and pipes to shell — classic remote code execution vector",
             severity: "critical" as const,
+            guardAware: true,
           },
           {
             pattern: /\b(curl|wget)\b.*https?:\/\//i,
             desc: "Downloads remote content on every session start",
             severity: "high" as const,
+            guardAware: false,
           },
           {
             pattern: /\bgit\s+clone\b/i,
             desc: "Clones a repository on session start — could pull malicious code",
             severity: "medium" as const,
+            guardAware: false,
           },
         ];
 
         for (const hook of sessionHooks) {
           for (const command of extractHookCommands(hook)) {
-            for (const { pattern, desc, severity } of remoteExecutionPatterns) {
-              if (pattern.test(command)) {
-                findings.push({
-                  id: `hooks-session-start-download-${findings.length}`,
-                  severity,
-                  category: "hooks",
-                  title: `SessionStart hook downloads remote content`,
-                  description: `A SessionStart hook runs "${command.substring(0, 80)}". ${desc}. SessionStart hooks run automatically at the beginning of every session without user confirmation.`,
-                  file: file.path,
-                  evidence: command.substring(0, 100),
-                  fix: {
-                    description: "Remove remote downloads from SessionStart or use a local script",
-                    before: command.substring(0, 60),
-                    after: "# Use pre-installed local tools instead",
-                    auto: false,
-                  },
-                });
-                break;
-              }
+            for (const { pattern, desc, severity, guardAware } of remoteExecutionPatterns) {
+              const match = findAllMatches(command, pattern)[0];
+              if (!match) continue;
+
+              const isGuard =
+                guardAware &&
+                isGuardPatternContext(command, match.index ?? 0, { isHookConfig: true });
+              const finding: Finding = {
+                id: `hooks-session-start-download-${findings.length}`,
+                severity,
+                category: "hooks",
+                title: `SessionStart hook downloads remote content`,
+                description: `A SessionStart hook runs "${command.substring(0, 80)}". ${desc}. SessionStart hooks run automatically at the beginning of every session without user confirmation.`,
+                file: file.path,
+                evidence: command.substring(0, 100),
+                fix: {
+                  description: "Remove remote downloads from SessionStart or use a local script",
+                  before: command.substring(0, 60),
+                  after: "# Use pre-installed local tools instead",
+                  auto: false,
+                },
+              };
+
+              findings.push(
+                isGuard
+                  ? {
+                      ...finding,
+                      severity: "info",
+                      title: `Guard pattern: ${finding.title}`,
+                      description: `The token "${match[0].trim()}" appears only as a pattern this hook checks for and blocks, not as an executed command. ${hasDenySignalInBlock(command, match.index ?? 0) ? "The enclosing block emits a deny decision or non-zero exit." : "No deny decision or non-zero exit was found near the match; confirm the hook actually blocks the command."} Original concern: ${finding.description}`,
+                      fix: undefined,
+                    }
+                  : finding
+              );
+              break;
             }
           }
         }
@@ -1259,9 +1334,10 @@ export const hookRules: ReadonlyArray<Rule> = [
       ];
 
       for (const { pattern, description } of bgPatterns) {
-        const matches = findAllHookMatches(file, pattern);
-        for (const { match, line } of matches) {
-          findings.push({
+        const matches = findAllHookMatches(file, pattern, { guardAware: true });
+        for (const hookMatch of matches) {
+          const { match, line } = hookMatch;
+          findings.push(withGuardContext({
             id: `hooks-bg-process-${match.index}`,
             severity: "high",
             category: "hooks",
@@ -1270,7 +1346,7 @@ export const hookRules: ReadonlyArray<Rule> = [
             file: file.path,
             line,
             evidence: match[0].trim(),
-          });
+          }, hookMatch));
         }
       }
 
@@ -1576,9 +1652,10 @@ export const hookRules: ReadonlyArray<Rule> = [
       ];
 
       for (const { pattern, description } of deletePatterns) {
-        const matches = findAllHookMatches(file, pattern);
-        for (const { match, line } of matches) {
-          findings.push({
+        const matches = findAllHookMatches(file, pattern, { guardAware: true });
+        for (const hookMatch of matches) {
+          const { match, line } = hookMatch;
+          findings.push(withGuardContext({
             id: `hooks-file-delete-${match.index}`,
             severity: "high",
             category: "hooks",
@@ -1587,7 +1664,7 @@ export const hookRules: ReadonlyArray<Rule> = [
             file: file.path,
             line,
             evidence: match[0].trim(),
-          });
+          }, hookMatch));
         }
       }
 
@@ -1632,9 +1709,10 @@ export const hookRules: ReadonlyArray<Rule> = [
       ];
 
       for (const { pattern, description } of cronPatterns) {
-        const matches = findAllHookMatches(file, pattern);
-        for (const { match, line } of matches) {
-          findings.push({
+        const matches = findAllHookMatches(file, pattern, { guardAware: true });
+        for (const hookMatch of matches) {
+          const { match, line } = hookMatch;
+          findings.push(withGuardContext({
             id: `hooks-cron-persist-${match.index}`,
             severity: "critical",
             category: "hooks",
@@ -1643,7 +1721,7 @@ export const hookRules: ReadonlyArray<Rule> = [
             file: file.path,
             line,
             evidence: match[0].trim(),
-          });
+          }, hookMatch));
         }
       }
 
@@ -1689,9 +1767,10 @@ export const hookRules: ReadonlyArray<Rule> = [
       ];
 
       for (const { pattern, description, severity } of envMutationPatterns) {
-        const matches = findAllHookMatches(file, pattern);
-        for (const { match, line } of matches) {
-          findings.push({
+        const matches = findAllHookMatches(file, pattern, { guardAware: true });
+        for (const hookMatch of matches) {
+          const { match, line } = hookMatch;
+          findings.push(withGuardContext({
             id: `hooks-env-mutation-${match.index}`,
             severity,
             category: "hooks",
@@ -1700,7 +1779,7 @@ export const hookRules: ReadonlyArray<Rule> = [
             file: file.path,
             line,
             evidence: match[0].trim(),
-          });
+          }, hookMatch));
         }
       }
 
@@ -1745,9 +1824,10 @@ export const hookRules: ReadonlyArray<Rule> = [
       ];
 
       for (const { pattern, description } of gitConfigPatterns) {
-        const matches = findAllHookMatches(file, pattern);
-        for (const { match, line } of matches) {
-          findings.push({
+        const matches = findAllHookMatches(file, pattern, { guardAware: true });
+        for (const hookMatch of matches) {
+          const { match, line } = hookMatch;
+          findings.push(withGuardContext({
             id: `hooks-git-config-${match.index}`,
             severity: "high",
             category: "hooks",
@@ -1756,7 +1836,7 @@ export const hookRules: ReadonlyArray<Rule> = [
             file: file.path,
             line,
             evidence: match[0].trim(),
-          });
+          }, hookMatch));
         }
       }
 
@@ -1801,13 +1881,14 @@ export const hookRules: ReadonlyArray<Rule> = [
       ];
 
       for (const { pattern, description } of userModPatterns) {
-        const matches = findAllHookMatches(file, pattern);
-        for (const { match, line, content } of matches) {
+        const matches = findAllHookMatches(file, pattern, { guardAware: true });
+        for (const hookMatch of matches) {
+          const { match, line, content } = hookMatch;
           if (isRegexLikeAlternationLiteral(content, match.index ?? 0)) {
             continue;
           }
 
-          findings.push({
+          findings.push(withGuardContext({
             id: `hooks-user-mod-${match.index}`,
             severity: "critical",
             category: "hooks",
@@ -1816,7 +1897,7 @@ export const hookRules: ReadonlyArray<Rule> = [
             file: file.path,
             line,
             evidence: match[0].trim(),
-          });
+          }, hookMatch));
         }
       }
 
@@ -1861,9 +1942,10 @@ export const hookRules: ReadonlyArray<Rule> = [
       ];
 
       for (const { pattern, description } of privEscPatterns) {
-        const matches = findAllHookMatches(file, pattern);
-        for (const { match, line } of matches) {
-          findings.push({
+        const matches = findAllHookMatches(file, pattern, { guardAware: true });
+        for (const hookMatch of matches) {
+          const { match, line } = hookMatch;
+          findings.push(withGuardContext({
             id: `hooks-priv-esc-${match.index}`,
             severity: "critical",
             category: "hooks",
@@ -1872,7 +1954,7 @@ export const hookRules: ReadonlyArray<Rule> = [
             file: file.path,
             line,
             evidence: match[0].trim(),
-          });
+          }, hookMatch));
         }
       }
 
@@ -1917,9 +1999,10 @@ export const hookRules: ReadonlyArray<Rule> = [
       ];
 
       for (const { pattern, description } of listenerPatterns) {
-        const matches = findAllHookMatches(file, pattern);
-        for (const { match, line } of matches) {
-          findings.push({
+        const matches = findAllHookMatches(file, pattern, { guardAware: true });
+        for (const hookMatch of matches) {
+          const { match, line } = hookMatch;
+          findings.push(withGuardContext({
             id: `hooks-network-listener-${match.index}`,
             severity: "critical",
             category: "hooks",
@@ -1928,7 +2011,7 @@ export const hookRules: ReadonlyArray<Rule> = [
             file: file.path,
             line,
             evidence: match[0].trim(),
-          });
+          }, hookMatch));
         }
       }
 
@@ -1965,9 +2048,10 @@ export const hookRules: ReadonlyArray<Rule> = [
       ];
 
       for (const { pattern, description } of wipePatterns) {
-        const matches = findAllHookMatches(file, pattern);
-        for (const { match, line } of matches) {
-          findings.push({
+        const matches = findAllHookMatches(file, pattern, { guardAware: true });
+        for (const hookMatch of matches) {
+          const { match, line } = hookMatch;
+          findings.push(withGuardContext({
             id: `hooks-disk-wipe-${match.index}`,
             severity: "critical",
             category: "hooks",
@@ -1976,7 +2060,7 @@ export const hookRules: ReadonlyArray<Rule> = [
             file: file.path,
             line,
             evidence: match[0].trim(),
-          });
+          }, hookMatch));
         }
       }
 
@@ -2021,8 +2105,9 @@ export const hookRules: ReadonlyArray<Rule> = [
       ];
 
       for (const { pattern, description } of profilePatterns) {
-        const matches = findAllHookMatches(file, pattern);
-        for (const { match, line, content } of matches) {
+        const matches = findAllHookMatches(file, pattern, { guardAware: true });
+        for (const hookMatch of matches) {
+          const { match, line, content } = hookMatch;
           // Check if the context suggests writing/appending (not just reading)
           const idx = match.index ?? 0;
           const contextStart = Math.max(0, idx - 50);
@@ -2030,7 +2115,7 @@ export const hookRules: ReadonlyArray<Rule> = [
           const isWrite = />>|>|tee|echo\s+.*>|sed\s+-i|append/.test(context);
 
           if (isWrite) {
-            findings.push({
+            findings.push(withGuardContext({
               id: `hooks-shell-profile-${match.index}`,
               severity: "critical",
               category: "hooks",
@@ -2039,7 +2124,7 @@ export const hookRules: ReadonlyArray<Rule> = [
               file: file.path,
               line,
               evidence: context.trim().substring(0, 80),
-            });
+            }, hookMatch));
           }
         }
       }
@@ -2082,8 +2167,9 @@ export const hookRules: ReadonlyArray<Rule> = [
       ];
 
       for (const { pattern, description } of logPatterns) {
-        const matches = findAllHookMatches(file, pattern);
-        for (const { match, line, commandContext } of matches) {
+        const matches = findAllHookMatches(file, pattern, { guardAware: true });
+        for (const hookMatch of matches) {
+          const { match, line, commandContext } = hookMatch;
           if (match[0].includes("/dev/null") && isBenignLoggingProbe(commandContext)) {
             continue;
           }
@@ -2095,7 +2181,7 @@ export const hookRules: ReadonlyArray<Rule> = [
           }
           seenFindings.add(dedupeKey);
 
-          findings.push({
+          findings.push(withGuardContext({
             id: `hooks-logging-disabled-${match.index}`,
             severity: "high",
             category: "hooks",
@@ -2104,7 +2190,7 @@ export const hookRules: ReadonlyArray<Rule> = [
             file: file.path,
             line,
             evidence,
-          });
+          }, hookMatch));
         }
       }
 
@@ -2141,9 +2227,10 @@ export const hookRules: ReadonlyArray<Rule> = [
       ];
 
       for (const { pattern, description } of sshKeyPatterns) {
-        const matches = findAllHookMatches(file, pattern);
-        for (const { match, line } of matches) {
-          findings.push({
+        const matches = findAllHookMatches(file, pattern, { guardAware: true });
+        for (const hookMatch of matches) {
+          const { match, line } = hookMatch;
+          findings.push(withGuardContext({
             id: `hooks-ssh-key-${match.index}`,
             severity: "critical",
             category: "hooks",
@@ -2152,7 +2239,7 @@ export const hookRules: ReadonlyArray<Rule> = [
             file: file.path,
             line,
             evidence: match[0].trim(),
-          });
+          }, hookMatch));
         }
       }
 
@@ -2193,9 +2280,10 @@ export const hookRules: ReadonlyArray<Rule> = [
       ];
 
       for (const { pattern, description } of bgPatterns) {
-        const matches = findAllHookMatches(file, pattern);
-        for (const { match, line } of matches) {
-          findings.push({
+        const matches = findAllHookMatches(file, pattern, { guardAware: true });
+        for (const hookMatch of matches) {
+          const { match, line } = hookMatch;
+          findings.push(withGuardContext({
             id: `hooks-bg-process-${match.index}`,
             severity: "high",
             category: "hooks",
@@ -2204,7 +2292,7 @@ export const hookRules: ReadonlyArray<Rule> = [
             file: file.path,
             line,
             evidence: match[0].trim(),
-          });
+          }, hookMatch));
         }
       }
 
@@ -2289,9 +2377,10 @@ export const hookRules: ReadonlyArray<Rule> = [
       ];
 
       for (const { pattern, description } of fwPatterns) {
-        const matches = findAllHookMatches(file, pattern);
-        for (const { match, line } of matches) {
-          findings.push({
+        const matches = findAllHookMatches(file, pattern, { guardAware: true });
+        for (const hookMatch of matches) {
+          const { match, line } = hookMatch;
+          findings.push(withGuardContext({
             id: `hooks-fw-modify-${match.index}`,
             severity: "critical",
             category: "hooks",
@@ -2300,7 +2389,7 @@ export const hookRules: ReadonlyArray<Rule> = [
             file: file.path,
             line,
             evidence: match[0].trim(),
-          });
+          }, hookMatch));
         }
       }
 
@@ -2341,9 +2430,10 @@ export const hookRules: ReadonlyArray<Rule> = [
       ];
 
       for (const { pattern, description } of installPatterns) {
-        const matches = findAllHookMatches(file, pattern);
-        for (const { match, line } of matches) {
-          findings.push({
+        const matches = findAllHookMatches(file, pattern, { guardAware: true });
+        for (const hookMatch of matches) {
+          const { match, line } = hookMatch;
+          findings.push(withGuardContext({
             id: `hooks-global-install-${match.index}`,
             severity: "high",
             category: "hooks",
@@ -2352,7 +2442,7 @@ export const hookRules: ReadonlyArray<Rule> = [
             file: file.path,
             line,
             evidence: match[0].trim(),
-          });
+          }, hookMatch));
         }
       }
 
@@ -2393,9 +2483,10 @@ export const hookRules: ReadonlyArray<Rule> = [
       ];
 
       for (const { pattern, description } of containerEscapePatterns) {
-        const matches = findAllHookMatches(file, pattern);
-        for (const { match, line } of matches) {
-          findings.push({
+        const matches = findAllHookMatches(file, pattern, { guardAware: true });
+        for (const hookMatch of matches) {
+          const { match, line } = hookMatch;
+          findings.push(withGuardContext({
             id: `hooks-container-escape-${match.index}`,
             severity: "critical",
             category: "hooks",
@@ -2404,7 +2495,7 @@ export const hookRules: ReadonlyArray<Rule> = [
             file: file.path,
             line,
             evidence: match[0].trim(),
-          });
+          }, hookMatch));
         }
       }
 
@@ -2449,9 +2540,10 @@ export const hookRules: ReadonlyArray<Rule> = [
       ];
 
       for (const { pattern, description } of credPatterns) {
-        const matches = findAllHookMatches(file, pattern);
-        for (const { match, line } of matches) {
-          findings.push({
+        const matches = findAllHookMatches(file, pattern, { guardAware: true });
+        for (const hookMatch of matches) {
+          const { match, line } = hookMatch;
+          findings.push(withGuardContext({
             id: `hooks-cred-access-${match.index}`,
             severity: "critical",
             category: "hooks",
@@ -2460,7 +2552,7 @@ export const hookRules: ReadonlyArray<Rule> = [
             file: file.path,
             line,
             evidence: match[0].trim(),
-          });
+          }, hookMatch));
         }
       }
 
@@ -2505,9 +2597,14 @@ export const hookRules: ReadonlyArray<Rule> = [
       ];
 
       for (const { pattern, description } of reverseShellPatterns) {
-        const matches = findAllHookMatches(file, pattern);
-        for (const { match, line } of matches) {
-          findings.push({
+        const matches = findAllHookMatches(file, pattern, { guardAware: true });
+        for (const rawMatch of matches) {
+          // A guard pattern that names a concrete host is still worth a look.
+          const hookMatch: HookMatch = /\d+\.\d+\.\d+\.\d+/.test(rawMatch.match[0])
+            ? { ...rawMatch, guard: null }
+            : rawMatch;
+          const { match, line } = hookMatch;
+          findings.push(withGuardContext({
             id: `hooks-reverse-shell-${match.index}`,
             severity: "critical",
             category: "hooks",
@@ -2516,7 +2613,7 @@ export const hookRules: ReadonlyArray<Rule> = [
             file: file.path,
             line,
             evidence: match[0].trim().substring(0, 80),
-          });
+          }, hookMatch));
         }
       }
 
@@ -2565,9 +2662,10 @@ export const hookRules: ReadonlyArray<Rule> = [
       ];
 
       for (const { pattern, description } of clipboardPatterns) {
-        const matches = findAllHookMatches(file, pattern);
-        for (const { match, line } of matches) {
-          findings.push({
+        const matches = findAllHookMatches(file, pattern, { guardAware: true });
+        for (const hookMatch of matches) {
+          const { match, line } = hookMatch;
+          findings.push(withGuardContext({
             id: `hooks-clipboard-${match.index}`,
             severity: "high",
             category: "hooks",
@@ -2576,7 +2674,7 @@ export const hookRules: ReadonlyArray<Rule> = [
             file: file.path,
             line,
             evidence: match[0].trim(),
-          });
+          }, hookMatch));
         }
       }
 
@@ -2625,9 +2723,10 @@ export const hookRules: ReadonlyArray<Rule> = [
       ];
 
       for (const { pattern, description } of logTamperPatterns) {
-        const matches = findAllHookMatches(file, pattern);
-        for (const { match, line } of matches) {
-          findings.push({
+        const matches = findAllHookMatches(file, pattern, { guardAware: true });
+        for (const hookMatch of matches) {
+          const { match, line } = hookMatch;
+          findings.push(withGuardContext({
             id: `hooks-log-tamper-${match.index}`,
             severity: "critical",
             category: "hooks",
@@ -2636,7 +2735,7 @@ export const hookRules: ReadonlyArray<Rule> = [
             file: file.path,
             line,
             evidence: match[0].trim(),
-          });
+          }, hookMatch));
         }
       }
 
