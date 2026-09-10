@@ -71,10 +71,11 @@ var init_source_context = __esm({
 });
 
 // src/scanner/discovery.ts
-import { readFileSync, existsSync, readdirSync, statSync } from "fs";
+import { readFileSync, existsSync, readdirSync, readlinkSync, statSync, lstatSync } from "fs";
 import { join, basename, extname, relative } from "path";
 function discoverConfigFiles(rootPath) {
   const files = [];
+  const danglingSymlinks = [];
   const seenFiles = /* @__PURE__ */ new Set();
   const claudeRoots = /* @__PURE__ */ new Set([rootPath]);
   const exampleClaudeFiles = /* @__PURE__ */ new Set();
@@ -83,12 +84,33 @@ function discoverConfigFiles(rootPath) {
     addDiscoveredFile(rootPath, exampleClaudeFile, "claude-md", files, seenFiles);
   }
   for (const claudeRoot of [...claudeRoots].sort()) {
-    scanClaudeRoot(rootPath, claudeRoot, files, seenFiles);
+    scanClaudeRoot(rootPath, claudeRoot, files, seenFiles, danglingSymlinks);
   }
-  return { path: rootPath, files };
+  return { path: rootPath, files, danglingSymlinks };
+}
+function statOrNull(path) {
+  try {
+    return statSync(path);
+  } catch {
+    return null;
+  }
+}
+function isDanglingSymlink(path) {
+  try {
+    return lstatSync(path).isSymbolicLink();
+  } catch {
+    return false;
+  }
+}
+function readSymlinkTarget(path) {
+  try {
+    return readlinkSync(path);
+  } catch {
+    return "";
+  }
 }
 function walkForClaudeRoots(scanRoot, dirPath, claudeRoots, exampleClaudeFiles) {
-  if (!existsSync(dirPath) || !statSync(dirPath).isDirectory()) return;
+  if (!statOrNull(dirPath)?.isDirectory()) return;
   const entries = readdirSync(dirPath, { withFileTypes: true });
   for (const entry of entries) {
     if (entry.isDirectory()) {
@@ -122,7 +144,7 @@ function isExampleOnlyClaudeRoot(scanRoot, dirPath, markerName) {
   ) || existsSync(join(dirPath, ".claude"));
   return !hasRuntimeCompanion;
 }
-function scanClaudeRoot(scanRoot, claudeRoot, files, seenFiles) {
+function scanClaudeRoot(scanRoot, claudeRoot, files, seenFiles, danglingSymlinks) {
   const directFiles = [
     ["CLAUDE.md", "claude-md"],
     [".claude/CLAUDE.md", "claude-md"],
@@ -188,13 +210,23 @@ function scanClaudeRoot(scanRoot, claudeRoot, files, seenFiles) {
   ];
   for (const [subdir, type] of subdirs) {
     const dirPath = join(claudeRoot, subdir);
-    if (existsSync(dirPath) && statSync(dirPath).isDirectory()) {
-      const entries = readdirSync(dirPath);
-      for (const entry of entries) {
-        const entryPath = join(dirPath, entry);
-        if (statSync(entryPath).isFile()) {
-          addDiscoveredFile(scanRoot, entryPath, inferType(entry, type), files, seenFiles);
+    if (!statOrNull(dirPath)?.isDirectory()) continue;
+    const entries = readdirSync(dirPath);
+    for (const entry of entries) {
+      const entryPath = join(dirPath, entry);
+      const entryStat = statOrNull(entryPath);
+      if (entryStat === null) {
+        if (isDanglingSymlink(entryPath)) {
+          danglingSymlinks.push({
+            path: relative(scanRoot, entryPath),
+            target: readSymlinkTarget(entryPath),
+            type
+          });
         }
+        continue;
+      }
+      if (entryStat.isFile()) {
+        addDiscoveredFile(scanRoot, entryPath, inferType(entry, type), files, seenFiles);
       }
     }
   }
@@ -235,7 +267,7 @@ function discoverReferencedHookScripts(scanRoot, claudeRoot, files, seenFiles) {
   ];
   for (const relativeConfigPath of hookConfigPaths) {
     const fullPath = join(claudeRoot, relativeConfigPath);
-    if (!existsSync(fullPath) || !statSync(fullPath).isFile()) continue;
+    if (!statOrNull(fullPath)?.isFile()) continue;
     const content = readFileSync(fullPath, "utf-8");
     for (const candidate of extractHookReferencedPaths(content)) {
       const resolvedPath = resolveHookReferencedPath(scanRoot, claudeRoot, candidate);
@@ -318,7 +350,7 @@ function resolveHookReferencedPath(scanRoot, claudeRoot, candidate) {
   }
   if (normalized.startsWith("/")) return null;
   const fullPath = join(claudeRoot, normalized);
-  if (!existsSync(fullPath) || !statSync(fullPath).isFile()) {
+  if (!statOrNull(fullPath)?.isFile()) {
     return null;
   }
   const ext = extname(fullPath).toLowerCase();
@@ -9341,7 +9373,10 @@ __export(scanner_exports, {
 function scan(targetPath) {
   const target = discoverConfigFiles(targetPath);
   const rules = getBuiltinRules();
-  const findings = runRules(target.files, rules, target.path);
+  const findings = sortBySeverity([
+    ...runRules(target.files, rules, target.path),
+    ...buildDanglingSymlinkFindings(target.danglingSymlinks)
+  ]);
   const skillHealth = analyzeSkillHealth(target.files);
   const harnessAdapters = detectHarnessAdapters(targetPath);
   return { target, findings, skillHealth, harnessAdapters };
@@ -9359,9 +9394,25 @@ function runRules(files, rules, scanRoot) {
     const annotatedFinding = annotateFindingRuntimeConfidence(finding, filesByPath, scanRoot);
     return adjustFindingForSourceContext(annotatedFinding);
   });
-  return [...annotatedFindings].sort((a, b) => {
-    const order = { critical: 0, high: 1, medium: 2, low: 3, info: 4 };
-    return order[a.severity] - order[b.severity];
+  return sortBySeverity(annotatedFindings);
+}
+function sortBySeverity(findings) {
+  const order = { critical: 0, high: 1, medium: 2, low: 3, info: 4 };
+  return [...findings].sort((a, b) => order[a.severity] - order[b.severity]);
+}
+function buildDanglingSymlinkFindings(danglingSymlinks) {
+  return danglingSymlinks.map((link) => {
+    const isSkill = link.type === "skill-md";
+    const targetLabel = link.target.length > 0 ? link.target : "unknown";
+    return {
+      id: isSkill ? `skills-dangling-symlink-${link.path}` : `discovery-dangling-symlink-${link.path}`,
+      severity: "low",
+      category: isSkill ? "skills" : "misconfiguration",
+      title: isSkill ? "Dangling skill symlink" : "Dangling config symlink",
+      description: `${link.path} is a symlink to ${targetLabel}, which does not exist. ` + (isSkill ? "The agent will treat this as an installed skill that resolves to nothing. It is usually a leftover from a pruned skill registry. Remove the link or restore its target." : "The entry was skipped during discovery. Remove the link or restore its target so the file can be scanned."),
+      file: link.path,
+      evidence: `${link.path} -> ${targetLabel}`
+    };
   });
 }
 function classifyRuntimeConfidence(file, scanRoot) {
@@ -9638,6 +9689,13 @@ function renderSandboxResults(result) {
     `  Risk findings:  ${result.riskFindings.length > 0 ? chalk.red(`${result.riskFindings.length}`) : chalk.green("0")}`
   );
   lines.push("");
+  if (result.warnings.length > 0) {
+    lines.push(chalk.yellow.bold("  Warnings"));
+    for (const warning of result.warnings) {
+      lines.push(chalk.yellow(`  \u26A0 ${warning}`));
+    }
+    lines.push("");
+  }
   if (result.behaviors.length > 0) {
     lines.push(chalk.bold("  Hook Behaviors"));
     lines.push("");
@@ -11125,37 +11183,51 @@ import { spawn } from "child_process";
 import { mkdtemp, readdir, stat as stat2, readFile, rm as rm2 } from "fs/promises";
 import { join as join9 } from "path";
 import { tmpdir } from "os";
-function parseHooks(settingsContent) {
-  const hooks = [];
+function parseHooksObject(settingsContent) {
   let config;
   try {
     config = JSON.parse(settingsContent);
   } catch {
-    return hooks;
+    return null;
   }
+  if (!config || typeof config !== "object") return null;
   const hooksObj = config.hooks;
-  if (!hooksObj || typeof hooksObj !== "object") return hooks;
-  const hookTypes = [
-    "PreToolUse",
-    "PostToolUse",
-    "SessionStart",
-    "Stop"
-  ];
-  for (const hookType of hookTypes) {
+  if (!hooksObj || typeof hooksObj !== "object" || Array.isArray(hooksObj)) return null;
+  return hooksObj;
+}
+function parseHooks(settingsContent) {
+  const hooks = [];
+  const hooksObj = parseHooksObject(settingsContent);
+  if (!hooksObj) return hooks;
+  for (const hookType of HOOK_TYPES) {
     const entries = hooksObj[hookType];
     if (!Array.isArray(entries)) continue;
     for (const entry of entries) {
+      if (!entry || typeof entry !== "object") continue;
       const hookEntry = entry;
+      const matcher = typeof hookEntry.matcher === "string" ? hookEntry.matcher : void 0;
       if (typeof hookEntry.hook === "string" && hookEntry.hook.length > 0) {
-        hooks.push({
-          type: hookType,
-          command: hookEntry.hook,
-          matcher: hookEntry.matcher
-        });
+        hooks.push({ type: hookType, command: hookEntry.hook, matcher });
+      }
+      if (!Array.isArray(hookEntry.hooks)) continue;
+      for (const nested of hookEntry.hooks) {
+        if (!nested || typeof nested !== "object") continue;
+        const nestedHook = nested;
+        if (nestedHook.type !== void 0 && nestedHook.type !== "command") continue;
+        if (typeof nestedHook.command !== "string" || nestedHook.command.length === 0) continue;
+        const timeout = typeof nestedHook.timeout === "number" && Number.isFinite(nestedHook.timeout) ? nestedHook.timeout : void 0;
+        hooks.push({ type: hookType, command: nestedHook.command, matcher, timeout });
       }
     }
   }
   return hooks;
+}
+function hasHookDefinitions(settingsContent) {
+  const hooksObj = parseHooksObject(settingsContent);
+  if (!hooksObj) return false;
+  return Object.values(hooksObj).some(
+    (entries) => Array.isArray(entries) && entries.length > 0
+  );
 }
 async function executeHookInSandbox(hookCommand, options = {}) {
   const opts = { ...DEFAULT_OPTIONS, ...options };
@@ -11498,7 +11570,7 @@ function detectDnsLookups(output, observations) {
     }
   }
 }
-var DEFAULT_FAKE_ENV, DEFAULT_OPTIONS;
+var DEFAULT_FAKE_ENV, DEFAULT_OPTIONS, HOOK_TYPES;
 var init_executor = __esm({
   "src/sandbox/executor.ts"() {
     "use strict";
@@ -11520,6 +11592,17 @@ var init_executor = __esm({
       fileMonitor: true,
       fakeEnv: DEFAULT_FAKE_ENV
     };
+    HOOK_TYPES = [
+      "PreToolUse",
+      "PostToolUse",
+      "UserPromptSubmit",
+      "Notification",
+      "SessionStart",
+      "SessionEnd",
+      "Stop",
+      "SubagentStop",
+      "PreCompact"
+    ];
   }
 });
 
@@ -11740,6 +11823,7 @@ __export(sandbox_exports, {
   cleanupSandbox: () => cleanupSandbox,
   executeAllHooks: () => executeAllHooks,
   executeHookInSandbox: () => executeHookInSandbox,
+  hasHookDefinitions: () => hasHookDefinitions,
   parseHooks: () => parseHooks
 });
 var init_sandbox = __esm({
@@ -19267,7 +19351,7 @@ async function runInjectionTests2(targetPath) {
 }
 async function runSandboxAnalysis(targetPath) {
   try {
-    const { executeAllHooks: executeAllHooks2, analyzeAllExecutions: analyzeAllExecutions2 } = await Promise.resolve().then(() => (init_sandbox(), sandbox_exports));
+    const { executeAllHooks: executeAllHooks2, analyzeAllExecutions: analyzeAllExecutions2, hasHookDefinitions: hasHookDefinitions2 } = await Promise.resolve().then(() => (init_sandbox(), sandbox_exports));
     const { discoverConfigFiles: discoverConfigFiles2 } = await Promise.resolve().then(() => (init_scanner(), scanner_exports));
     const target = discoverConfigFiles2(targetPath);
     const settingsFile = target.files.find((f) => f.type === "settings-json");
@@ -19298,7 +19382,13 @@ async function runSandboxAnalysis(targetPath) {
         });
       }
     }
-    return { hooksExecuted: executions.length, behaviors, riskFindings };
+    const warnings = [];
+    if (executions.length === 0 && hasHookDefinitions2(settingsFile.content)) {
+      warnings.push(
+        `${settingsFile.path} declares a hooks block but no hook commands were recognized for sandbox execution. Supported shapes: { "matcher", "hooks": [{ "type": "command", "command": "..." }] } and legacy { "hook": "..." }.`
+      );
+    }
+    return { hooksExecuted: executions.length, behaviors, riskFindings, warnings };
   } catch (e) {
     console.error(
       "  Sandbox module not available:",
