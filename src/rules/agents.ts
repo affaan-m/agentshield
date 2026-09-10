@@ -23,7 +23,7 @@ const MARKDOWN_REFERENCE_COMMENT_PATTERN = /\[\/\/\]:\s*#\s*\(([^)\n]*)\)/g;
  * Imperative instruction shapes that carry injection signal inside a comment.
  * Bare words like "system" or "run" do not match on their own.
  */
-const SUSPICIOUS_COMMENT_INSTRUCTION_PATTERN =
+export const SUSPICIOUS_COMMENT_INSTRUCTION_PATTERN =
   /(?:ignore|disregard|override)\s+(?:all|any|previous|prior|the|your|these)?\s*(?:instructions?|rules?|guidelines?|system\s+prompt)|(?:run|execute|install|download|send|post|upload|curl|wget|exfiltrate)\s+[^\s]{2,}|system\s*prompt|you\s+are\s+now|do\s+not\s+(?:tell|mention|reveal)/i;
 
 function normalizeConfigPath(filePath: string): string {
