@@ -30,7 +30,7 @@ import {
   buildAuditorContext,
 } from "./prompts.js";
 
-const MODEL = "claude-opus-4-6";
+const MODEL = "claude-opus-5";
 
 // ─── Opus Pipeline Options ─────────────────────────────────
 

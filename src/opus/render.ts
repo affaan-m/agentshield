@@ -8,7 +8,7 @@ export function renderOpusAnalysis(analysis: OpusAnalysis): string {
   const lines: string[] = [];
 
   lines.push("");
-  lines.push(chalk.bold.magenta("  Opus 4.6 Multi-Agent Security Analysis"));
+  lines.push(chalk.bold.magenta("  Claude Opus Multi-Agent Security Analysis"));
   lines.push(chalk.dim("  Three-perspective adversarial review"));
   lines.push("");
 
@@ -61,7 +61,7 @@ export function renderOpusAnalysis(analysis: OpusAnalysis): string {
   lines.push("");
 
   lines.push(chalk.dim("  ─────────────────────────────────────────"));
-  lines.push(chalk.dim("  Powered by Claude Opus 4.6 — three-agent adversarial analysis"));
+  lines.push(chalk.dim("  Powered by Claude Opus: three-agent adversarial analysis"));
   lines.push("");
 
   return lines.join("\n");
@@ -86,7 +86,7 @@ function renderInlineScore(score: number): string {
 export function renderOpusMarkdown(analysis: OpusAnalysis): string {
   const lines: string[] = [];
 
-  lines.push("## Opus 4.6 Multi-Agent Analysis");
+  lines.push("## Claude Opus Multi-Agent Analysis");
   lines.push("");
 
   lines.push("### Red Team (Attacker Perspective)");

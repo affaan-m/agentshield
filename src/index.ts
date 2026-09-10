@@ -285,7 +285,7 @@ program
   .option("-f, --format <format>", "Output format: terminal, json, markdown, html, sarif", "terminal")
   .option("-o, --output <path>", "Write the primary report output to a file")
   .option("--fix", "Auto-apply safe fixes", false)
-  .option("--opus", "Enable Opus 4.6 multi-agent deep analysis", false)
+  .option("--opus", "Enable Claude Opus multi-agent deep analysis", false)
   .option("--provider <provider>", "LLM provider for --opus/--injection analysis: anthropic (default) or orcarouter", "anthropic")
   .option("--stream", "Stream Opus analysis in real-time", false)
   .option("--injection", "Run active prompt injection testing against the config", false)

@@ -101,7 +101,7 @@ agentshield scan --format html > report.html
 # Generate a portable audit bundle
 agentshield scan --evidence-pack ./agentshield-evidence
 
-# Three-agent Opus 4.6 adversarial analysis (requires ANTHROPIC_API_KEY)
+# Three-agent Claude Opus adversarial analysis (requires ANTHROPIC_API_KEY)
 agentshield scan --opus --stream
 
 # Generate a secure baseline config
@@ -402,9 +402,9 @@ Each pattern is a JS regex run against file content; `fileTypes` is optional and
 
 Generates a hardened `.claude/` directory with scoped permissions, safety hooks, and security best practices. Existing files are never overwritten.
 
-### Opus 4.6 Deep Analysis (`--opus`)
+### Claude Opus Deep Analysis (`--opus`)
 
-Three-agent adversarial pipeline powered by Claude Opus 4.6:
+Three-agent adversarial pipeline powered by Claude Opus (claude-opus-5 by default; the injection tester uses claude-sonnet-5):
 
 1. **Red Team (Attacker)** — finds exploitable attack vectors and multi-step chains
 2. **Blue Team (Defender)** — evaluates existing protections and recommends hardening
@@ -454,8 +454,8 @@ agentshield scan --injection --provider orcarouter
 ```
 
 The provider points the Anthropic client at `https://api.orcarouter.ai` and
-uses the gateway's namespaced model ids (e.g. `anthropic/claude-sonnet-4.5`,
-`anthropic/claude-opus-4.6`). The default provider remains Anthropic.
+uses the gateway's namespaced model ids (e.g. `anthropic/claude-sonnet-5`,
+`anthropic/claude-opus-5`). The default provider remains Anthropic.
 
 With `--provider orcarouter` the scanned configuration contents are sent to
 OrcaRouter's API instead of Anthropic's, so do not use it on configs containing
@@ -683,7 +683,7 @@ agentshield scan [options]         Scan configuration directory
   -f, --format <format>            Output: terminal, json, markdown, html, sarif
   -o, --output <path>              Write the primary report output to a file
   --fix                            Auto-apply safe fixes
-  --opus                           Enable Opus 4.6 multi-agent analysis
+  --opus                           Enable Claude Opus multi-agent analysis
   --provider <provider>            LLM provider for --opus/--injection: anthropic or orcarouter
   --stream                         Stream Opus analysis in real-time
   --injection                      Run active prompt injection testing
@@ -858,7 +858,7 @@ src/
 │   └── index.ts          Secure config generator
 └── opus/
     ├── prompts.ts        Attacker/Defender/Auditor system prompts
-    ├── pipeline.ts       Three-agent Opus 4.6 pipeline
+    ├── pipeline.ts       Three-agent Claude Opus pipeline
     └── render.ts         Opus analysis rendering
 ```
 
