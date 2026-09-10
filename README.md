@@ -698,6 +698,12 @@ agentshield policy init            Generate an organization policy preset
 agentshield policy promote         Verify and promote an exported policy
 ```
 
+Report footer CTA: terminal and markdown reports can append a one-line ECC
+Tools Pro footer. It is off by default. Set `AGENTSHIELD_CTA=1` (or
+`ECC_CTA=1`) to enable it; set `AGENTSHIELD_NO_CTA=1` (or `ECC_NO_CTA=1`) to
+hard-suppress it, which wins over opt-in. JSON and SARIF output never include
+it.
+
 Baseline write:
 
 ```bash

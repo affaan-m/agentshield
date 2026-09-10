@@ -1,5 +1,6 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi, afterEach } from "vitest";
 import { renderJsonReport, renderMarkdownReport } from "../../src/reporter/json.js";
+import { renderSarifReport } from "../../src/reporter/sarif.js";
 import type { SecurityReport } from "../../src/types.js";
 
 function makeReport(overrides: Partial<SecurityReport> = {}): SecurityReport {
@@ -156,12 +157,41 @@ describe("renderMarkdownReport", () => {
     expect(output).toContain("# AgentShield Security Report");
   });
 
-  it("appends the Pro CTA footer (human-facing markdown only)", () => {
-    const output = renderMarkdownReport(makeReport());
-    expect(output).toContain("ECC Tools Pro");
-    expect(output).toContain("https://github.com/apps/ecc-tools");
-    // JSON output stays machine-clean: no marketing string.
-    expect(renderJsonReport(makeReport())).not.toContain("ECC Tools Pro");
+  describe("Pro CTA footer", () => {
+    afterEach(() => {
+      vi.unstubAllEnvs();
+    });
+
+    it("is omitted by default", () => {
+      vi.stubEnv("ECC_CTA", "");
+      vi.stubEnv("AGENTSHIELD_CTA", "");
+      vi.stubEnv("ECC_NO_CTA", "");
+      vi.stubEnv("AGENTSHIELD_NO_CTA", "");
+      expect(renderMarkdownReport(makeReport())).not.toContain("ECC Tools Pro");
+    });
+
+    it("is appended to markdown when opted in", () => {
+      vi.stubEnv("AGENTSHIELD_CTA", "1");
+      vi.stubEnv("ECC_NO_CTA", "");
+      vi.stubEnv("AGENTSHIELD_NO_CTA", "");
+      const output = renderMarkdownReport(makeReport());
+      expect(output).toContain("ECC Tools Pro");
+      expect(output).toContain("https://github.com/apps/ecc-tools");
+    });
+
+    it("opt-out wins over opt-in", () => {
+      vi.stubEnv("AGENTSHIELD_CTA", "1");
+      vi.stubEnv("AGENTSHIELD_NO_CTA", "1");
+      expect(renderMarkdownReport(makeReport())).not.toContain("ECC Tools Pro");
+    });
+
+    it("never appears in JSON or SARIF, even when opted in", () => {
+      vi.stubEnv("AGENTSHIELD_CTA", "1");
+      vi.stubEnv("ECC_NO_CTA", "");
+      vi.stubEnv("AGENTSHIELD_NO_CTA", "");
+      expect(renderJsonReport(makeReport())).not.toContain("ECC Tools Pro");
+      expect(renderSarifReport(makeReport())).not.toContain("ECC Tools Pro");
+    });
   });
 
   it("includes grade and score", () => {
