@@ -1,6 +1,6 @@
 import { describe, it, expect, afterEach } from "vitest";
 import { mkdir, writeFile, rm, stat, realpath } from "node:fs/promises";
-import { join, resolve, sep } from "node:path";
+import { join, sep } from "node:path";
 import { randomUUID } from "node:crypto";
 import {
   validatePath,
@@ -211,7 +211,7 @@ describe("createSandbox", () => {
     // The default root is /tmp/miniclaw-sandboxes
     createdPaths.push("/tmp/miniclaw-sandboxes");
 
-    expect(session.sandboxPath.startsWith(resolve("/tmp/miniclaw-sandboxes") + sep)).toBe(true);
+    expect(session.sandboxPath.startsWith(join("/tmp/miniclaw-sandboxes") + sep)).toBe(true);
     // Default maxDuration is 300_000
     expect(session.maxDuration).toBe(300_000);
   });
