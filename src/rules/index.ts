@@ -12,6 +12,7 @@ import { promptDefenseRules } from "./prompt-defense.js";
 import { codexRules } from "./codex.js";
 import { hermesRules } from "./hermes.js";
 import { claudeCodeRules } from "./claude-code.js";
+import { harnessRules } from "./harnesses.js";
 
 /**
  * Returns all built-in security rules.
@@ -34,5 +35,6 @@ export function getBuiltinRules(): ReadonlyArray<Rule> {
     ...codexRules,
     ...hermesRules,
     ...claudeCodeRules,
+    ...harnessRules,
   ];
 }
