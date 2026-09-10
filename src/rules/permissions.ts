@@ -9,7 +9,7 @@ import {
 } from "./permission-entries.js";
 
 function isHookManifestConfig(file: ConfigFile, config: unknown): boolean {
-  if (!/(^|\/)hooks\/[^/]+\.json$/i.test(file.path)) return false;
+  if (!/(^|[\\/])hooks[\\/][^\\/]+\.json$/i.test(file.path)) return false;
   if (!config || typeof config !== "object") return false;
   return "hooks" in config;
 }
@@ -1128,6 +1128,11 @@ export const permissionRules: ReadonlyArray<Rule> = [
     category: "permissions",
     check(file: ConfigFile): ReadonlyArray<Finding> {
       if (file.type !== "claude-md") return [];
+
+      // NTFS has no POSIX mode bits. Node reports 0o666 for every writable
+      // file on Windows, so the check would flag every CLAUDE.md as
+      // world-writable. Skip it there instead of emitting a bogus finding.
+      if (process.platform === "win32") return [];
 
       // Only check CLAUDE.md files that are likely to be the user's global
       // config or project-level config — both are prompt injection surfaces.

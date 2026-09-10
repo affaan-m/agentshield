@@ -3,6 +3,7 @@ import type { Stats } from "node:fs";
 import { join, basename, extname, relative } from "node:path";
 import type { ConfigFile, ConfigFileType, DanglingSymlink, ScanTarget } from "../types.js";
 import { isExampleLikePath } from "../source-context.js";
+import { toPosixPath } from "./paths.js";
 
 const IGNORED_DIRS = new Set([
   ".dmux",
@@ -322,7 +323,7 @@ function scanClaudeRoot(
       if (entryStat === null) {
         if (isDanglingSymlink(entryPath)) {
           danglingSymlinks.push({
-            path: relative(scanRoot, entryPath),
+            path: toPosixPath(relative(scanRoot, entryPath)),
             target: readSymlinkTarget(entryPath),
             type,
           });
@@ -547,7 +548,7 @@ function addDiscoveredFile(
   files: ConfigFile[],
   seenFiles: Set<string>
 ): void {
-  const relativePath = relative(scanRoot, fullPath);
+  const relativePath = toPosixPath(relative(scanRoot, fullPath));
   if (seenFiles.has(relativePath)) return;
 
   const content = readFileSync(fullPath, "utf-8");

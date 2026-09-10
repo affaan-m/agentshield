@@ -77,7 +77,7 @@ describe("discoverConfigFiles", () => {
     const result = discoverConfigFiles(dir);
     expect(result.files).toContainEqual(
       expect.objectContaining({
-        path: join("nested", ".mcp.json"),
+        path: "nested/.mcp.json",
         type: "mcp-json",
       })
     );

@@ -78,7 +78,7 @@ function findEnabledBooleanFlag(
 }
 
 function isLikelyMcpTemplatePath(filePath: string): boolean {
-  const normalized = filePath.toLowerCase();
+  const normalized = filePath.replace(/\\/g, "/").toLowerCase();
   return (
     normalized.startsWith("mcp-configs/") ||
     normalized.includes("/mcp-configs/") ||
@@ -108,7 +108,7 @@ function classifyMcpRuntimeConfidence(file: ConfigFile): RuntimeConfidence {
     return "template-example";
   }
 
-  const normalizedPath = file.path.toLowerCase();
+  const normalizedPath = file.path.replace(/\\/g, "/").toLowerCase();
   if (normalizedPath === "settings.local.json" || normalizedPath.endsWith("/settings.local.json")) {
     return "project-local-optional";
   }
