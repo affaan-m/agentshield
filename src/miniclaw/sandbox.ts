@@ -9,7 +9,7 @@
  */
 
 import { mkdir, rm, stat, realpath, access } from "node:fs/promises";
-import { join, resolve, relative, extname } from "node:path";
+import { join, resolve, relative, extname, sep } from "node:path";
 import { randomUUID } from "node:crypto";
 import type {
   SandboxConfig,
@@ -51,7 +51,7 @@ export async function validatePath(
   // WHY: This is the primary containment check. After resolution, any path
   // that doesn't start with the sandbox root has escaped.
   const normalizedSandbox = resolve(sandboxPath);
-  if (!absoluteRequested.startsWith(normalizedSandbox + "/") && absoluteRequested !== normalizedSandbox) {
+  if (!absoluteRequested.startsWith(normalizedSandbox + sep) && absoluteRequested !== normalizedSandbox) {
     return {
       valid: false,
       resolvedPath: absoluteRequested,
@@ -65,7 +65,7 @@ export async function validatePath(
   try {
     await access(absoluteRequested);
     const realPath = await realpath(absoluteRequested);
-    if (!realPath.startsWith(normalizedSandbox + "/") && realPath !== normalizedSandbox) {
+    if (!realPath.startsWith(normalizedSandbox + sep) && realPath !== normalizedSandbox) {
       return {
         valid: false,
         resolvedPath: realPath,
@@ -216,7 +216,7 @@ export async function destroySandbox(
   const normalizedSandbox = resolve(sandboxPath);
   const normalizedRoot = resolve(rootPath);
 
-  if (!normalizedSandbox.startsWith(normalizedRoot + "/")) {
+  if (!normalizedSandbox.startsWith(normalizedRoot + sep)) {
     return {
       success: false,
       reason: `Sandbox path "${sandboxPath}" is not under root "${rootPath}" — refusing to delete`,
@@ -227,7 +227,7 @@ export async function destroySandbox(
   // WHY: Prevents deletion of the root itself or deeply nested system paths
   // that happen to share the root prefix
   const relativePath = relative(normalizedRoot, normalizedSandbox);
-  if (relativePath.includes("/") || relativePath === "" || relativePath === "..") {
+  if (relativePath.includes("/") || relativePath.includes("\\") || relativePath === "" || relativePath === "..") {
     return {
       success: false,
       reason: `Sandbox path must be a direct child of root — got relative path "${relativePath}"`,
