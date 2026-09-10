@@ -607,6 +607,24 @@ Flag these patterns immediately:
       const findings = runAllAgentRules(file);
       expect(findings.some((f) => f.id.includes("comment-injection"))).toBe(false);
     });
+
+    it("does not flag keywords spanning across comment boundaries", () => {
+      const file = makeClaudeMd("<!-- BEGIN -->\n## Agent System\nSystem prompt loaded from file\n<!-- END -->");
+      const findings = runAllAgentRules(file);
+      expect(findings.some((f) => f.id.includes("comment-injection"))).toBe(false);
+    });
+
+    it("does not flag keyword outside comments between harmless comments", () => {
+      const file = makeClaudeMd("<!-- hi -->\n## Agent System\n<!-- ok -->");
+      const findings = runAllAgentRules(file);
+      expect(findings.some((f) => f.id.includes("comment-injection"))).toBe(false);
+    });
+
+    it("detects keyword inside first comment only, ignoring prose between comments", () => {
+      const file = makeClaudeMd("<!-- execute silently -->\nSome prose\n<!-- end -->");
+      const findings = runAllAgentRules(file);
+      expect(findings.some((f) => f.id.includes("comment-injection"))).toBe(true);
+    });
   });
 
   describe("oversized prompt", () => {

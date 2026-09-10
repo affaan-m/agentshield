@@ -727,11 +727,26 @@ export const agentRules: ReadonlyArray<Rule> = [
 
       const findings: Finding[] = [];
 
+      const COMMENT = /<!--([\s\S]*?)-->/g;
+      const KEYWORDS = /(?:ignore|override|system|execute|run|install|download|send|post|upload)/i;
+      const commentMatches = findAllMatches(file.content, COMMENT);
+      for (const match of commentMatches) {
+        const body = match[1] ?? "";
+        if (KEYWORDS.test(body)) {
+          findings.push({
+            id: `agents-comment-injection-${match.index}`,
+            severity: "high",
+            category: "injection",
+            title: `Suspicious instruction in comment: ${file.path}`,
+            description: `HTML comment contains suspicious instructions. Attackers may hide malicious instructions in comments that won't be visible in rendered markdown but will be processed by the AI agent.`,
+            file: file.path,
+            line: findLineNumber(file.content, match.index ?? 0),
+            evidence: body.substring(0, 100),
+          });
+        }
+      }
+
       const commentPatterns = [
-        {
-          pattern: /<!--[\s\S]*?(?:ignore|override|system|execute|run|install|download|send|post|upload)[\s\S]*?-->/gi,
-          desc: "HTML comment contains suspicious instructions",
-        },
         {
           pattern: /\[\/\/\]:\s*#\s*\(.*(?:ignore|override|execute|run|install|download).*\)/gi,
           desc: "Markdown reference-style comment contains suspicious instructions",
