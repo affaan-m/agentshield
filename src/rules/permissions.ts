@@ -2,6 +2,11 @@ import { statSync } from "node:fs";
 import { resolve, join } from "node:path";
 import { homedir } from "node:os";
 import type { ConfigFile, Finding, Rule } from "../types.js";
+import {
+  findCoveringEntries,
+  normalizePermissionEntry,
+  parsePermissionEntry,
+} from "./permission-entries.js";
 
 function isHookManifestConfig(file: ConfigFile, config: unknown): boolean {
   if (!/(^|\/)hooks\/[^/]+\.json$/i.test(file.path)) return false;
@@ -26,7 +31,13 @@ const OVERLY_PERMISSIVE: ReadonlyArray<{
     suggestion: "Bash(git *), Bash(npm *), Bash(node *)",
   },
   {
-    pattern: /^Bash\(sudo\s/,
+    pattern: /^Bash\((?:bash|sh|zsh|fish|dash|ksh|csh|tcsh|pwsh|powershell|cmd)(?:\s|\))/,
+    description: "Shell interpreter allowed: any command can run through it, equivalent to Bash(*)",
+    severity: "critical",
+    suggestion: "Remove shell interpreter grants; allow the specific commands instead",
+  },
+  {
+    pattern: /^Bash\((?:sudo|su|doas)(?:\s|\))/,
     description: "Sudo access allowed — agent can escalate privileges",
     severity: "critical",
     suggestion: "Remove sudo permissions entirely",
@@ -44,73 +55,73 @@ const OVERLY_PERMISSIVE: ReadonlyArray<{
     suggestion: "Edit(src/*), Edit(tests/*)",
   },
   {
-    pattern: /^Bash\(rm\s/,
+    pattern: /^Bash\(rm(?:\s|\))/,
     description: "Delete operations explicitly allowed in Bash",
     severity: "high",
     suggestion: "Move rm commands to deny list instead",
   },
   {
-    pattern: /^Bash\(curl\s/,
+    pattern: /^Bash\(curl(?:\s|\))/,
     description: "Unrestricted curl access — agent can make arbitrary HTTP requests",
     severity: "medium",
     suggestion: "Restrict to specific domains or move to deny list",
   },
   {
-    pattern: /^Bash\(wget\s/,
+    pattern: /^Bash\(wget(?:\s|\))/,
     description: "Unrestricted wget access — agent can download arbitrary files",
     severity: "medium",
     suggestion: "Restrict to specific domains or move to deny list",
   },
   {
-    pattern: /^Bash\(chmod\s/,
+    pattern: /^Bash\(chmod(?:\s|\))/,
     description: "chmod access — agent can change file permissions",
     severity: "medium",
     suggestion: "Move chmod to deny list to prevent permission escalation",
   },
   {
-    pattern: /^Bash\(chown\s/,
+    pattern: /^Bash\(chown(?:\s|\))/,
     description: "chown access — agent can change file ownership",
     severity: "high",
     suggestion: "Move chown to deny list to prevent ownership takeover",
   },
   {
-    pattern: /^Bash\(ssh\s/,
+    pattern: /^Bash\(ssh(?:\s|\))/,
     description: "SSH access — agent can connect to remote systems",
     severity: "high",
     suggestion: "Remove SSH permissions to prevent lateral movement",
   },
   {
-    pattern: /^Bash\(nc\s|^Bash\(netcat\s/,
+    pattern: /^Bash\((?:nc|ncat|netcat|socat)(?:\s|\))/,
     description: "Netcat access — can open network connections for exfiltration or reverse shells",
     severity: "high",
     suggestion: "Remove netcat permissions entirely",
   },
   {
-    pattern: /^Bash\(python\s|^Bash\(python3\s|^Bash\(node\s/,
+    pattern: /^Bash\((?:python|python3|python2|node|nodejs|ruby|perl|php|deno|bun|tsx|ts-node)(?:\s|\))/,
     description: "Interpreter access — agent can run arbitrary code via scripting language",
     severity: "high",
     suggestion: "Restrict to specific scripts: Bash(node scripts/build.js)",
   },
   {
-    pattern: /^Bash\(docker\s/,
+    pattern: /^Bash\((?:docker|podman|nerdctl)(?:\s|\))/,
     description: "Docker access — containers can escape to host, mount filesystems, and access host network",
     severity: "high",
     suggestion: "Remove docker permissions or restrict to read-only: Bash(docker ps)",
   },
   {
-    pattern: /^Bash\(kill\s|^Bash\(pkill\s|^Bash\(killall\s/,
+    pattern: /^Bash\((?:kill|pkill|killall)(?:\s|\))/,
     description: "Process killing — agent can terminate system processes",
     severity: "medium",
     suggestion: "Move process killing to deny list",
   },
   {
-    pattern: /^Bash\(eval\s/,
+    pattern: /^Bash\(eval(?:\s|\))/,
     description: "eval access — agent can execute arbitrary code via shell eval",
     severity: "critical",
     suggestion: "Remove eval permissions; use explicit commands instead",
   },
   {
-    pattern: /^Bash\(exec\s/,
+    pattern: /^Bash\(exec(?:\s|\))/,
     description: "exec access — agent can replace the current process with arbitrary commands",
     severity: "critical",
     suggestion: "Remove exec permissions; use explicit commands instead",
@@ -274,8 +285,9 @@ function hasDynamicShellBehavior(command: string): boolean {
 }
 
 function isScopedInterpreterScriptAllowEntry(entry: string): boolean {
-  const command = getBashPermissionCommand(entry);
-  if (!command) return false;
+  const parsed = parsePermissionEntry(entry);
+  if (!parsed || parsed.tool !== "Bash" || parsed.wildcard) return false;
+  const command = parsed.prefix;
   if (!/^(?:python|python3|node)\s+/i.test(command)) return false;
   if (hasDynamicShellBehavior(command)) return false;
   if (/\s(?:-c|-e|-i|-m|-p|-r|--eval|--print|--require)\b/.test(command)) return false;
@@ -377,8 +389,9 @@ export const permissionRules: ReadonlyArray<Rule> = [
           continue;
         }
 
+        const normalizedEntry = normalizePermissionEntry(entry);
         for (const check of OVERLY_PERMISSIVE) {
-          if (check.pattern.test(entry)) {
+          if (check.pattern.test(normalizedEntry)) {
             findings.push({
               id: `permissions-permissive-${entry}`,
               severity: check.severity,
@@ -416,6 +429,53 @@ export const permissionRules: ReadonlyArray<Rule> = [
         }
       }
 
+      return findings;
+    },
+  },
+  {
+    id: "permissions-shadowed-allow",
+    name: "Allow Rule Shadowed by Broader Prefix Rule",
+    description: "Finds allow entries that are fully covered by a broader prefix rule, so narrowing or removing them changes nothing",
+    severity: "medium",
+    category: "permissions",
+    check(file: ConfigFile): ReadonlyArray<Finding> {
+      if (file.type !== "settings-json") return [];
+
+      const perms = parsePermissionLists(file.content);
+      if (!perms) return [];
+
+      const shadowedByCovering = new Map<string, string[]>();
+      for (const entry of perms.allow) {
+        for (const covering of findCoveringEntries(entry, perms.allow)) {
+          const list = shadowedByCovering.get(covering) ?? [];
+          if (!list.includes(entry)) list.push(entry);
+          shadowedByCovering.set(covering, list);
+        }
+      }
+
+      const findings: Finding[] = [];
+      for (const [covering, shadowed] of shadowedByCovering) {
+        const parsed = parsePermissionEntry(covering);
+        const isBlanket = parsed !== null && parsed.prefix === "";
+        findings.push({
+          id: `permissions-shadowed-allow-${covering}`,
+          severity: isBlanket ? "high" : "medium",
+          category: "permissions",
+          title: `Broad allow rule shadows ${shadowed.length} narrower rule(s): ${covering}`,
+          description:
+            `"${covering}" is a prefix rule that already grants everything ${shadowed
+              .map((entry) => `"${entry}"`)
+              .join(", ")} grant(s). Tightening or removing the narrower entries does not reduce what the agent can run while "${covering}" remains. Narrow the broad rule to the specific subcommands you need.`,
+          file: file.path,
+          evidence: covering,
+          fix: {
+            description: "Replace the broad prefix rule with the specific narrower rules it shadows",
+            before: covering,
+            after: shadowed.join(", "),
+            auto: false,
+          },
+        });
+      }
       return findings;
     },
   },
@@ -554,7 +614,7 @@ export const permissionRules: ReadonlyArray<Rule> = [
               severity: "info",
               category: "permissions",
               title: `Deny/ask rule blocking ${match[0]} (good practice)`,
-              description: `Found "${match[0]}" inside a permissions deny/ask rule. This is correct — the rule prevents the agent from using this flag.`,
+              description: `Found "${match[0]}" inside a permissions deny/ask rule. This is correct: the rule prevents the agent from using this flag.`,
               file: file.path,
               line: findLineNumber(file.content, idx),
               evidence: match[0],
@@ -717,6 +777,17 @@ export const permissionRules: ReadonlyArray<Rule> = [
                 auto: false,
               },
             });
+            for (const covering of findCoveringEntries(entry, perms.allow)) {
+              findings.push({
+                id: `permissions-destructive-git-covering-${findings.length}`,
+                severity: "high",
+                category: "permissions",
+                title: `Prefix rule also allows the destructive git command: ${covering}`,
+                description: `The allow entry "${covering}" permits everything "${entry}" permits, so removing "${entry}" alone changes nothing. Narrow "${covering}" as well.`,
+                file: file.path,
+                evidence: covering,
+              });
+            }
             break;
           }
         }
@@ -963,6 +1034,17 @@ export const permissionRules: ReadonlyArray<Rule> = [
               file: file.path,
               evidence: entry,
             });
+            for (const covering of findCoveringEntries(entry, perms.allow)) {
+              findings.push({
+                id: `permissions-env-access-covering-${findings.length}`,
+                severity: "high",
+                category: "permissions",
+                title: `Prefix rule also grants env access: ${covering}`,
+                description: `The allow entry "${covering}" is a prefix rule that permits everything "${entry}" permits, so removing "${entry}" alone changes nothing. Narrow "${covering}" as well.`,
+                file: file.path,
+                evidence: covering,
+              });
+            }
             break;
           }
         }
@@ -1012,8 +1094,9 @@ export const permissionRules: ReadonlyArray<Rule> = [
       ];
 
       for (const entry of perms.allow) {
+        const normalizedEntry = normalizePermissionEntry(entry);
         for (const { pattern, description } of networkPatterns) {
-          if (pattern.test(entry)) {
+          if (pattern.test(normalizedEntry)) {
             findings.push({
               id: `permissions-unrestricted-network-${findings.length}`,
               severity: "high",
