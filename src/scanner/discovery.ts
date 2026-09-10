@@ -1,6 +1,7 @@
-import { readFileSync, existsSync, readdirSync, statSync } from "node:fs";
+import { readFileSync, existsSync, readdirSync, readlinkSync, statSync, lstatSync } from "node:fs";
+import type { Stats } from "node:fs";
 import { join, basename, extname, relative } from "node:path";
-import type { ConfigFile, ConfigFileType, ScanTarget } from "../types.js";
+import type { ConfigFile, ConfigFileType, DanglingSymlink, ScanTarget } from "../types.js";
 import { isExampleLikePath } from "../source-context.js";
 
 const IGNORED_DIRS = new Set([
@@ -82,6 +83,7 @@ const PROJECT_ROOT_HOOK_VARS = new Set([
  */
 export function discoverConfigFiles(rootPath: string): ScanTarget {
   const files: ConfigFile[] = [];
+  const danglingSymlinks: DanglingSymlink[] = [];
   const seenFiles = new Set<string>();
   const claudeRoots = new Set<string>([rootPath]);
   const exampleClaudeFiles = new Set<string>();
@@ -93,10 +95,38 @@ export function discoverConfigFiles(rootPath: string): ScanTarget {
   }
 
   for (const claudeRoot of [...claudeRoots].sort()) {
-    scanClaudeRoot(rootPath, claudeRoot, files, seenFiles);
+    scanClaudeRoot(rootPath, claudeRoot, files, seenFiles, danglingSymlinks);
   }
 
-  return { path: rootPath, files };
+  return { path: rootPath, files, danglingSymlinks };
+}
+
+/**
+ * statSync that follows symlinks but never throws. Returns null when the
+ * path is missing, a dangling symlink, or otherwise unreadable.
+ */
+function statOrNull(path: string): Stats | null {
+  try {
+    return statSync(path);
+  } catch {
+    return null;
+  }
+}
+
+function isDanglingSymlink(path: string): boolean {
+  try {
+    return lstatSync(path).isSymbolicLink();
+  } catch {
+    return false;
+  }
+}
+
+function readSymlinkTarget(path: string): string {
+  try {
+    return readlinkSync(path);
+  } catch {
+    return "";
+  }
 }
 
 function walkForClaudeRoots(
@@ -105,7 +135,7 @@ function walkForClaudeRoots(
   claudeRoots: Set<string>,
   exampleClaudeFiles: Set<string>
 ): void {
-  if (!existsSync(dirPath) || !statSync(dirPath).isDirectory()) return;
+  if (!statOrNull(dirPath)?.isDirectory()) return;
 
   const entries = readdirSync(dirPath, { withFileTypes: true });
   for (const entry of entries) {
@@ -159,7 +189,8 @@ function scanClaudeRoot(
   scanRoot: string,
   claudeRoot: string,
   files: ConfigFile[],
-  seenFiles: Set<string>
+  seenFiles: Set<string>,
+  danglingSymlinks: DanglingSymlink[]
 ): void {
   // Direct config files
   const directFiles: ReadonlyArray<[string, ConfigFileType]> = [
@@ -231,13 +262,24 @@ function scanClaudeRoot(
 
   for (const [subdir, type] of subdirs) {
     const dirPath = join(claudeRoot, subdir);
-    if (existsSync(dirPath) && statSync(dirPath).isDirectory()) {
-      const entries = readdirSync(dirPath);
-      for (const entry of entries) {
-        const entryPath = join(dirPath, entry);
-        if (statSync(entryPath).isFile()) {
-          addDiscoveredFile(scanRoot, entryPath, inferType(entry, type), files, seenFiles);
+    if (!statOrNull(dirPath)?.isDirectory()) continue;
+
+    const entries = readdirSync(dirPath);
+    for (const entry of entries) {
+      const entryPath = join(dirPath, entry);
+      const entryStat = statOrNull(entryPath);
+      if (entryStat === null) {
+        if (isDanglingSymlink(entryPath)) {
+          danglingSymlinks.push({
+            path: relative(scanRoot, entryPath),
+            target: readSymlinkTarget(entryPath),
+            type,
+          });
         }
+        continue;
+      }
+      if (entryStat.isFile()) {
+        addDiscoveredFile(scanRoot, entryPath, inferType(entry, type), files, seenFiles);
       }
     }
   }
@@ -290,7 +332,7 @@ function discoverReferencedHookScripts(
 
   for (const relativeConfigPath of hookConfigPaths) {
     const fullPath = join(claudeRoot, relativeConfigPath);
-    if (!existsSync(fullPath) || !statSync(fullPath).isFile()) continue;
+    if (!statOrNull(fullPath)?.isFile()) continue;
 
     const content = readFileSync(fullPath, "utf-8");
     for (const candidate of extractHookReferencedPaths(content)) {
@@ -404,7 +446,7 @@ function resolveHookReferencedPath(
   if (normalized.startsWith("/")) return null;
 
   const fullPath = join(claudeRoot, normalized);
-  if (!existsSync(fullPath) || !statSync(fullPath).isFile()) {
+  if (!statOrNull(fullPath)?.isFile()) {
     return null;
   }
 

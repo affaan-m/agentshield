@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { scan } from "../../src/scanner/index.js";
 import { resolve } from "node:path";
-import { mkdtempSync, writeFileSync, mkdirSync, rmSync } from "node:fs";
+import { mkdtempSync, writeFileSync, mkdirSync, rmSync, symlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -509,6 +509,63 @@ describe("scanner", () => {
       const result = scan(tempDir);
       const finding = result.findings.find((f) => f.file === "scripts/hooks/session-start.js");
       expect(finding?.runtimeConfidence).toBe("hook-code");
+    });
+  });
+
+  describe("dangling symlinks", () => {
+    it.skipIf(process.platform === "win32")(
+      "emits a low skills finding for a dangling symlink under skills/ instead of crashing",
+      () => {
+        const tempDir = mkdtempSync(join(tmpdir(), "agentshield-dangling-"));
+        try {
+          mkdirSync(join(tempDir, "skills"));
+          symlinkSync("/nonexistent", join(tempDir, "skills", "dead-skill"));
+
+          const result = scan(tempDir);
+          const finding = result.findings.find((f) => f.id.startsWith("skills-dangling-symlink"));
+
+          expect(finding).toBeDefined();
+          expect(finding?.severity).toBe("low");
+          expect(finding?.category).toBe("skills");
+          expect(finding?.title).toBe("Dangling skill symlink");
+          expect(finding?.file).toBe("skills/dead-skill");
+          expect(finding?.evidence).toBe("skills/dead-skill -> /nonexistent");
+          expect(result.target.danglingSymlinks).toHaveLength(1);
+        } finally {
+          rmSync(tempDir, { recursive: true, force: true });
+        }
+      }
+    );
+
+    it.skipIf(process.platform === "win32")(
+      "keeps findings sorted by severity when a dangling symlink finding is added",
+      () => {
+        const tempDir = mkdtempSync(join(tmpdir(), "agentshield-dangling-"));
+        try {
+          mkdirSync(join(tempDir, "skills"));
+          symlinkSync("/nonexistent", join(tempDir, "skills", "dead-skill"));
+          writeFileSync(
+            join(tempDir, "settings.json"),
+            JSON.stringify({ permissions: { allow: ["Bash(*)"] } })
+          );
+
+          const result = scan(tempDir);
+          const severityOrder = { critical: 0, high: 1, medium: 2, low: 3, info: 4 };
+          for (let i = 1; i < result.findings.length; i++) {
+            expect(severityOrder[result.findings[i].severity]).toBeGreaterThanOrEqual(
+              severityOrder[result.findings[i - 1].severity]
+            );
+          }
+          expect(result.findings.some((f) => f.title === "Dangling skill symlink")).toBe(true);
+        } finally {
+          rmSync(tempDir, { recursive: true, force: true });
+        }
+      }
+    );
+
+    it("does not emit dangling symlink findings for a clean tree", () => {
+      const result = scan(VULNERABLE_PATH);
+      expect(result.findings.some((f) => f.title === "Dangling skill symlink")).toBe(false);
     });
   });
 });

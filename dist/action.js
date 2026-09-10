@@ -13560,7 +13560,7 @@ import { existsSync as existsSync7 } from "fs";
 import { appendFileSync, mkdirSync as mkdirSync6, writeFileSync as writeFileSync6 } from "fs";
 
 // src/scanner/discovery.ts
-import { readFileSync, existsSync, readdirSync, statSync } from "fs";
+import { readFileSync, existsSync, readdirSync, readlinkSync, statSync, lstatSync } from "fs";
 import { join, basename, extname, relative } from "path";
 
 // src/source-context.ts
@@ -13685,6 +13685,7 @@ var PROJECT_ROOT_HOOK_VARS = /* @__PURE__ */ new Set([
 ]);
 function discoverConfigFiles(rootPath) {
   const files = [];
+  const danglingSymlinks = [];
   const seenFiles = /* @__PURE__ */ new Set();
   const claudeRoots = /* @__PURE__ */ new Set([rootPath]);
   const exampleClaudeFiles = /* @__PURE__ */ new Set();
@@ -13693,12 +13694,33 @@ function discoverConfigFiles(rootPath) {
     addDiscoveredFile(rootPath, exampleClaudeFile, "claude-md", files, seenFiles);
   }
   for (const claudeRoot of [...claudeRoots].sort()) {
-    scanClaudeRoot(rootPath, claudeRoot, files, seenFiles);
+    scanClaudeRoot(rootPath, claudeRoot, files, seenFiles, danglingSymlinks);
   }
-  return { path: rootPath, files };
+  return { path: rootPath, files, danglingSymlinks };
+}
+function statOrNull(path) {
+  try {
+    return statSync(path);
+  } catch {
+    return null;
+  }
+}
+function isDanglingSymlink(path) {
+  try {
+    return lstatSync(path).isSymbolicLink();
+  } catch {
+    return false;
+  }
+}
+function readSymlinkTarget(path) {
+  try {
+    return readlinkSync(path);
+  } catch {
+    return "";
+  }
 }
 function walkForClaudeRoots(scanRoot, dirPath, claudeRoots, exampleClaudeFiles) {
-  if (!existsSync(dirPath) || !statSync(dirPath).isDirectory()) return;
+  if (!statOrNull(dirPath)?.isDirectory()) return;
   const entries = readdirSync(dirPath, { withFileTypes: true });
   for (const entry of entries) {
     if (entry.isDirectory()) {
@@ -13732,7 +13754,7 @@ function isExampleOnlyClaudeRoot(scanRoot, dirPath, markerName) {
   ) || existsSync(join(dirPath, ".claude"));
   return !hasRuntimeCompanion;
 }
-function scanClaudeRoot(scanRoot, claudeRoot, files, seenFiles) {
+function scanClaudeRoot(scanRoot, claudeRoot, files, seenFiles, danglingSymlinks) {
   const directFiles = [
     ["CLAUDE.md", "claude-md"],
     [".claude/CLAUDE.md", "claude-md"],
@@ -13798,13 +13820,23 @@ function scanClaudeRoot(scanRoot, claudeRoot, files, seenFiles) {
   ];
   for (const [subdir, type] of subdirs) {
     const dirPath = join(claudeRoot, subdir);
-    if (existsSync(dirPath) && statSync(dirPath).isDirectory()) {
-      const entries = readdirSync(dirPath);
-      for (const entry of entries) {
-        const entryPath = join(dirPath, entry);
-        if (statSync(entryPath).isFile()) {
-          addDiscoveredFile(scanRoot, entryPath, inferType(entry, type), files, seenFiles);
+    if (!statOrNull(dirPath)?.isDirectory()) continue;
+    const entries = readdirSync(dirPath);
+    for (const entry of entries) {
+      const entryPath = join(dirPath, entry);
+      const entryStat = statOrNull(entryPath);
+      if (entryStat === null) {
+        if (isDanglingSymlink(entryPath)) {
+          danglingSymlinks.push({
+            path: relative(scanRoot, entryPath),
+            target: readSymlinkTarget(entryPath),
+            type
+          });
         }
+        continue;
+      }
+      if (entryStat.isFile()) {
+        addDiscoveredFile(scanRoot, entryPath, inferType(entry, type), files, seenFiles);
       }
     }
   }
@@ -13845,7 +13877,7 @@ function discoverReferencedHookScripts(scanRoot, claudeRoot, files, seenFiles) {
   ];
   for (const relativeConfigPath of hookConfigPaths) {
     const fullPath = join(claudeRoot, relativeConfigPath);
-    if (!existsSync(fullPath) || !statSync(fullPath).isFile()) continue;
+    if (!statOrNull(fullPath)?.isFile()) continue;
     const content = readFileSync(fullPath, "utf-8");
     for (const candidate of extractHookReferencedPaths(content)) {
       const resolvedPath = resolveHookReferencedPath(scanRoot, claudeRoot, candidate);
@@ -13928,7 +13960,7 @@ function resolveHookReferencedPath(scanRoot, claudeRoot, candidate) {
   }
   if (normalized.startsWith("/")) return null;
   const fullPath = join(claudeRoot, normalized);
-  if (!existsSync(fullPath) || !statSync(fullPath).isFile()) {
+  if (!statOrNull(fullPath)?.isFile()) {
     return null;
   }
   const ext = extname(fullPath).toLowerCase();
@@ -22465,7 +22497,10 @@ function markerExists(rootPath, marker) {
 function scan(targetPath) {
   const target = discoverConfigFiles(targetPath);
   const rules = getBuiltinRules();
-  const findings = runRules(target.files, rules, target.path);
+  const findings = sortBySeverity([
+    ...runRules(target.files, rules, target.path),
+    ...buildDanglingSymlinkFindings(target.danglingSymlinks)
+  ]);
   const skillHealth = analyzeSkillHealth(target.files);
   const harnessAdapters = detectHarnessAdapters(targetPath);
   return { target, findings, skillHealth, harnessAdapters };
@@ -22483,9 +22518,25 @@ function runRules(files, rules, scanRoot) {
     const annotatedFinding = annotateFindingRuntimeConfidence(finding, filesByPath, scanRoot);
     return adjustFindingForSourceContext(annotatedFinding);
   });
-  return [...annotatedFindings].sort((a, b) => {
-    const order = { critical: 0, high: 1, medium: 2, low: 3, info: 4 };
-    return order[a.severity] - order[b.severity];
+  return sortBySeverity(annotatedFindings);
+}
+function sortBySeverity(findings) {
+  const order = { critical: 0, high: 1, medium: 2, low: 3, info: 4 };
+  return [...findings].sort((a, b) => order[a.severity] - order[b.severity]);
+}
+function buildDanglingSymlinkFindings(danglingSymlinks) {
+  return danglingSymlinks.map((link) => {
+    const isSkill = link.type === "skill-md";
+    const targetLabel = link.target.length > 0 ? link.target : "unknown";
+    return {
+      id: isSkill ? `skills-dangling-symlink-${link.path}` : `discovery-dangling-symlink-${link.path}`,
+      severity: "low",
+      category: isSkill ? "skills" : "misconfiguration",
+      title: isSkill ? "Dangling skill symlink" : "Dangling config symlink",
+      description: `${link.path} is a symlink to ${targetLabel}, which does not exist. ` + (isSkill ? "The agent will treat this as an installed skill that resolves to nothing. It is usually a leftover from a pruned skill registry. Remove the link or restore its target." : "The entry was skipped during discovery. Remove the link or restore its target so the file can be scanned."),
+      file: link.path,
+      evidence: `${link.path} -> ${targetLabel}`
+    };
   });
 }
 function classifyRuntimeConfidence(file, scanRoot) {

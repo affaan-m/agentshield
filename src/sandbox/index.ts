@@ -2,6 +2,7 @@ export {
   executeHookInSandbox,
   executeAllHooks,
   parseHooks,
+  hasHookDefinitions,
   cleanupSandbox,
 } from "./executor.js";
 

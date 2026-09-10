@@ -62,6 +62,13 @@ export interface Fix {
 export interface ScanTarget {
   readonly path: string;
   readonly files: ReadonlyArray<ConfigFile>;
+  readonly danglingSymlinks: ReadonlyArray<DanglingSymlink>;
+}
+
+export interface DanglingSymlink {
+  readonly path: string;
+  readonly target: string;
+  readonly type: ConfigFileType;
 }
 
 export interface ConfigFile {
@@ -344,6 +351,7 @@ export interface SandboxResult {
   readonly hooksExecuted: number;
   readonly behaviors: ReadonlyArray<SandboxBehavior>;
   readonly riskFindings: ReadonlyArray<Finding>;
+  readonly warnings: ReadonlyArray<string>;
 }
 
 // ─── Taint Analysis Results ───────────────────────────────

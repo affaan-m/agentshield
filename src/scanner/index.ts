@@ -1,5 +1,6 @@
 import type {
   ConfigFile,
+  DanglingSymlink,
   Finding,
   Rule,
   RuntimeConfidence,
@@ -33,7 +34,10 @@ export interface ScanOptions {
 export function scan(targetPath: string, options: ScanOptions = {}): ScanResult {
   const target = discoverConfigFiles(targetPath);
   const rules = [...getBuiltinRules(), ...(options.extraRules ?? [])];
-  const findings = runRules(target.files, rules, target.path);
+  const findings = sortBySeverity([
+    ...runRules(target.files, rules, target.path),
+    ...buildDanglingSymlinkFindings(target.danglingSymlinks),
+  ]);
   const skillHealth = analyzeSkillHealth(target.files);
   const harnessAdapters = detectHarnessAdapters(targetPath);
 
@@ -63,10 +67,44 @@ function runRules(
     return adjustFindingForSourceContext(annotatedFinding);
   });
 
-  // Sort by severity (critical first)
-  return [...annotatedFindings].sort((a, b) => {
-    const order = { critical: 0, high: 1, medium: 2, low: 3, info: 4 };
-    return order[a.severity] - order[b.severity];
+  return sortBySeverity(annotatedFindings);
+}
+
+/**
+ * Sort findings by severity (critical first). Stable, so input order is
+ * preserved within a severity.
+ */
+function sortBySeverity(findings: ReadonlyArray<Finding>): ReadonlyArray<Finding> {
+  const order = { critical: 0, high: 1, medium: 2, low: 3, info: 4 };
+  return [...findings].sort((a, b) => order[a.severity] - order[b.severity]);
+}
+
+/**
+ * Emit a low finding for each symlink in a scanned config subdirectory that
+ * points at a missing target. A dangling skill symlink is a skill the agent
+ * believes it has but that resolves to nothing.
+ */
+function buildDanglingSymlinkFindings(
+  danglingSymlinks: ReadonlyArray<DanglingSymlink>
+): ReadonlyArray<Finding> {
+  return danglingSymlinks.map((link) => {
+    const isSkill = link.type === "skill-md";
+    const targetLabel = link.target.length > 0 ? link.target : "unknown";
+    return {
+      id: isSkill
+        ? `skills-dangling-symlink-${link.path}`
+        : `discovery-dangling-symlink-${link.path}`,
+      severity: "low",
+      category: isSkill ? "skills" : "misconfiguration",
+      title: isSkill ? "Dangling skill symlink" : "Dangling config symlink",
+      description:
+        `${link.path} is a symlink to ${targetLabel}, which does not exist. ` +
+        (isSkill
+          ? "The agent will treat this as an installed skill that resolves to nothing. It is usually a leftover from a pruned skill registry. Remove the link or restore its target."
+          : "The entry was skipped during discovery. Remove the link or restore its target so the file can be scanned."),
+      file: link.path,
+      evidence: `${link.path} -> ${targetLabel}`,
+    };
   });
 }
 

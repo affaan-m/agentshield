@@ -227,6 +227,14 @@ export function renderSandboxResults(result: SandboxResult): string {
   );
   lines.push("");
 
+  if (result.warnings.length > 0) {
+    lines.push(chalk.yellow.bold("  Warnings"));
+    for (const warning of result.warnings) {
+      lines.push(chalk.yellow(`  ⚠ ${warning}`));
+    }
+    lines.push("");
+  }
+
   // Behavioral analysis for each hook
   if (result.behaviors.length > 0) {
     lines.push(chalk.bold("  Hook Behaviors"));
