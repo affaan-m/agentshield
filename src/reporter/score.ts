@@ -1,5 +1,6 @@
 import type { Finding, Grade, ReportSummary, SecurityReport, SecurityScore, ScoreBreakdown } from "../types.js";
 import type { ScanResult } from "../scanner/index.js";
+import { detectDefenses } from "./defenses.js";
 
 const SCORE_DEDUCTIONS: Record<string, number> = {
   critical: 25,
@@ -12,12 +13,53 @@ const SCORE_DEDUCTIONS: Record<string, number> = {
 const TEMPLATE_EXAMPLE_CATEGORY_CAP = 10;
 
 /**
+ * Titles the permission rules use for guard patterns they surface at info
+ * severity. These describe protective config and must never cost points.
+ */
+export const GUARD_PATTERN_TITLE_PREFIXES: ReadonlyArray<string> = [
+  "Guard pattern:",
+  "Deny/ask rule blocking",
+  "Prohibition of",
+  "Mention of",
+  "Example config:",
+];
+
+/**
+ * True when a finding is informational or a recognized guard pattern.
+ * Such findings are listed in reports but contribute zero deduction.
+ */
+export function isNonPenalizingFinding(finding: Finding): boolean {
+  if (finding.severity === "info") return true;
+  // Guard-pattern findings are emitted at info severity. Any other severity
+  // on a guard title is a rule bug, and the finding is still scored so the
+  // bug stays visible instead of silently masking a real deduction.
+  return false;
+}
+
+/** True when the title marks a guard pattern the permission rules credit. */
+export function isGuardPatternFinding(finding: Finding): boolean {
+  return GUARD_PATTERN_TITLE_PREFIXES.some((prefix) => finding.title.startsWith(prefix));
+}
+
+/**
+ * Deduction a single finding contributes before category capping. This is
+ * the one place severity turns into points, so the zero-deduction guarantee
+ * for info and guard-pattern findings lives here and is unit tested.
+ */
+export function deductionFor(finding: Finding): number {
+  if (isNonPenalizingFinding(finding)) return 0;
+  const deduction = (SCORE_DEDUCTIONS[finding.severity] ?? 0) * confidenceWeight(finding);
+  return deduction > 0 ? deduction : 0;
+}
+
+/**
  * Calculate security score from findings.
  * Score starts at 100 and deducts based on severity.
  */
 export function calculateScore(result: ScanResult): SecurityReport {
   const { findings, target, skillHealth, harnessAdapters } = result;
-  const summary = summarizeFindings(findings, target.files.length);
+  const defenses = detectDefenses(target.files);
+  const summary = summarizeFindings(findings, target.files.length, defenses.length);
   const score = computeScore(findings);
 
   return {
@@ -26,6 +68,7 @@ export function calculateScore(result: ScanResult): SecurityReport {
     findings,
     score,
     summary,
+    defenses,
     harnessAdapters,
     skillHealth,
   };
@@ -33,7 +76,8 @@ export function calculateScore(result: ScanResult): SecurityReport {
 
 function summarizeFindings(
   findings: ReadonlyArray<Finding>,
-  filesScanned: number
+  filesScanned: number,
+  defenses: number
 ): ReportSummary {
   const autoFixable = findings.filter((f) => f.fix?.auto).length;
 
@@ -46,6 +90,7 @@ function summarizeFindings(
     info: findings.filter((f) => f.severity === "info").length,
     filesScanned,
     autoFixable,
+    defenses,
   };
 }
 
@@ -61,7 +106,8 @@ function computeScore(findings: ReadonlyArray<Finding>): SecurityScore {
 
   for (const finding of findings) {
     const scoreCategory = mapToScoreCategory(finding.category);
-    const deduction = (SCORE_DEDUCTIONS[finding.severity] ?? 0) * confidenceWeight(finding);
+    const deduction = deductionFor(finding);
+    if (deduction === 0) continue;
 
     if (isTemplateInventoryFinding(finding)) {
       const templateKey = `${scoreCategory}:${finding.file}`;

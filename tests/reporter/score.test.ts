@@ -1,5 +1,11 @@
 import { describe, it, expect } from "vitest";
-import { calculateScore } from "../../src/reporter/score.js";
+import {
+  calculateScore,
+  deductionFor,
+  GUARD_PATTERN_TITLE_PREFIXES,
+  isGuardPatternFinding,
+  isNonPenalizingFinding,
+} from "../../src/reporter/score.js";
 import type { Finding, ScanTarget, SkillHealthSummary } from "../../src/types.js";
 import type { ScanResult } from "../../src/scanner/index.js";
 
@@ -404,5 +410,118 @@ describe("calculateScore", () => {
     });
 
     expect(report.score.numericScore).toBe(100);
+  });
+
+  it("populates recognized defenses from the scanned files and counts them in the summary", () => {
+    const target: ScanTarget = {
+      path: "/test",
+      files: [
+        {
+          path: ".claude/settings.json",
+          type: "settings-json",
+          content: JSON.stringify({ permissions: { deny: ["Bash(curl *)"] }, sandbox: { enabled: true } }),
+        },
+      ],
+      danglingSymlinks: [],
+    };
+    const report = calculateScore({ target, findings: [] });
+    expect(report.defenses.map((defense) => defense.id)).toEqual([
+      "defense-deny-list",
+      "defense-sandbox-enabled",
+    ]);
+    expect(report.summary.defenses).toBe(2);
+  });
+
+  it("reports zero defenses when nothing protective is configured", () => {
+    const report = calculateScore(makeScanResult([]));
+    expect(report.defenses).toEqual([]);
+    expect(report.summary.defenses).toBe(0);
+  });
+
+  it("never adds points for defenses", () => {
+    const hardened: ScanTarget = {
+      path: "/test",
+      files: [
+        {
+          path: ".claude/settings.json",
+          type: "settings-json",
+          content: JSON.stringify({ permissions: { deny: ["Bash(curl *)", "Bash(sudo *)"] } }),
+        },
+      ],
+      danglingSymlinks: [],
+    };
+    const finding = makeFinding({ id: "h1", severity: "high" });
+    const withDefenses = calculateScore({ target: hardened, findings: [finding] });
+    const withoutDefenses = calculateScore(makeScanResult([finding]));
+    expect(withDefenses.defenses.length).toBeGreaterThan(0);
+    expect(withDefenses.score.numericScore).toBe(withoutDefenses.score.numericScore);
+    expect(withDefenses.score.breakdown).toEqual(withoutDefenses.score.breakdown);
+  });
+});
+
+describe("zero-deduction guarantee", () => {
+  it("assigns zero deduction to every info finding regardless of confidence", () => {
+    const confidences = [
+      undefined,
+      "active-runtime",
+      "project-local-optional",
+      "template-example",
+      "docs-example",
+      "plugin-cache",
+      "plugin-manifest",
+      "hook-code",
+    ] as const;
+    for (const runtimeConfidence of confidences) {
+      const finding = makeFinding({ severity: "info", category: "secrets", runtimeConfidence });
+      expect(isNonPenalizingFinding(finding)).toBe(true);
+      expect(deductionFor(finding)).toBe(0);
+    }
+  });
+
+  it("assigns zero deduction to guard-pattern findings at info severity", () => {
+    const titles = [
+      "Guard pattern: PreToolUse hook blocks rm -rf",
+      "Deny/ask rule blocking curl (good practice)",
+      "Prohibition of sudo (good practice)",
+      "Mention of rm -rf (not an executed command)",
+      "Example config: deny list template",
+    ];
+    for (const title of titles) {
+      const finding = makeFinding({ severity: "info", category: "permissions", title });
+      expect(isGuardPatternFinding(finding)).toBe(true);
+      expect(isNonPenalizingFinding(finding)).toBe(true);
+      expect(deductionFor(finding)).toBe(0);
+    }
+    expect(GUARD_PATTERN_TITLE_PREFIXES).toHaveLength(titles.length);
+  });
+
+  it("keeps the score at 100 when only info and guard-pattern findings exist", () => {
+    const report = calculateScore(
+      makeScanResult([
+        makeFinding({ id: "g1", severity: "info", title: "Deny/ask rule blocking curl (good practice)" }),
+        makeFinding({ id: "g2", severity: "info", title: "Prohibition of sudo (good practice)", category: "agents" }),
+        makeFinding({ id: "g3", severity: "info", title: "Mention of rm -rf (not an executed command)", category: "hooks" }),
+        makeFinding({ id: "g4", severity: "info", title: "Guard pattern: sandbox enabled", category: "mcp" }),
+        makeFinding({ id: "i1", severity: "info", title: "Plain informational note", category: "secrets" }),
+      ])
+    );
+    expect(report.summary.info).toBe(5);
+    expect(report.score.breakdown).toEqual({ secrets: 100, permissions: 100, hooks: 100, mcp: 100, agents: 100 });
+    expect(report.score.numericScore).toBe(100);
+    expect(report.score.grade).toBe("A");
+  });
+
+  it("still scores a guard-titled finding that a rule mislabels above info", () => {
+    const finding = makeFinding({ severity: "medium", title: "Prohibition of sudo (good practice)" });
+    expect(isGuardPatternFinding(finding)).toBe(true);
+    expect(isNonPenalizingFinding(finding)).toBe(false);
+    expect(deductionFor(finding)).toBe(5);
+  });
+
+  it("returns the weighted deduction for scored findings", () => {
+    expect(deductionFor(makeFinding({ severity: "critical" }))).toBe(25);
+    expect(deductionFor(makeFinding({ severity: "high" }))).toBe(15);
+    expect(deductionFor(makeFinding({ severity: "low" }))).toBe(2);
+    expect(deductionFor(makeFinding({ severity: "medium", runtimeConfidence: "docs-example" }))).toBe(1.25);
   });
 });

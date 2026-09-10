@@ -34,6 +34,7 @@ function makeReport(overrides: Partial<SecurityReport> = {}): SecurityReport {
     timestamp: "2026-02-11T00:00:00.000Z",
     targetPath: "/tmp/test",
     findings: [],
+    defenses: [],
     score: {
       grade: "A",
       numericScore: 100,
@@ -48,6 +49,7 @@ function makeReport(overrides: Partial<SecurityReport> = {}): SecurityReport {
       info: 0,
       filesScanned: 3,
       autoFixable: 0,
+      defenses: 0,
     },
     ...overrides,
   };
@@ -116,6 +118,7 @@ describe("renderTerminalReport", () => {
         info: 0,
         filesScanned: 2,
         autoFixable: 0,
+        defenses: 0,
       },
     });
     const output = renderTerminalReport(report);
@@ -148,6 +151,7 @@ describe("renderTerminalReport", () => {
         info: 1,
         filesScanned: 1,
         autoFixable: 0,
+        defenses: 0,
       },
     });
 
@@ -177,6 +181,7 @@ describe("renderTerminalReport", () => {
         info: 0,
         filesScanned: 1,
         autoFixable: 0,
+        defenses: 0,
       },
     });
     const output = renderTerminalReport(report);
@@ -210,6 +215,7 @@ describe("renderTerminalReport", () => {
         info: 0,
         filesScanned: 1,
         autoFixable: 1,
+        defenses: 0,
       },
     });
     const output = renderTerminalReport(report);

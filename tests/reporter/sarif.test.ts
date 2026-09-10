@@ -8,6 +8,7 @@ function makeReport(overrides: Partial<SecurityReport> = {}): SecurityReport {
     timestamp: "2026-05-11T20:00:00.000Z",
     targetPath: "/tmp/repo",
     findings: [],
+    defenses: [],
     score: {
       grade: "B",
       numericScore: 84,
@@ -22,6 +23,7 @@ function makeReport(overrides: Partial<SecurityReport> = {}): SecurityReport {
       info: 0,
       filesScanned: 4,
       autoFixable: 0,
+      defenses: 0,
     },
     ...overrides,
   };
@@ -83,6 +85,7 @@ describe("renderSarifReport", () => {
         info: 0,
         filesScanned: 1,
         autoFixable: 0,
+        defenses: 0,
       },
     })));
 
@@ -141,6 +144,7 @@ describe("renderSarifReport", () => {
         info: 0,
         filesScanned: 2,
         autoFixable: 0,
+        defenses: 0,
       },
     })));
 
@@ -170,6 +174,7 @@ describe("renderSarifReport", () => {
         info: 0,
         filesScanned: 1,
         autoFixable: 0,
+        defenses: 0,
       },
     })));
 

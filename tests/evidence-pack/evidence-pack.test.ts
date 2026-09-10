@@ -34,6 +34,7 @@ function makeReport(targetPath: string): SecurityReport {
         evidence: "sk-1234567890abcdef",
       },
     ],
+    defenses: [],
     score: {
       grade: "C",
       numericScore: 72,
@@ -54,6 +55,7 @@ function makeReport(targetPath: string): SecurityReport {
       info: 0,
       filesScanned: 1,
       autoFixable: 0,
+      defenses: 0,
     },
   };
 }
@@ -144,6 +146,7 @@ function makeCleanReport(targetPath: string): SecurityReport {
   return {
     ...report,
     findings: [],
+    defenses: [],
     score: {
       ...report.score,
       grade: "A",
@@ -158,6 +161,7 @@ function makeCleanReport(targetPath: string): SecurityReport {
       info: 0,
       filesScanned: 1,
       autoFixable: 0,
+      defenses: 0,
     },
   };
 }

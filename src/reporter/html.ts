@@ -57,6 +57,7 @@ export function renderHtmlReport(report: SecurityReport): string {
         ${renderStatCard("Medium", String(s.medium), "medium")}
         ${renderStatCard("Low", String(s.low), "low")}
         ${renderStatCard("Info", String(s.info), "info")}
+        ${renderStatCard("Defenses", String(s.defenses), "fixable")}
       </div>
     </section>
 

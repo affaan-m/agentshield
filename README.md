@@ -114,6 +114,10 @@ JSON reports now expose `findings[].runtimeConfidence` when AgentShield can dist
 
 **102 rules** across 5 categories, graded A–F with a 0–100 numeric score.
 
+#### Scoring and recognized defenses
+
+The score starts at 100 per category and only findings deduct from it: critical 25, high 15, medium 5, low 2, info 0. Protective configuration the scanner finds (deny and ask lists, sandbox settings, blocking PreToolUse hooks, read-only agent tool lists, Codex `sandbox_mode`, Hermes manual approvals, and similar) is listed in every report under "Recognized Defenses" so it gets credit and is visibly never penalized. Defenses do not add points either: the score cannot be gamed by adding decorative deny rules, it can only be lowered by real findings. Guard-pattern findings the permission rules emit at info severity ("Deny/ask rule blocking ...", "Prohibition of ...", "Mention of ...") are enforced to a zero deduction in `src/reporter/score.ts`.
+
 ### Secrets Detection
 
 | What | Examples |
@@ -578,8 +582,18 @@ threads across reruns.
     "low": 10,
     "info": 3,
     "filesScanned": 17,
-    "autoFixable": 2
+    "autoFixable": 2,
+    "defenses": 4
   },
+  "defenses": [
+    {
+      "id": "defense-deny-list",
+      "title": "Permission deny list",
+      "file": ".claude/settings.json",
+      "detail": "6 deny rules; covers .env, ~/.ssh, curl, sudo, rm -rf. Deny wins over allow regardless of specificity.",
+      "harness": "claude-code"
+    }
+  ],
   "findings": [
     {
       "id": "mcp-risky-filesystem",
@@ -605,6 +619,7 @@ Notes:
 - `plugin-cache` means installed Claude plugin cache content such as `.claude/plugins/cache/...`.
 - `plugin-manifest` means declarative hook manifests such as `hooks/hooks.json`.
 - `hook-code` means a manifest-resolved non-shell implementation such as `scripts/hooks/session-start.js`.
+- Recognized defenses (`defenses[]` in JSON, "Recognized Defenses" in terminal and markdown) are credited, never penalized, and never add points.
 - Score weighting discounts non-secret `template-example` and `docs-example` findings to `0.25x`, non-secret `project-local-optional` findings to `0.75x`, and non-secret `plugin-cache` / `plugin-manifest` findings to `0.5x`; committed secrets still count at full weight. Non-secret `template-example` findings are also capped at `10` deduction points per file and score category. See [`false-positive-audit.md`](./false-positive-audit.md).
 
 ## API Reference

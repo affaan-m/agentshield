@@ -36,6 +36,7 @@ function makeReport(findings: ReadonlyArray<Finding>): SecurityReport {
     timestamp: "2026-05-13T09:10:00.000Z",
     targetPath: "/repo",
     findings,
+    defenses: [],
     score: {
       grade: "C",
       numericScore: 72,
@@ -50,6 +51,7 @@ function makeReport(findings: ReadonlyArray<Finding>): SecurityReport {
       info: findings.filter((finding) => finding.severity === "info").length,
       filesScanned: 1,
       autoFixable: findings.filter((finding) => finding.fix?.auto).length,
+      defenses: 0,
     },
   };
 }
