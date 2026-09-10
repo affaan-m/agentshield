@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import {
   renderTerminalAlert,
   formatWebhookPayload,
@@ -37,6 +37,10 @@ function makeDrift(overrides: Partial<DriftResult> = {}): DriftResult {
 describe("renderTerminalAlert", () => {
   beforeEach(() => {
     vi.spyOn(console, "error").mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
   });
 
   it("renders new findings", () => {
@@ -161,6 +165,10 @@ describe("formatWebhookPayload", () => {
 describe("dispatchAlert", () => {
   beforeEach(() => {
     vi.spyOn(console, "error").mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
   });
 
   it("dispatches terminal alert in terminal mode", async () => {
