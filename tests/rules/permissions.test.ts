@@ -247,6 +247,68 @@ describe("permissionRules", () => {
       expect(noVerifyFindings[0].severity).toBe("critical");
     });
 
+    it("downgrades --no-verify inside a permissions.deny rule (#102)", () => {
+      const file = makeSettings(JSON.stringify({
+        permissions: {
+          deny: ["Bash(git commit --no-verify:*)", "Bash(git push --no-verify:*)"],
+        },
+      }, null, 2));
+      const findings = runAllPermRules(file);
+      const noVerifyFindings = findings.filter((f) => f.evidence === "--no-verify");
+      expect(noVerifyFindings).toHaveLength(2);
+      for (const finding of noVerifyFindings) {
+        expect(finding.severity).toBe("info");
+        expect(finding.title).toContain("good practice");
+      }
+    });
+
+    it("downgrades --no-verify inside a permissions.ask rule", () => {
+      const file = makeSettings(JSON.stringify({
+        permissions: {
+          ask: ["Bash(git commit --no-verify:*)"],
+        },
+      }));
+      const findings = runAllPermRules(file);
+      const noVerifyFindings = findings.filter((f) => f.evidence === "--no-verify");
+      expect(noVerifyFindings).toHaveLength(1);
+      expect(noVerifyFindings[0].severity).toBe("info");
+    });
+
+    it("keeps --no-verify in a permissions.allow rule CRITICAL", () => {
+      const file = makeSettings(JSON.stringify({
+        permissions: {
+          allow: ["Bash(git commit --no-verify:*)"],
+          deny: [],
+        },
+      }));
+      const findings = runAllPermRules(file);
+      const noVerifyFindings = findings.filter((f) => f.evidence === "--no-verify");
+      expect(noVerifyFindings).toHaveLength(1);
+      expect(noVerifyFindings[0].severity).toBe("critical");
+    });
+
+    it("downgrades dangerously-skip-permissions inside a deny rule", () => {
+      const file = makeSettings(JSON.stringify({
+        permissions: {
+          deny: ["Bash(claude --dangerously-skip-permissions:*)"],
+        },
+      }));
+      const findings = runAllPermRules(file);
+      const skipFindings = findings.filter((f) =>
+        f.evidence?.toLowerCase().includes("dangerously"),
+      );
+      expect(skipFindings).toHaveLength(1);
+      expect(skipFindings[0].severity).toBe("info");
+    });
+
+    it("still flags dangerous flags in deny-rule-shaped text when JSON is invalid (fails closed)", () => {
+      const file = makeSettings('"deny": ["Bash(git commit --no-verify:*)"] not valid json');
+      const findings = runAllPermRules(file);
+      const noVerifyFindings = findings.filter((f) => f.evidence === "--no-verify");
+      expect(noVerifyFindings).toHaveLength(1);
+      expect(noVerifyFindings[0].severity).toBe("critical");
+    });
+
     // Issue #100: a hook that PRINTS the flag in help text is documenting it,
     // not executing it. Must not be CRITICAL.
     it("downgrades --no-verify printed in console help text to info", () => {
