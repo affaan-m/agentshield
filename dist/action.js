@@ -13586,6 +13586,11 @@ var EXAMPLE_LIKE_PATH_PATTERN = new RegExp(
   `(^|/)(${EXAMPLE_LIKE_SEGMENTS.join("|")})(/|$)`,
   "i"
 );
+var STRONG_DOCUMENTATION_EXAMPLE_SEGMENTS = EXAMPLE_LIKE_SEGMENTS.filter((segment) => segment !== "demo" && segment !== "demos");
+var STRONG_DOCUMENTATION_EXAMPLE_PATH_PATTERN = new RegExp(
+  `(^|/)(${STRONG_DOCUMENTATION_EXAMPLE_SEGMENTS.join("|")})(/|$)`,
+  "i"
+);
 var CLAUDE_PLUGIN_CACHE_PATH_PATTERN = /(^|\/)\.claude\/plugins\/cache(\/|$)/i;
 var CLAUDE_SCAN_ROOT_PLUGIN_CACHE_PATH_PATTERN = /^plugins\/cache(\/|$)/i;
 function findAllMatches(content, pattern) {
@@ -13594,6 +13599,9 @@ function findAllMatches(content, pattern) {
 }
 function isExampleLikePath(path) {
   return EXAMPLE_LIKE_PATH_PATTERN.test(path.replace(/\\/g, "/"));
+}
+function isStrongDocumentationExamplePath(path) {
+  return findAllMatches(path.replace(/\\/g, "/"), STRONG_DOCUMENTATION_EXAMPLE_PATH_PATTERN).length > 0;
 }
 function isPluginCachePath(path, scanRoot) {
   const normalizedPath = path.replace(/\\/g, "/");
@@ -13631,8 +13639,16 @@ var CLAUDE_ROOT_MARKERS = /* @__PURE__ */ new Set([
   "settings.json",
   "settings.local.json",
   "mcp.json",
+  ".mcp.json",
   ".claude.json"
 ]);
+var CLAUDE_RUNTIME_COMPANION_NAMES = [
+  "settings.json",
+  "settings.local.json",
+  "mcp.json",
+  ".mcp.json",
+  ".claude.json"
+];
 var HOOK_SHELL_EXTENSIONS = /* @__PURE__ */ new Set([
   ".sh",
   ".bash",
@@ -13711,12 +13727,9 @@ function isExampleOnlyClaudeRoot(scanRoot, dirPath, markerName) {
   if (!isExampleLikePath(segments)) {
     return false;
   }
-  const hasRuntimeCompanion = [
-    "settings.json",
-    "settings.local.json",
-    "mcp.json",
-    ".claude.json"
-  ].some((name) => existsSync(join(dirPath, name))) || existsSync(join(dirPath, ".claude"));
+  const hasRuntimeCompanion = CLAUDE_RUNTIME_COMPANION_NAMES.some(
+    (name) => existsSync(join(dirPath, name))
+  ) || existsSync(join(dirPath, ".claude"));
   return !hasRuntimeCompanion;
 }
 function scanClaudeRoot(scanRoot, claudeRoot, files, seenFiles) {
@@ -13747,6 +13760,7 @@ function scanClaudeRoot(scanRoot, claudeRoot, files, seenFiles) {
     [".local/bin/gh-token-monitor.sh", "hook-script"],
     ["Library/LaunchAgents/com.user.gh-token-monitor.plist", "settings-json"],
     ["mcp.json", "mcp-json"],
+    [".mcp.json", "mcp-json"],
     [".claude/mcp.json", "mcp-json"],
     [".claude.json", "mcp-json"]
   ];
@@ -13802,7 +13816,8 @@ function inferType(filename, defaultType) {
   if (PACKAGE_MANAGER_CONFIG_FILES.has(name)) return "package-manager-config";
   if (name === "claude.md") return "claude-md";
   if (name === "settings.json" || name === "settings.local.json") return "settings-json";
-  if (name === "mcp.json" || name === ".claude.json") return "mcp-json";
+  if (name === "mcp.json" || name === ".mcp.json" || name === ".claude.json")
+    return "mcp-json";
   if (HOOK_SHELL_EXTENSIONS.has(ext) && defaultType === "hook-script") return "hook-script";
   if (HOOK_CODE_EXTENSIONS.has(ext) && defaultType === "hook-script") return "hook-code";
   if (ext === ".sh" || ext === ".bash" || ext === ".zsh") return "hook-script";
@@ -17603,6 +17618,9 @@ function classifyMcpRuntimeConfidence(file) {
   if (normalizedPath === "settings.local.json" || normalizedPath.endsWith("/settings.local.json")) {
     return "project-local-optional";
   }
+  if (isStrongDocumentationExamplePath(file.path)) {
+    return "docs-example";
+  }
   return "active-runtime";
 }
 function downgradeTemplateSeverity(severity) {
@@ -17747,7 +17765,7 @@ var rawMcpRules = [
             if (value && !value.startsWith("${") && !value.startsWith("$")) {
               const isSecret = /key|token|secret|password|credential|auth/i.test(key);
               if (isSecret) {
-                if (isLikelyMcpTemplatePath(file.path) && isPlaceholderSecretValue(value)) {
+                if ((isLikelyMcpTemplatePath(file.path) || isStrongDocumentationExamplePath(file.path)) && isPlaceholderSecretValue(value)) {
                   continue;
                 }
                 findings.push({
@@ -22176,6 +22194,7 @@ var ADAPTERS = [
       "settings.json",
       ".claude/settings.json",
       "mcp.json",
+      ".mcp.json",
       ".claude/mcp.json",
       ".claude/agents",
       ".claude/skills",
@@ -22183,7 +22202,7 @@ var ADAPTERS = [
     ],
     permissionConcepts: ["allow/deny permissions", "dangerous shell commands", "project-local overrides"],
     pluginSurfaces: ["Claude plugins", "hooks manifests", "skills", "slash commands"],
-    mcpConventions: ["mcpServers", ".claude.json", "mcp.json"],
+    mcpConventions: ["mcpServers", ".claude.json", "mcp.json", ".mcp.json"],
     historySurfaces: ["Claude transcripts", "session hooks", "tool usage logs"],
     ciEvidence: ["AgentShield scan", "policy evaluation", "SARIF upload", "evidence pack"],
     markers: [
@@ -22192,6 +22211,7 @@ var ADAPTERS = [
       { path: "settings.json", kind: "file", strength: "strong" },
       { path: ".claude/settings.json", kind: "file", strength: "strong" },
       { path: "mcp.json", kind: "file", strength: "supporting" },
+      { path: ".mcp.json", kind: "file", strength: "supporting" },
       { path: ".claude/mcp.json", kind: "file", strength: "supporting" },
       { path: ".claude/agents", kind: "directory", strength: "supporting" },
       { path: ".claude/skills", kind: "directory", strength: "supporting" },
