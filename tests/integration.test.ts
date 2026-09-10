@@ -68,6 +68,7 @@ function makeSandboxResult(
 ): SandboxResult {
   return {
     hooksExecuted: 3,
+    warnings: [],
     behaviors: [
       {
         hookId: "pre-tool-use-lint",
@@ -380,6 +381,25 @@ describe("integration", () => {
       expect(output).toContain("Network attempts");
       expect(output).toContain("Suspicious behaviors");
       expect(output).toContain("Sandbox Risk Findings");
+    });
+
+    it("renderSandboxResults renders sandbox warnings when present", () => {
+      const result = makeSandboxResult({
+        hooksExecuted: 0,
+        behaviors: [],
+        riskFindings: [],
+        warnings: ["settings.json declares a hooks block but no hook commands were recognized for sandbox execution."],
+      });
+      const output = renderSandboxResults(result);
+
+      expect(output).toContain("Hooks executed: 0");
+      expect(output).toContain("Warnings");
+      expect(output).toContain("no hook commands were recognized");
+    });
+
+    it("renderSandboxResults omits the warnings section when there are none", () => {
+      const output = renderSandboxResults(makeSandboxResult());
+      expect(output).not.toContain("Warnings");
     });
 
     it("renderSandboxResults handles clean hooks", () => {

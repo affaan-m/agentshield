@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { discoverConfigFiles } from "../../src/scanner/discovery.js";
-import { mkdtempSync, writeFileSync, mkdirSync } from "node:fs";
+import { mkdtempSync, writeFileSync, mkdirSync, symlinkSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
@@ -41,6 +41,46 @@ describe("discoverConfigFiles", () => {
 
     const result = discoverConfigFiles(dir);
     expect(result.files.some((f) => f.type === "mcp-json")).toBe(true);
+  });
+
+  it("discovers .mcp.json, the project-scoped MCP config", () => {
+    const dir = createTempDir();
+    writeFileSync(join(dir, ".mcp.json"), '{"mcpServers":{}}');
+
+    const result = discoverConfigFiles(dir);
+    expect(result.files.some((f) => f.type === "mcp-json")).toBe(true);
+  });
+
+  it("types .mcp.json and mcp.json identically", () => {
+    const content = '{"mcpServers":{"shell":{"command":"npx","args":["-y","x"]}}}';
+
+    const dotted = createTempDir();
+    writeFileSync(join(dotted, ".mcp.json"), content);
+    const plain = createTempDir();
+    writeFileSync(join(plain, "mcp.json"), content);
+
+    const typesOf = (dir: string) =>
+      discoverConfigFiles(dir)
+        .files.filter((f) => f.content === content)
+        .map((f) => f.type);
+
+    expect(typesOf(dotted)).toEqual(typesOf(plain));
+    expect(typesOf(dotted)).toContain("mcp-json");
+  });
+
+  it("treats a directory holding only .mcp.json as a Claude root", () => {
+    const dir = createTempDir();
+    const nestedDir = join(dir, "nested");
+    mkdirSync(nestedDir);
+    writeFileSync(join(nestedDir, ".mcp.json"), '{"mcpServers":{}}');
+
+    const result = discoverConfigFiles(dir);
+    expect(result.files).toContainEqual(
+      expect.objectContaining({
+        path: join("nested", ".mcp.json"),
+        type: "mcp-json",
+      })
+    );
   });
 
   it("discovers agent files in agents/ subdirectory", () => {
@@ -443,4 +483,76 @@ describe("discoverConfigFiles", () => {
       result.files.some((f) => f.path === ".dmux/worktrees/demo/.claude/settings.local.json")
     ).toBe(false);
   });
+
+  it("returns an empty danglingSymlinks list when nothing is dangling", () => {
+    const dir = createTempDir();
+    writeFileSync(join(dir, "settings.json"), "{}");
+
+    const result = discoverConfigFiles(dir);
+    expect(result.danglingSymlinks).toEqual([]);
+  });
+
+  it.skipIf(process.platform === "win32")(
+    "skips a dangling symlink under skills/ instead of crashing and records it",
+    () => {
+      const dir = createTempDir();
+      mkdirSync(join(dir, "skills"));
+      writeFileSync(join(dir, "skills", "SKILL.md"), "# Real skill");
+      symlinkSync(join(dir, "nonexistent-skill"), join(dir, "skills", "dead-skill"));
+
+      const result = discoverConfigFiles(dir);
+
+      expect(result.files.some((f) => f.path === "skills/SKILL.md")).toBe(true);
+      expect(result.files.some((f) => f.path === "skills/dead-skill")).toBe(false);
+      expect(result.danglingSymlinks).toHaveLength(1);
+      expect(result.danglingSymlinks[0].path).toBe("skills/dead-skill");
+      expect(result.danglingSymlinks[0].target).toBe(join(dir, "nonexistent-skill"));
+      expect(result.danglingSymlinks[0].type).toBe("skill-md");
+    }
+  );
+
+  it.skipIf(process.platform === "win32")(
+    "still follows a valid symlink under skills/",
+    () => {
+      const dir = createTempDir();
+      mkdirSync(join(dir, "skills"));
+      mkdirSync(join(dir, "real"));
+      writeFileSync(join(dir, "real", "linked.md"), "# Linked skill");
+      symlinkSync(join(dir, "real", "linked.md"), join(dir, "skills", "linked.md"));
+
+      const result = discoverConfigFiles(dir);
+      const linked = result.files.find((f) => f.path === "skills/linked.md");
+      expect(linked?.type).toBe("skill-md");
+      expect(linked?.content).toBe("# Linked skill");
+      expect(result.danglingSymlinks).toEqual([]);
+    }
+  );
+
+  it.skipIf(process.platform === "win32")(
+    "skips dangling symlinks in other config subdirectories too",
+    () => {
+      const dir = createTempDir();
+      mkdirSync(join(dir, ".claude"));
+      mkdirSync(join(dir, ".claude", "hooks"));
+      mkdirSync(join(dir, "agents"));
+      symlinkSync("/nonexistent/hook.sh", join(dir, ".claude", "hooks", "gone.sh"));
+      symlinkSync("/nonexistent/agent.md", join(dir, "agents", "gone.md"));
+
+      const result = discoverConfigFiles(dir);
+      const paths = result.danglingSymlinks.map((d) => d.path).sort();
+      expect(paths).toEqual([".claude/hooks/gone.sh", "agents/gone.md"]);
+    }
+  );
+
+  it.skipIf(process.platform === "win32")(
+    "tolerates a dangling symlink where a config subdirectory is expected",
+    () => {
+      const dir = createTempDir();
+      symlinkSync("/nonexistent/skills", join(dir, "skills"));
+      writeFileSync(join(dir, "settings.json"), "{}");
+
+      const result = discoverConfigFiles(dir);
+      expect(result.files.some((f) => f.type === "settings-json")).toBe(true);
+    }
+  );
 });

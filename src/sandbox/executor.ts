@@ -37,12 +37,22 @@ export interface SandboxObservation {
   readonly timestamp: number;
 }
 
-export type HookType = "PreToolUse" | "PostToolUse" | "SessionStart" | "Stop";
+export type HookType =
+  | "PreToolUse"
+  | "PostToolUse"
+  | "UserPromptSubmit"
+  | "Notification"
+  | "SessionStart"
+  | "SessionEnd"
+  | "Stop"
+  | "SubagentStop"
+  | "PreCompact";
 
 export interface ParsedHook {
   readonly type: HookType;
   readonly command: string;
   readonly matcher?: string;
+  readonly timeout?: number;
 }
 
 // ─── Default Options ──────────────────────────────────────
@@ -69,46 +79,90 @@ const DEFAULT_OPTIONS: SandboxOptions = {
 
 // ─── Hook Parser ──────────────────────────────────────────
 
+const HOOK_TYPES: ReadonlyArray<HookType> = [
+  "PreToolUse",
+  "PostToolUse",
+  "UserPromptSubmit",
+  "Notification",
+  "SessionStart",
+  "SessionEnd",
+  "Stop",
+  "SubagentStop",
+  "PreCompact",
+];
+
+function parseHooksObject(settingsContent: string): Record<string, unknown> | null {
+  let config: unknown;
+  try {
+    config = JSON.parse(settingsContent);
+  } catch {
+    return null;
+  }
+
+  if (!config || typeof config !== "object") return null;
+  const hooksObj = (config as { hooks?: unknown }).hooks;
+  if (!hooksObj || typeof hooksObj !== "object" || Array.isArray(hooksObj)) return null;
+  return hooksObj as Record<string, unknown>;
+}
+
 /**
  * Parse hooks from a settings.json content string.
+ *
+ * Supports both the standard Claude Code schema
+ * `{ matcher, hooks: [{ type: "command", command, timeout? }] }`
+ * and the legacy flat shape `{ matcher, hook: "cmd" }`.
  */
 export function parseHooks(settingsContent: string): ReadonlyArray<ParsedHook> {
   const hooks: ParsedHook[] = [];
 
-  let config: Record<string, unknown>;
-  try {
-    config = JSON.parse(settingsContent) as Record<string, unknown>;
-  } catch {
-    return hooks;
-  }
+  const hooksObj = parseHooksObject(settingsContent);
+  if (!hooksObj) return hooks;
 
-  const hooksObj = config.hooks as Record<string, unknown> | undefined;
-  if (!hooksObj || typeof hooksObj !== "object") return hooks;
-
-  const hookTypes: ReadonlyArray<HookType> = [
-    "PreToolUse",
-    "PostToolUse",
-    "SessionStart",
-    "Stop",
-  ];
-
-  for (const hookType of hookTypes) {
+  for (const hookType of HOOK_TYPES) {
     const entries = hooksObj[hookType];
     if (!Array.isArray(entries)) continue;
 
     for (const entry of entries) {
-      const hookEntry = entry as { hook?: string; matcher?: string };
+      if (!entry || typeof entry !== "object") continue;
+      const hookEntry = entry as { hook?: unknown; matcher?: unknown; hooks?: unknown };
+      const matcher = typeof hookEntry.matcher === "string" ? hookEntry.matcher : undefined;
+
+      // Legacy flat shape: { matcher, hook: "cmd" }
       if (typeof hookEntry.hook === "string" && hookEntry.hook.length > 0) {
-        hooks.push({
-          type: hookType,
-          command: hookEntry.hook,
-          matcher: hookEntry.matcher,
-        });
+        hooks.push({ type: hookType, command: hookEntry.hook, matcher });
+      }
+
+      // Standard schema: { matcher, hooks: [{ type: "command", command, timeout? }] }
+      if (!Array.isArray(hookEntry.hooks)) continue;
+      for (const nested of hookEntry.hooks) {
+        if (!nested || typeof nested !== "object") continue;
+        const nestedHook = nested as { type?: unknown; command?: unknown; timeout?: unknown };
+        if (nestedHook.type !== undefined && nestedHook.type !== "command") continue;
+        if (typeof nestedHook.command !== "string" || nestedHook.command.length === 0) continue;
+        const timeout =
+          typeof nestedHook.timeout === "number" && Number.isFinite(nestedHook.timeout)
+            ? nestedHook.timeout
+            : undefined;
+        hooks.push({ type: hookType, command: nestedHook.command, matcher, timeout });
       }
     }
   }
 
   return hooks;
+}
+
+/**
+ * Whether a settings.json content string declares at least one hook entry,
+ * regardless of whether parseHooks recognizes its shape. Used to warn when a
+ * hooks block is present but nothing could be executed.
+ */
+export function hasHookDefinitions(settingsContent: string): boolean {
+  const hooksObj = parseHooksObject(settingsContent);
+  if (!hooksObj) return false;
+
+  return Object.values(hooksObj).some(
+    (entries) => Array.isArray(entries) && entries.length > 0
+  );
 }
 
 // ─── Sandbox Executor ─────────────────────────────────────

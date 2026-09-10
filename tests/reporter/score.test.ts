@@ -7,6 +7,7 @@ function makeScanResult(findings: Finding[]): ScanResult {
   const target: ScanTarget = {
     path: "/test",
     files: [{ path: "test.json", type: "settings-json", content: "{}" }],
+    danglingSymlinks: [],
   };
   return { target, findings };
 }
