@@ -11,10 +11,13 @@ import { skillRules } from "./skills.js";
 import { promptDefenseRules } from "./prompt-defense.js";
 import { codexRules } from "./codex.js";
 import { hermesRules } from "./hermes.js";
+import { claudeCodeRules } from "./claude-code.js";
 
 /**
  * Returns all built-in security rules.
  * Each rule knows how to check a specific config file type.
+ * claudeCodeRules covers the September 2026 Claude Code surface (settings
+ * keys, hooks schema, skill and subagent frontmatter) and is appended last.
  */
 export function getBuiltinRules(): ReadonlyArray<Rule> {
   return [
@@ -30,5 +33,6 @@ export function getBuiltinRules(): ReadonlyArray<Rule> {
     ...promptDefenseRules,
     ...codexRules,
     ...hermesRules,
+    ...claudeCodeRules,
   ];
 }
