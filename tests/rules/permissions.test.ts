@@ -988,6 +988,8 @@ describe("permissionRules", () => {
   });
 
   describe("CLAUDE.md filesystem permissions", () => {
+    // POSIX mode bits only. NTFS reports 0o666 for every writable file and
+    // the rule itself is skipped on win32, so the chmod-driven cases are too.
     const testDir = join(tmpdir(), `agentshield-perm-test-${Date.now()}`);
     const testClaudeMd = join(testDir, "CLAUDE.md");
 
@@ -1004,7 +1006,7 @@ describe("permissionRules", () => {
       }
     });
 
-    it("flags world-writable CLAUDE.md (0o666)", () => {
+    it.skipIf(process.platform === "win32")("flags world-writable CLAUDE.md (0o666)", () => {
       chmodSync(testClaudeMd, 0o666);
       const file: ConfigFile = {
         path: testClaudeMd,
@@ -1020,7 +1022,7 @@ describe("permissionRules", () => {
       expect(permFinding?.fix?.after).toBe("0o600");
     });
 
-    it("flags group-writable CLAUDE.md (0o660)", () => {
+    it.skipIf(process.platform === "win32")("flags group-writable CLAUDE.md (0o660)", () => {
       chmodSync(testClaudeMd, 0o660);
       const file: ConfigFile = {
         path: testClaudeMd,
@@ -1034,7 +1036,7 @@ describe("permissionRules", () => {
       expect(permFinding?.title).toContain("group-writable");
     });
 
-    it("flags both world-writable and group-writable CLAUDE.md (0o676)", () => {
+    it.skipIf(process.platform === "win32")("flags both world-writable and group-writable CLAUDE.md (0o676)", () => {
       chmodSync(testClaudeMd, 0o676);
       const file: ConfigFile = {
         path: testClaudeMd,
@@ -1049,7 +1051,7 @@ describe("permissionRules", () => {
       expect(permFinding?.title).toContain("group-writable");
     });
 
-    it("does not flag owner-only CLAUDE.md (0o600)", () => {
+    it.skipIf(process.platform === "win32")("does not flag owner-only CLAUDE.md (0o600)", () => {
       chmodSync(testClaudeMd, 0o600);
       const file: ConfigFile = {
         path: testClaudeMd,
@@ -1061,7 +1063,7 @@ describe("permissionRules", () => {
       expect(permFinding).toBeUndefined();
     });
 
-    it("does not flag normal read-only permissions (0o644)", () => {
+    it.skipIf(process.platform === "win32")("does not flag normal read-only permissions (0o644)", () => {
       chmodSync(testClaudeMd, 0o644);
       const file: ConfigFile = {
         path: testClaudeMd,
@@ -1096,7 +1098,7 @@ describe("permissionRules", () => {
       expect(permFinding).toBeUndefined();
     });
 
-    it("provides actionable fix recommendation", () => {
+    it.skipIf(process.platform === "win32")("provides actionable fix recommendation", () => {
       chmodSync(testClaudeMd, 0o666);
       const file: ConfigFile = {
         path: testClaudeMd,

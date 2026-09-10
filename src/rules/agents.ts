@@ -176,7 +176,7 @@ function isSlashCommandConfig(file: ConfigFile, isStructuredDefinition: boolean)
   return (
     file.type === "command-md" &&
     isStructuredDefinition &&
-    file.path.toLowerCase().includes("slash-commands/")
+    normalizePath(file.path).includes("slash-commands/")
   );
 }
 

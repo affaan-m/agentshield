@@ -19,7 +19,8 @@ function cleanupFixtures(): void {
   }
 }
 
-describe("getRuntimeStatus", () => {
+// The runtime check executes the installed shell hook, which needs a POSIX shell.
+describe.skipIf(process.platform === "win32")("getRuntimeStatus", () => {
   afterEach(() => cleanupFixtures());
 
   it("reports ready when runtime hook and policy are installed", () => {

@@ -21,6 +21,10 @@ afterEach(async () => {
 
 // ─── parseHooks ───────────────────────────────────────────
 
+// The sandbox executor spawns hooks through a POSIX shell. On Windows the
+// runner uses cmd.exe, so the execution-backed suites are skipped there.
+const posixOnly = describe.skipIf(process.platform === "win32");
+
 describe("parseHooks", () => {
   it("parses PreToolUse hooks", () => {
     const settings = JSON.stringify({
@@ -250,7 +254,7 @@ describe("hasHookDefinitions", () => {
 
 // ─── executeHookInSandbox ─────────────────────────────────
 
-describe("executeHookInSandbox", () => {
+posixOnly("executeHookInSandbox", () => {
   it("executes a safe command and captures output", async () => {
     const result = await executeHookInSandbox("echo hello world");
     sandboxDirs.push(result.workDir);
@@ -458,7 +462,7 @@ describe("executeHookInSandbox", () => {
 
 // ─── executeAllHooks ──────────────────────────────────────
 
-describe("executeAllHooks", () => {
+posixOnly("executeAllHooks", () => {
   it("executes all hooks from settings JSON", async () => {
     const settings = JSON.stringify({
       hooks: {
@@ -483,7 +487,7 @@ describe("executeAllHooks", () => {
 
 // ─── analyzeExecution ─────────────────────────────────────
 
-describe("analyzeExecution", () => {
+posixOnly("analyzeExecution", () => {
   it("returns safe verdict for benign hooks", async () => {
     const execution = await executeHookInSandbox("echo hello");
     sandboxDirs.push(execution.workDir);
@@ -595,7 +599,7 @@ describe("analyzeExecution", () => {
 
 // ─── analyzeAllExecutions ─────────────────────────────────
 
-describe("analyzeAllExecutions", () => {
+posixOnly("analyzeAllExecutions", () => {
   it("analyzes multiple executions", async () => {
     const exec1 = await executeHookInSandbox("echo safe");
     const exec2 = await executeHookInSandbox("echo $ANTHROPIC_API_KEY");
@@ -636,7 +640,7 @@ describe("cleanupSandbox", () => {
 
 // ─── Integration: full pipeline ───────────────────────────
 
-describe("full pipeline integration", () => {
+posixOnly("full pipeline integration", () => {
   it("parses, executes, and analyzes a safe config", async () => {
     const settings = JSON.stringify({
       hooks: {

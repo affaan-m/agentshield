@@ -1,6 +1,6 @@
 import { describe, it, expect, afterEach } from "vitest";
 import { mkdir, writeFile, rm, stat, realpath } from "node:fs/promises";
-import { join } from "node:path";
+import { join, sep } from "node:path";
 import { randomUUID } from "node:crypto";
 import {
   validatePath,
@@ -202,7 +202,7 @@ describe("createSandbox", () => {
     const session = await createSandbox({ rootPath, maxFileSize: 1024, allowedExtensions: [], networkPolicy: "none", maxDuration: 5000 });
     createdPaths.push(session.sandboxPath);
 
-    expect(session.sandboxPath.startsWith(rootPath + "/")).toBe(true);
+    expect(session.sandboxPath.startsWith(rootPath + sep)).toBe(true);
   });
 
   it("uses DEFAULT_SANDBOX_CONFIG when no config is provided", async () => {
@@ -211,7 +211,7 @@ describe("createSandbox", () => {
     // The default root is /tmp/miniclaw-sandboxes
     createdPaths.push("/tmp/miniclaw-sandboxes");
 
-    expect(session.sandboxPath.startsWith("/tmp/miniclaw-sandboxes/")).toBe(true);
+    expect(session.sandboxPath.startsWith(join("/tmp/miniclaw-sandboxes") + sep)).toBe(true);
     // Default maxDuration is 300_000
     expect(session.maxDuration).toBe(300_000);
   });
