@@ -1,5 +1,6 @@
 import chalk from "chalk";
 import type {
+  Defense,
   Finding,
   SecurityReport,
   RuntimeConfidence,
@@ -37,6 +38,8 @@ export function renderTerminalReport(report: SecurityReport): string {
   lines.push(renderBar("MCP Servers", report.score.breakdown.mcp));
   lines.push(renderBar("Agents", report.score.breakdown.agents));
   lines.push("");
+
+  lines.push(...renderDefenses(report.defenses));
 
   if (report.harnessAdapters) {
     lines.push(chalk.bold("  Harness Adapters"));
@@ -539,6 +542,22 @@ export function renderDeepScanSummary(result: DeepScanResult): string {
 }
 
 // ─── Internal Helpers ─────────────────────────────────────────
+
+const MAX_LISTED_DEFENSES = 12;
+
+function renderDefenses(defenses: ReadonlyArray<Defense>): ReadonlyArray<string> {
+  if (defenses.length === 0) return [];
+  const lines: string[] = [];
+  lines.push(chalk.bold("  Recognized Defenses") + chalk.dim(` (${defenses.length}, listed for credit, never scored)`));
+  for (const defense of defenses.slice(0, MAX_LISTED_DEFENSES)) {
+    lines.push(chalk.dim(`  ${chalk.green("✓")} ${defense.title}  ${defense.file}`));
+  }
+  if (defenses.length > MAX_LISTED_DEFENSES) {
+    lines.push(chalk.dim(`    ${defenses.length - MAX_LISTED_DEFENSES} more`));
+  }
+  lines.push("");
+  return lines;
+}
 
 function renderGrade(grade: string, score: number): string {
   const gradeColors: Record<string, typeof chalk.green> = {

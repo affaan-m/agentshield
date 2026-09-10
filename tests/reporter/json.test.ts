@@ -8,6 +8,7 @@ function makeReport(overrides: Partial<SecurityReport> = {}): SecurityReport {
     timestamp: "2026-02-11T00:00:00.000Z",
     targetPath: "/tmp/test",
     findings: [],
+    defenses: [],
     score: {
       grade: "B",
       numericScore: 80,
@@ -22,6 +23,7 @@ function makeReport(overrides: Partial<SecurityReport> = {}): SecurityReport {
       info: 0,
       filesScanned: 5,
       autoFixable: 0,
+      defenses: 0,
     },
     ...overrides,
   };
@@ -114,6 +116,7 @@ describe("renderJsonReport", () => {
         info: 0,
         filesScanned: 1,
         autoFixable: 0,
+        defenses: 0,
       },
     });
     const parsed = JSON.parse(renderJsonReport(report));
@@ -144,6 +147,7 @@ describe("renderJsonReport", () => {
         info: 1,
         filesScanned: 1,
         autoFixable: 0,
+        defenses: 0,
       },
     });
     const parsed = JSON.parse(renderJsonReport(report));
@@ -252,6 +256,7 @@ describe("renderMarkdownReport", () => {
         info: 0,
         filesScanned: 1,
         autoFixable: 1,
+        defenses: 0,
       },
     });
     const output = renderMarkdownReport(report);
@@ -349,6 +354,7 @@ describe("renderMarkdownReport", () => {
         info: 1,
         filesScanned: 5,
         autoFixable: 0,
+        defenses: 0,
       },
     }));
 
@@ -396,6 +402,7 @@ describe("renderMarkdownReport", () => {
         info: 0,
         filesScanned: 3,
         autoFixable: 0,
+        defenses: 0,
       },
     }));
 

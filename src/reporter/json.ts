@@ -22,6 +22,10 @@ function formatRuntimeConfidence(value: string): string {
   }
 }
 
+function escapeTableCell(value: string): string {
+  return value.replace(/\|/g, "\\|").replace(/\r?\n/g, " ");
+}
+
 /**
  * Render a security report as formatted JSON.
  */
@@ -56,6 +60,7 @@ export function renderMarkdownReport(report: SecurityReport): string {
   lines.push(`| Low | ${s.low} |`);
   lines.push(`| Info | ${s.info} |`);
   lines.push(`| Auto-fixable | ${s.autoFixable} |`);
+  lines.push(`| Recognized defenses | ${s.defenses} |`);
   lines.push("");
 
   if (report.harnessAdapters) {
@@ -111,6 +116,21 @@ export function renderMarkdownReport(report: SecurityReport): string {
     lines.push(`| ${label} | ${score}/100 |`);
   }
   lines.push("");
+
+  if (report.defenses.length > 0) {
+    lines.push("## Recognized Defenses");
+    lines.push("");
+    lines.push("Protective configuration found during the scan. Defenses are credited here, never penalized, and never add points.");
+    lines.push("");
+    lines.push("| Defense | File | Harness | Detail |");
+    lines.push("|---------|------|---------|--------|");
+    for (const defense of report.defenses) {
+      lines.push(
+        `| ${escapeTableCell(defense.title)} | \`${escapeTableCell(defense.file)}\` | ${defense.harness} | ${escapeTableCell(defense.detail)} |`
+      );
+    }
+    lines.push("");
+  }
 
   // Findings
   if (report.findings.length > 0) {

@@ -118,6 +118,7 @@ export interface SecurityReport {
   readonly findings: ReadonlyArray<Finding>;
   readonly score: SecurityScore;
   readonly summary: ReportSummary;
+  readonly defenses: ReadonlyArray<Defense>;
   readonly harnessAdapters?: HarnessAdapterSummary;
   readonly skillHealth?: SkillHealthSummary;
 }
@@ -172,6 +173,30 @@ export interface ReportSummary {
   readonly info: number;
   readonly filesScanned: number;
   readonly autoFixable: number;
+  readonly defenses: number;
+}
+
+// ─── Recognized Defenses ───────────────────────────────────
+
+export type DefenseHarness =
+  | "claude-code"
+  | "codex"
+  | "hermes"
+  | "gemini"
+  | "opencode"
+  | "cursor"
+  | "generic";
+
+/**
+ * Protective configuration found during a scan. Listed for credit only:
+ * defenses never change the score in either direction.
+ */
+export interface Defense {
+  readonly id: string;
+  readonly title: string;
+  readonly file: string;
+  readonly detail: string;
+  readonly harness: DefenseHarness;
 }
 
 // ─── Harness Adapter Discovery ─────────────────────────────
