@@ -226,7 +226,7 @@ const SEVERITY_ORDER = ["critical", "high", "medium", "low", "info"] as const;
 program
   .name("agentshield")
   .description("Security auditor for AI agent configurations")
-  .version("1.5.0");
+  .version("1.6.0");
 
 function emitReportOutput(output: string, outputPath: string | undefined): void {
   if (!outputPath) {
