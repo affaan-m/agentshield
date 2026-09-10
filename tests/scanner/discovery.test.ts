@@ -83,6 +83,43 @@ describe("discoverConfigFiles", () => {
     );
   });
 
+  it("discovers other-harness instruction, config, and MCP files with their own types", () => {
+    const dir = createTempDir();
+    writeFileSync(join(dir, "AGENTS.md"), "# Agents\n");
+    mkdirSync(join(dir, ".codex"));
+    writeFileSync(join(dir, ".codex", "config.toml"), 'approval_policy = "never"\n');
+    mkdirSync(join(dir, ".cursor", "rules"), { recursive: true });
+    writeFileSync(join(dir, ".cursor", "rules", "style.mdc"), "---\nalwaysApply: true\n---\nBe terse.\n");
+    writeFileSync(join(dir, ".cursor", "mcp.json"), '{"mcpServers":{}}');
+    mkdirSync(join(dir, ".gemini"));
+    writeFileSync(join(dir, ".gemini", "settings.json"), '{"general":{"defaultApprovalMode":"yolo"}}');
+    mkdirSync(join(dir, ".claude-plugin"));
+    writeFileSync(join(dir, ".claude-plugin", "plugin.json"), '{"name":"x","version":"1.0.0"}');
+    writeFileSync(join(dir, "config.yaml"), "approvals:\n  mode: off\n");
+    mkdirSync(join(dir, "profiles", "work"), { recursive: true });
+    writeFileSync(join(dir, "profiles", "work", "config.yaml"), "approvals:\n  mode: manual\n");
+
+    const result = discoverConfigFiles(dir);
+    const typeOf = (path: string) => result.files.find((f) => f.path === path)?.type;
+    expect(typeOf("AGENTS.md")).toBe("agents-md");
+    expect(typeOf(".codex/config.toml")).toBe("codex-toml");
+    expect(typeOf(".cursor/rules/style.mdc")).toBe("agents-md");
+    expect(typeOf(".cursor/mcp.json")).toBe("mcp-json");
+    expect(typeOf(".gemini/settings.json")).toBe("harness-json");
+    expect(typeOf(".claude-plugin/plugin.json")).toBe("plugin-manifest");
+    expect(typeOf("config.yaml")).toBe("hermes-yaml");
+    expect(typeOf("profiles/work/config.yaml")).toBe("hermes-yaml");
+  });
+
+  it("treats a directory holding only AGENTS.md or .codex as a scan root", () => {
+    const dir = createTempDir();
+    const nested = join(dir, "svc");
+    mkdirSync(join(nested, ".codex"), { recursive: true });
+    writeFileSync(join(nested, ".codex", "config.toml"), 'sandbox_mode = "read-only"\n');
+    const result = discoverConfigFiles(dir);
+    expect(result.files.some((f) => f.path === "svc/.codex/config.toml" && f.type === "codex-toml")).toBe(true);
+  });
+
   it("discovers agent files in agents/ subdirectory", () => {
     const dir = createTempDir();
     mkdirSync(join(dir, "agents"));

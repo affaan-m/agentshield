@@ -27,7 +27,12 @@ const CLAUDE_ROOT_MARKERS = new Set([
   "mcp.json",
   ".mcp.json",
   ".claude.json",
+  "agents.md",
+  "opencode.json",
 ]);
+
+/** Directories whose presence makes their parent a scan root. */
+const HARNESS_ROOT_DIRS = new Set([".codex", ".claude-plugin", ".cursor", ".gemini", ".opencode"]);
 
 const CLAUDE_RUNTIME_COMPANION_NAMES: ReadonlyArray<string> = [
   "settings.json",
@@ -141,6 +146,9 @@ function walkForClaudeRoots(
   for (const entry of entries) {
     if (entry.isDirectory()) {
       if (IGNORED_DIRS.has(entry.name)) continue;
+      if (HARNESS_ROOT_DIRS.has(entry.name)) {
+        claudeRoots.add(dirPath);
+      }
       if (entry.name === ".claude") {
         claudeRoots.add(dirPath);
         continue;
@@ -223,6 +231,40 @@ function scanClaudeRoot(
     [".mcp.json", "mcp-json"],
     [".claude/mcp.json", "mcp-json"],
     [".claude.json", "mcp-json"],
+    ["CLAUDE.local.md", "claude-md"],
+    // Claude Code plugin manifests
+    [".claude-plugin/plugin.json", "plugin-manifest"],
+    [".claude-plugin/marketplace.json", "plugin-manifest"],
+    // Shared and other-harness instruction files
+    ["AGENTS.md", "agents-md"],
+    ["AGENTS.override.md", "agents-md"],
+    [".codex/AGENTS.md", "agents-md"],
+    ["GEMINI.md", "agents-md"],
+    [".gemini/GEMINI.md", "agents-md"],
+    [".github/copilot-instructions.md", "agents-md"],
+    [".cursorrules", "agents-md"],
+    [".windsurfrules", "agents-md"],
+    [".clinerules", "agents-md"],
+    // OpenAI Codex CLI
+    ["config.toml", "codex-toml"],
+    [".codex/config.toml", "codex-toml"],
+    [".codex/hooks.json", "harness-json"],
+    // Hermes agent
+    ["config.yaml", "hermes-yaml"],
+    // Other harness MCP configs share the MCP rule set
+    [".cursor/mcp.json", "mcp-json"],
+    [".codeium/windsurf/mcp_config.json", "mcp-json"],
+    ["mcp_config.json", "mcp-json"],
+    [".roo/mcp.json", "mcp-json"],
+    [".cline/mcp.json", "mcp-json"],
+    ["cline_mcp_settings.json", "mcp-json"],
+    ["mcp_settings.json", "mcp-json"],
+    // Other harness settings and hooks
+    [".cursor/hooks.json", "harness-json"],
+    [".gemini/settings.json", "harness-json"],
+    ["opencode.json", "harness-json"],
+    ["opencode.jsonc", "harness-json"],
+    [".opencode/opencode.json", "harness-json"],
   ];
 
   for (const [relativePath, type] of directFiles) {
@@ -258,6 +300,15 @@ function scanClaudeRoot(
     [".claude/commands", "command-md"],
     ["slash-commands", "command-md"],
     [".claude/slash-commands", "command-md"],
+    // Other harness instruction and agent directories
+    [".github/agents", "agents-md"],
+    [".github/instructions", "agents-md"],
+    [".cursor/rules", "agents-md"],
+    [".windsurf/rules", "agents-md"],
+    [".roo/rules", "agents-md"],
+    [".clinerules", "agents-md"],
+    // Codex agent roles
+    [".codex/agents", "codex-toml"],
   ];
 
   for (const [subdir, type] of subdirs) {
@@ -284,7 +335,27 @@ function scanClaudeRoot(
     }
   }
 
+  discoverHermesProfiles(scanRoot, claudeRoot, files, seenFiles);
   discoverReferencedHookScripts(scanRoot, claudeRoot, files, seenFiles);
+}
+
+/**
+ * Hermes keeps one config.yaml per profile under profiles/<name>/.
+ */
+function discoverHermesProfiles(
+  scanRoot: string,
+  claudeRoot: string,
+  files: ConfigFile[],
+  seenFiles: Set<string>
+): void {
+  const profilesDir = join(claudeRoot, "profiles");
+  if (!statOrNull(profilesDir)?.isDirectory()) return;
+  for (const entry of readdirSync(profilesDir)) {
+    const configPath = join(profilesDir, entry, "config.yaml");
+    if (statOrNull(configPath)?.isFile()) {
+      addDiscoveredFile(scanRoot, configPath, "hermes-yaml", files, seenFiles);
+    }
+  }
 }
 
 function inferType(filename: string, defaultType: ConfigFileType): ConfigFileType {
@@ -310,6 +381,11 @@ function inferType(filename: string, defaultType: ConfigFileType): ConfigFileTyp
   if (defaultType === "agent-md" && ext === ".json") return "agent-md";
   if (defaultType === "skill-md" && ext === ".json") return "skill-md";
   if (defaultType === "command-md" && ext === ".json") return "command-md";
+  if (defaultType === "agents-md" && (ext === ".md" || ext === ".mdc" || ext === ".markdown" || ext === ""))
+    return "agents-md";
+  if (defaultType === "codex-toml") return ext === ".toml" ? "codex-toml" : "unknown";
+  if (defaultType === "hermes-yaml") return ext === ".yaml" || ext === ".yml" ? "hermes-yaml" : "unknown";
+  if (defaultType === "harness-json") return ext === ".json" || ext === ".jsonc" ? "harness-json" : "unknown";
   if (ext === ".json") return "settings-json";
   if (ext === ".md" || ext === ".markdown") return defaultType;
 

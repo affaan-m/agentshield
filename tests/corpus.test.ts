@@ -70,6 +70,11 @@ describe("corpus structure", () => {
       "hook-code",
       "rule-md",
       "context-md",
+      "agents-md",
+      "codex-toml",
+      "hermes-yaml",
+      "harness-json",
+      "plugin-manifest",
       "unknown",
     ];
 

@@ -186,7 +186,12 @@ function isSlashCommandConfig(file: ConfigFile, isStructuredDefinition: boolean)
  * apply to all of them.
  */
 function isInstructionFile(file: ConfigFile): boolean {
-  return file.type === "agent-md" || file.type === "claude-md" || file.type === "command-md";
+  return (
+    file.type === "agent-md" ||
+    file.type === "claude-md" ||
+    file.type === "command-md" ||
+    file.type === "agents-md"
+  );
 }
 
 function isAgentLikeToolConfig(
