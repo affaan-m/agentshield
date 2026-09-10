@@ -159,6 +159,19 @@ describe("loadRulePacks", () => {
     expect(result.packs.map((p) => p.name)).toEqual(["test-pack", "pack-b"]);
   });
 
+  it("rejects the same rule id appearing in two packs", () => {
+    const a = writePack("a.json", validPack);
+    const b = writePack("b.json", {
+      version: 1,
+      name: "pack-b",
+      rules: validPack.rules.slice(0, 1),
+    });
+    const result = loadRulePacks([a, b]);
+    expect(result.success).toBe(false);
+    expect(result.rules).toHaveLength(0);
+    expect(result.error).toMatch(/Duplicate rule id across packs/);
+  });
+
   it("returns the first error and no rules when any pack is invalid", () => {
     const a = writePack("a.json", validPack);
     const result = loadRulePacks([a, join(dir, "missing.json")]);

@@ -172,10 +172,23 @@ export function loadRulePacks(paths: ReadonlyArray<string>): {
 } {
   const rules: Rule[] = [];
   const packs: Array<{ name: string; ruleCount: number }> = [];
+  const seenRuleIds = new Map<string, string>();
   for (const path of paths) {
     const result = loadRulePack(path);
     if (!result.success || !result.rules || !result.meta) {
       return { success: false, rules: [], packs: [], error: result.error };
+    }
+    for (const rule of result.rules) {
+      const owner = seenRuleIds.get(rule.id);
+      if (owner !== undefined) {
+        return {
+          success: false,
+          rules: [],
+          packs: [],
+          error: `Duplicate rule id across packs: ${rule.id} (in ${owner} and ${result.meta.name})`,
+        };
+      }
+      seenRuleIds.set(rule.id, result.meta.name);
     }
     rules.push(...result.rules);
     packs.push(result.meta);
