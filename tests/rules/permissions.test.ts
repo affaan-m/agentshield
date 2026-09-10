@@ -375,6 +375,67 @@ describe("permissionRules", () => {
       expect(noVerifyFindings[0].severity).toBe("critical");
     });
 
+    it("flags the broadest colon-form grants (issue #115)", () => {
+      const file = makeSettings(JSON.stringify({
+        permissions: {
+          allow: [
+            "Bash(sudo:*)",
+            "Bash(rm:*)",
+            "Bash(bash:*)",
+            "Bash(zsh *)",
+            "Bash(/opt/homebrew/bin/node:*)",
+            "Bash(/opt/homebrew/bin/node -e *)",
+            "Bash(sudo mv *)",
+          ],
+        },
+      }));
+      const findings = runAllPermRules(file).filter((f) => f.id.startsWith("permissions-permissive-"));
+      const bySeverity = (entry: string) => findings.find((f) => f.evidence === entry)?.severity;
+      expect(bySeverity("Bash(sudo:*)")).toBe("critical");
+      expect(bySeverity("Bash(rm:*)")).toBe("high");
+      expect(bySeverity("Bash(bash:*)")).toBe("critical");
+      expect(bySeverity("Bash(zsh *)")).toBe("critical");
+      expect(bySeverity("Bash(/opt/homebrew/bin/node:*)")).toBe("high");
+      expect(bySeverity("Bash(/opt/homebrew/bin/node -e *)")).toBe("high");
+      expect(bySeverity("Bash(sudo mv *)")).toBe("critical");
+    });
+
+    it("still allows a scoped interpreter script spelled with a path", () => {
+      const file = makeSettings(JSON.stringify({
+        permissions: { allow: ["Bash(/usr/local/bin/node scripts/build.js)"] },
+      }));
+      const findings = runAllPermRules(file).filter((f) => f.id.startsWith("permissions-permissive-"));
+      expect(findings).toHaveLength(0);
+    });
+
+    it("reports the covering prefix rule when a narrower env grant is shadowed (issue #116)", () => {
+      const file = makeSettings(JSON.stringify({
+        permissions: { allow: ["Bash(vercel:*)", "Bash(vercel env:*)"] },
+      }));
+      const findings = runAllPermRules(file);
+      const envFindings = findings.filter((f) => f.id.startsWith("permissions-env-access"));
+      expect(envFindings.map((f) => f.evidence).sort()).toEqual(["Bash(vercel env:*)", "Bash(vercel:*)"]);
+      const shadow = findings.find((f) => f.id === "permissions-shadowed-allow-Bash(vercel:*)");
+      expect(shadow?.severity).toBe("medium");
+      expect(shadow?.description).toContain('"Bash(vercel env:*)"');
+    });
+
+    it("treats Bash(*) as covering every Bash entry", () => {
+      const file = makeSettings(JSON.stringify({
+        permissions: { allow: ["Bash(*)", "Bash(git status)"] },
+      }));
+      const shadow = runAllPermRules(file).find((f) => f.id === "permissions-shadowed-allow-Bash(*)");
+      expect(shadow?.severity).toBe("high");
+    });
+
+    it("does not report shadowing for unrelated or exact entries", () => {
+      const file = makeSettings(JSON.stringify({
+        permissions: { allow: ["Bash(git status)", "Bash(npm run build:*)", "Bash(npm run test:*)"] },
+      }));
+      const shadows = runAllPermRules(file).filter((f) => f.id.startsWith("permissions-shadowed-allow"));
+      expect(shadows).toHaveLength(0);
+    });
+
     it("skips non-settings files for permission rules", () => {
       const file: ConfigFile = { path: "agent.md", type: "agent-md", content: "Bash(*)" };
       const findings = runAllPermRules(file);
