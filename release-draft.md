@@ -1,33 +1,40 @@
-# AgentShield v1.5.0
+# AgentShield v1.6.0
 
-Fixes the GitHub Action startup failure shipped in 1.4.0, closes the `.mcp.json` discovery gap, and adds evidence-pack, policy-pack, and supply-chain surfaces.
+The release that modernizes the scanner. Every open issue closed, every open pull request landed or superseded, current Claude Code, Codex CLI, Hermes, Cursor, Gemini, Copilot, OpenCode, Cline, and Roo layouts understood, and defenses credited instead of penalized.
+
+## Scoring no longer penalizes defenses
+
+- Deny and ask rules that block a dangerous flag are info findings labeled good practice (#102, #103).
+- PreToolUse guard scripts that grep for mkfs, dd, rm -rf, or pipe-to-shell in order to deny them are reported as guard patterns at info severity, across 21 hook rules, failing closed when the quoted text reaches a shell sink (#113).
+- Printed or commented flags are mentions, not usages (#100, #104).
+- Reports list recognized defenses across every supported harness. They never deduct and never add points.
+
+## Permission analysis sees the broad grants
+
+- Bash(sudo:*), Bash(rm:*), Bash(bash:*), and path-spelled interpreters are normalized and flagged (#115).
+- A prefix rule that shadows a narrower flagged entry is reported, and the env, network, and destructive git rules also name the covering rule (#116).
+
+## Modernized to current agent ecosystems
+
+- New discovery and rule modules for Claude Code 2026 settings, hooks, plugins, skills, and subagents; Codex CLI config.toml, agent roles, and hooks; Hermes profiles; Cursor, Gemini, Copilot, OpenCode, Cline, and Roo; remote MCP with OAuth, stdio bridges, and cross-harness auto-approval. 268 rule ids in total.
+- LLM analysis on claude-opus-5 and claude-sonnet-5, with an opt-in OrcaRouter provider (#121).
+- docs/BENCHMARK.md: where AgentShield stands against thirteen comparable scanners and the plan to close the gaps.
 
 ## Fixed
 
-- The GitHub Action now bundles its runtime dependencies. Every `v1.4.0` action run failed before scanning with `ERR_MODULE_NOT_FOUND: zod` (#118).
-- Project-root `.mcp.json` is discovered and fed to the 23 MCP rules. Repos whose only Claude artifact was `.mcp.json` previously scanned as grade A with zero files (#123, closes #112 and #122).
-- Docs and example MCP configs are labeled as examples; real hardcoded secrets in them keep critical severity.
+- Slash commands typed command-md and scanned for injection instead of skill hygiene (#117), comment-injection scoped per comment (#119), sandbox stage parses the standard hooks schema (#120), dangling skill symlinks no longer crash scans (#114), Windows path normalization plus a Windows CI job (#125), explicit bearer placeholders (#124).
 
 ## Added
 
-- Evidence packs with integrity manifests, remediation plans, CI context, fleet summaries, review items, approval IDs, and operator readback.
-- Policy packs: enterprise exceptions, action policy gate, SARIF policy violations, presets, `policy export`, and `policy promote` with SHA-256 manifest verification.
-- Supply chain: npm manifest scanning, provenance reporting, action supply-chain gate, package-manager hardening drift, npx shell execution detection in MCP servers.
-- Threat intel: Mini Shai-Hulud IOCs, `gh-token-monitor` persistence, AI developer-tool persistence IOCs, workflow secrets serialization, expanded enterprise token detection and redaction.
-- SARIF code scanning output, executive HTML summary, corpus accuracy gate, baseline write CLI and drift outputs, harness adapter registry (Claude Code, Zed, VS Code), `runtime status`, and the `prompt-defense-posture` rule.
-
-## Changed
-
-- Action runtime is Node.js 24. Workflow actions are SHA pinned and CI installs use `--ignore-scripts`.
-- Build config moved to `tsup.config.ts` with separate library and action targets.
+- --rule-pack external rule packs (#107, closes #101), verify-after-fix with rollback and attestation (#108), --compliance control mapping (#109), opt-in Pro footer (#105), README FAQ (#97), OpenFGA design note (#106).
 
 ## Validation
 
-- `npm run typecheck`, `npm run lint`, `npm test` (1841 tests), `npm run build`, `npm run corpus:gate`
-- `dist/action.js` executed from a directory with no `node_modules`
+- typecheck, lint, build, corpus gate; 2403 tests across 82 files on macOS, Linux (Node 18, 20, 22), and Windows (Node 22).
 
 ## Upgrade Notes
 
-- Move action pins from `@v1.4.0` to `@v1.5.0`. The floating `v1` tag points at this release.
+- Configs that scored A on 1.5.0 may score lower because of the new rules; each finding names the construct and the fix.
+- Move action pins from @v1.5.0 to @v1.6.0. The floating v1 tag points at this release.
 
-Full changelog: https://github.com/affaan-m/agentshield/blob/v1.5.0/CHANGELOG.md
+Full changelog: https://github.com/affaan-m/agentshield/blob/v1.6.0/CHANGELOG.md

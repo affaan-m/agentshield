@@ -39,12 +39,12 @@ var DEFAULT_SERVER_CONFIG = {
 
 // src/miniclaw/sandbox.ts
 import { mkdir, rm, stat, realpath, access } from "fs/promises";
-import { join, resolve, relative, extname } from "path";
+import { join, resolve, relative, extname, sep } from "path";
 import { randomUUID } from "crypto";
 async function validatePath(sandboxPath, requestedPath) {
   const absoluteRequested = resolve(sandboxPath, requestedPath);
   const normalizedSandbox = resolve(sandboxPath);
-  if (!absoluteRequested.startsWith(normalizedSandbox + "/") && absoluteRequested !== normalizedSandbox) {
+  if (!absoluteRequested.startsWith(normalizedSandbox + sep) && absoluteRequested !== normalizedSandbox) {
     return {
       valid: false,
       resolvedPath: absoluteRequested,
@@ -54,7 +54,7 @@ async function validatePath(sandboxPath, requestedPath) {
   try {
     await access(absoluteRequested);
     const realPath = await realpath(absoluteRequested);
-    if (!realPath.startsWith(normalizedSandbox + "/") && realPath !== normalizedSandbox) {
+    if (!realPath.startsWith(normalizedSandbox + sep) && realPath !== normalizedSandbox) {
       return {
         valid: false,
         resolvedPath: realPath,
@@ -118,14 +118,14 @@ async function createSandbox(config = DEFAULT_SANDBOX_CONFIG, allowedTools = [],
 async function destroySandbox(sandboxPath, rootPath) {
   const normalizedSandbox = resolve(sandboxPath);
   const normalizedRoot = resolve(rootPath);
-  if (!normalizedSandbox.startsWith(normalizedRoot + "/")) {
+  if (!normalizedSandbox.startsWith(normalizedRoot + sep)) {
     return {
       success: false,
       reason: `Sandbox path "${sandboxPath}" is not under root "${rootPath}" \u2014 refusing to delete`
     };
   }
   const relativePath = relative(normalizedRoot, normalizedSandbox);
-  if (relativePath.includes("/") || relativePath === "" || relativePath === "..") {
+  if (relativePath.includes("/") || relativePath.includes("\\") || relativePath === "" || relativePath === "..") {
     return {
       success: false,
       reason: `Sandbox path must be a direct child of root \u2014 got relative path "${relativePath}"`

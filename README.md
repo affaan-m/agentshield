@@ -112,7 +112,7 @@ JSON reports now expose `findings[].runtimeConfidence` when AgentShield can dist
 
 ## What It Catches
 
-**102 rules** across 5 categories, graded A–F with a 0–100 numeric score.
+**268 rules** across 14 modules, graded A to F with a 0 to 100 numeric score. Recognized defenses are listed and never penalized.
 
 #### Scoring and recognized defenses
 
@@ -127,7 +127,7 @@ The score starts at 100 per category and only findings deduct from it: critical 
 | Credentials | Hardcoded passwords, database connection strings (postgres/mongo/mysql/redis), private key material |
 | Env leaks | Secrets passed through environment variables in configs, `echo $SECRET` in hooks |
 
-### Permission Audit (10 rules)
+### Permission Audit (17 rules)
 
 | What | Examples |
 |------|----------|
@@ -138,7 +138,7 @@ The score starts at 100 per category and only findings deduct from it: critical 
 | Destructive git | `git push --force`, `git reset --hard` in allowed commands |
 | Unrestricted network | `curl *`, `wget`, `ssh *`, `scp *` in allow list without scope |
 
-### Hook Analysis (34 rules)
+### Hook Analysis (40 rules)
 
 | What | Examples |
 |------|----------|
@@ -155,7 +155,7 @@ The score starts at 100 per category and only findings deduct from it: critical 
 | Clipboard access | `pbcopy`, `xclip`, `xsel`, `wl-copy` — exfiltration via clipboard |
 | Log tampering | `journalctl --vacuum`, `rm /var/log`, `history -c` — anti-forensics |
 
-### MCP Server Security (23 rules)
+### MCP Server Security (49 rules)
 
 | What | Examples |
 |------|----------|
@@ -207,7 +207,7 @@ AgentShield scans both active MCP config and repository-shipped MCP templates.
 - In template files, findings such as risky server type, remote URL transport, `npx -y`, unpinned packages, and environment inheritance are still valuable, but they should be interpreted as "this repo ships a risky MCP template" rather than "this MCP is definitely enabled right now."
 - Aggregate findings like large MCP server counts are especially likely to overstate runtime exposure when the source file is a template catalog.
 
-### Agent Config Review (25 rules)
+### Agent Config Review (41 rules)
 
 | What | Examples |
 |------|----------|

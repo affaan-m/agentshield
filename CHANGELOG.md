@@ -2,6 +2,67 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.6.0] - 2026-09-10
+
+1.5.0 shipped six months of accumulated work, but it did not touch the thing people actually run into first: the scanner only understood the Claude Code layout of early 2026, it penalized the defenses it recommended, and it missed the broadest grants while flagging the narrow ones. 1.6.0 is the release that addresses that. It closes every issue that was open on the tracker, lands or supersedes every open pull request, moves the scanner to the September 2026 shape of Claude Code, Codex CLI, Hermes, Cursor, Gemini CLI, Copilot, OpenCode, Cline, and Roo, and adds a benchmark against the comparable scanners so the gaps are written down rather than guessed at.
+
+### Scoring no longer penalizes defenses
+
+- A permissions deny or ask rule that blocks a dangerous flag is an info finding labeled good practice, not a CRITICAL (#102, #103 by sky64).
+- A PreToolUse guard script that greps for mkfs, dd, rm -rf, or a pipe to a shell in order to deny it is reported as a guard pattern at info severity. The new guard-context helper recognizes quoted arguments to grep, rg, awk, sed match forms, jq, case patterns, [[ =~ ]] tests, JSON deny lists, and deny-message echoes, and fails closed when the quoted text reaches a shell sink such as eval, exec, source, xargs, or a pipe to sh. Twenty-one hook rules use it (#113).
+- A dangerous flag printed in help text or a comment is a mention, not a usage, as long as nothing on that line executes it (#100, #104).
+- Reports now list recognized defenses: deny and ask lists, bypass disabled, sandbox settings, managed-only switches, blocking hooks, narrow skill and agent tool grants, Codex sandbox and approval policy, Hermes manual approvals, Gemini and OpenCode guards, Cursor fail-closed hooks. They are shown in terminal, markdown, JSON, and HTML output. They deduct nothing and add no points, so the score cannot be gamed by decorative deny rules, and the score engine has tests proving info findings never deduct.
+
+### False negatives in permission analysis
+
+- Allow entries are normalized before matching, so the colon prefix form and path-spelled commands are seen: Bash(sudo:*), Bash(rm:*), Bash(bash:*), and Bash(/opt/homebrew/bin/node -e *) now flag at the severity their space-form equivalents always had. Shell interpreters are critical, su and doas join sudo, and ruby, perl, php, deno, bun, podman, and socat join their groups (#115).
+- A new permissions-shadowed-allow rule reports a prefix rule that already grants everything a narrower entry grants, and the env, network, and destructive git rules also report the covering prefix rule, so deleting the narrow entry alone no longer looks like an improvement (#116).
+
+### Modernized to current agent ecosystems
+
+- New config types and discovery for AGENTS.md and its relatives (GEMINI.md, copilot-instructions.md, .cursorrules, .windsurfrules, .clinerules, .cursor/rules, .github/agents and instructions, .roo/rules), Codex config.toml and .codex agent roles and hooks, Hermes config.yaml and profiles, Claude plugin manifests and marketplaces, Gemini and OpenCode settings, Cursor hooks, and the MCP configs of Cursor, Windsurf, Cline, and Roo. Instruction files for every harness get the same injection scanning as CLAUDE.md. Lenient TOML, YAML, JSONC, and frontmatter parsers fail closed.
+- Claude Code 2026 rules (34): bypass and dontAsk default modes, helper commands that execute at session start, env overrides that redirect traffic or disable TLS, literal secrets in env, sandbox escape hatches and wildcard network allowlists, insecure marketplaces, login redirects, hook entries that auto-allow, rewrite permissions or input, or ship transcript data to HTTP endpoints, skill dynamic-context shell execution and broad allowed-tools, and subagent bypass modes, inline MCP servers, and unrestricted spawning.
+- Codex CLI rules (17) and Hermes rules: danger-full-access, approval never, network without a proxy allowlist, broad writable roots, trusted home directories, project configs that escalate policy, MCP header secrets and plaintext URLs, bridged and unpinned servers, shell-executing notify commands, provider redirects, agent roles with full access; Hermes approvals off or smart, cron auto-approve, broad command allowlists, unattended local terminals, shell toolsets exposed to chat platforms, open DM gateways.
+- Plugin, Gemini, OpenCode, Cursor, Copilot, and import rules (25): marketplace command sources, unpinned or insecure sources, path traversal, relative hook scripts, Gemini yolo mode and trusted servers, OpenCode allow-all permissions and auto share, Cursor hooks that auto-allow, Copilot agents with shell plus inline remote MCP, and CLAUDE.md or AGENTS.md imports that reach outside the repo or into secret files.
+- Remote MCP rules (16): literal tokens in headers, tokens in URLs, plaintext http, ws, and sse transports, private and metadata address ranges, inline OAuth client secrets and wildcard scopes, insecure OAuth endpoints, headers helpers, mcp-remote and supergateway bridges with the real URL re-checked, shell and inline-code stdio commands, proxy and TLS env overrides, host secrets mirrored to third-party servers, auto-approve wildcards across harnesses, tool-description injection in cached tool lists, cross-server tool shadowing, and unpinned docker images.
+- LLM analysis runs on current models: the Opus pipeline defaults to claude-opus-5 and the injection tester to claude-sonnet-5, with an opt-in OrcaRouter provider (#121 by JinhaoSong322) that never changes the default path.
+
+### Fixed
+
+- Slash commands are typed command-md, the two skill hygiene rules are gated to files named SKILL.md, and injection rules now run on commands; a hundred benign commands no longer zero the Agents subscore (#117).
+- The suspicious-comment rule tests each HTML comment body in isolation with an imperative-shaped pattern, so a match can no longer span two comments (#119).
+- The sandbox stage parses the standard nested hooks schema and warns when a settings file defines hooks but none parsed (#120).
+- A dangling symlink under skills/ no longer crashes the scan; it becomes a low finding (#114).
+- Discovered paths are normalized to forward slashes, chmod-dependent tests skip on Windows, the MiniClaw sandbox uses the platform separator, and a Windows CI job now runs the full suite (#125).
+- Explicit YOUR_*_HERE bearer placeholders are not secrets (#124 by Ayo-Fam).
+
+### Added
+
+- agentshield scan --rule-pack loads external JSON rule packs alongside the built-ins, failing closed on bad JSON, schema violations, duplicate ids within or across packs, and uncompilable patterns (#107, closes #101).
+- agentshield scan --fix re-scans after applying fixes and rolls back if the score regressed or a new high or critical finding appeared, printing a sha256 attestation on success (#108).
+- agentshield scan --compliance maps findings to SOC 2, PCI DSS, and ISO 27001 controls (#109).
+- An opt-in ECC Tools Pro footer, off by default, enabled with AGENTSHIELD_CTA=1 (#105).
+- docs/BENCHMARK.md compares AgentShield with thirteen scanners and lists the prioritized gaps: live MCP tool enumeration, tool-definition fingerprints for rug pulls, cross-server shadowing, enterprise settings parity, a normalization pre-pass, OSV lookups, deeper skill bundles, and a public benchmark harness.
+- docs/research/openfga-agent-authorization.md answers #106 with a design note; nothing ships in the scanner.
+- README FAQ (#97 by meichuanyi).
+
+### Changed
+
+- vitest 4 and the test batches run through a glob-free Node runner so they work under cmd.exe. Node 20 is now the minimum supported runtime; vitest 4 does not start on Node 18, which reached end of life in April 2025.
+- smol-toml is a new runtime dependency for Codex configs.
+
+### Validation
+
+- npm run typecheck, npm run lint, npm run build, npm run corpus:gate
+- npm test: 2403 tests across 82 files, on macOS locally and on Linux (Node 18, 20, 22) and Windows (Node 22) in CI
+- 268 rule ids across 14 modules
+
+### Upgrade Notes
+
+- Rule ids added in 1.6.0 mean a config that scored A on 1.5.0 can score lower; every new finding names the construct and the fix. Guard patterns, prohibitions, and mentions are info and never deduct.
+- Action consumers on @v1.5.0 should move to @v1.6.0. The floating v1 tag points at this release.
+- The dist/ bundle must be committed before tagging; the release workflow refuses to publish when it is out of sync.
+
 ## [1.5.0] - 2026-09-10
 
 This release fixes the GitHub Action startup failure shipped in 1.4.0, closes the `.mcp.json` discovery gap, and adds the evidence-pack, policy-pack, and supply-chain surfaces that landed on `main` between March and September 2026.

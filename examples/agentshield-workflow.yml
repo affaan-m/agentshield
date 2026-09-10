@@ -41,7 +41,7 @@ jobs:
 
       - name: Run AgentShield
         id: agentshield
-        uses: affaan-m/agentshield@v1.5.0
+        uses: affaan-m/agentshield@v1.6.0
         with:
           min-severity: medium
           fail-on-findings: true
