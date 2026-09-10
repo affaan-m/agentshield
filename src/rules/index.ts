@@ -9,6 +9,8 @@ import { packageManagerRules } from "./package-manager.js";
 import { agentRules } from "./agents.js";
 import { skillRules } from "./skills.js";
 import { promptDefenseRules } from "./prompt-defense.js";
+import { codexRules } from "./codex.js";
+import { hermesRules } from "./hermes.js";
 
 /**
  * Returns all built-in security rules.
@@ -26,5 +28,7 @@ export function getBuiltinRules(): ReadonlyArray<Rule> {
     ...skillRules,
     ...agentRules,
     ...promptDefenseRules,
+    ...codexRules,
+    ...hermesRules,
   ];
 }
