@@ -400,6 +400,22 @@ describe("permissionRules", () => {
       expect(bySeverity("Bash(sudo mv *)")).toBe("critical");
     });
 
+    it("does not flag an exact bash/sh script allow with no wildcard (issue #159)", () => {
+      for (const entry of ["Bash(bash scripts/check-weight.sh)", "Bash(sh ./scripts/run.sh)"]) {
+        const file = makeSettings(JSON.stringify({ permissions: { allow: [entry] } }));
+        const findings = runAllPermRules(file).filter((f) => f.id.startsWith("permissions-permissive-"));
+        expect(findings).toHaveLength(0);
+      }
+    });
+
+    it("still flags wildcard and flag forms of shell interpreters (issue #159)", () => {
+      for (const entry of ["Bash(bash *)", "Bash(bash -c *)", "Bash(sh:*)", "Bash(bash)", "Bash(bash -c 'id')", "Bash(bash -s)", "Bash(bash scripts/*.sh)", "Bash(bash a.sh b.sh)"]) {
+        const file = makeSettings(JSON.stringify({ permissions: { allow: [entry] } }));
+        const findings = runAllPermRules(file).filter((f) => f.id.startsWith("permissions-permissive-"));
+        expect(findings.map((f) => f.severity), entry).toEqual(["critical"]);
+      }
+    });
+
     it("still allows a scoped interpreter script spelled with a path", () => {
       const file = makeSettings(JSON.stringify({
         permissions: { allow: ["Bash(/usr/local/bin/node scripts/build.js)"] },

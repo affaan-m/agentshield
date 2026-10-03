@@ -303,6 +303,21 @@ function isScopedInterpreterScriptAllowEntry(entry: string): boolean {
   );
 }
 
+/**
+ * Exact `Bash(bash <script>)` / `Bash(sh <script>)` with no wildcard, no flags and
+ * a single script path only runs that one script, so it is not equivalent to Bash(*).
+ * The script's own contents still deserve review.
+ */
+function isExactShellScriptAllowEntry(entry: string): boolean {
+  const parsed = parsePermissionEntry(entry);
+  if (!parsed || parsed.tool !== "Bash" || parsed.wildcard) return false;
+  const command = parsed.prefix.trim();
+  const match = command.match(/^(?:bash|sh)\s+(?:"([^"\s]+)"|'([^'\s]+)'|([^\s"']+))$/);
+  const scriptTarget = match?.[1] ?? match?.[2] ?? match?.[3];
+  if (!scriptTarget || scriptTarget.startsWith("-")) return false;
+  return !hasDynamicShellBehavior(command);
+}
+
 function isReadOnlyDockerAllowEntry(entry: string): boolean {
   const command = getBashPermissionCommand(entry);
   if (!command) return false;
@@ -384,6 +399,7 @@ export const permissionRules: ReadonlyArray<Rule> = [
         if (
           isScopedNetworkAllowEntry(entry) ||
           isScopedInterpreterScriptAllowEntry(entry) ||
+          isExactShellScriptAllowEntry(entry) ||
           isReadOnlyDockerAllowEntry(entry)
         ) {
           continue;

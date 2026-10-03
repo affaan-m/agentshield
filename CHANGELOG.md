@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+
+### False positives
+
+- The hook netcat and sudo rules match `nc` and `sudo` only where the shell executes a command: line start, after `|`, `;`, `&`, `&&`, `||`, `(`, `{`, `$(`, a backtick, shell keywords (`then`, `do`, `else`, `elif`, `if`, `!`) and wrappers (`env`, `exec`, `nohup`, `command`, `time`, `nice`, `stdbuf`, `timeout`, `xargs`, `sudo`), with an optional path prefix (`/usr/bin/nc`). Text inside quotes is ignored unless the shell runs it (`bash|sh|zsh -c`, `eval`, `ssh <host>`). `jq -nc`, `hooks/sudo-guard.sh`, `sed 's/sudo //'` and `echo "a | nc b"` no longer flag (#157, #158). Leading assignments (`TOKEN=x nc host`), ssh options that take a value (`ssh -p 22 host '...'`), `timeout -s/-k` values and backtick substitutions inside double quotes keep matching; `echo bash -c "..."` and escaped quotes inside an executed span (`bash -c "echo \\"a | nc b\\""`) do not.
+- An exact `Bash(bash <script>)` or `Bash(sh <script>)` allow with no wildcard, flag, or extra arguments is no longer reported as a shell-interpreter grant, matching the existing exact-script handling for node and python. Wildcard forms still flag (#159).
+
 ## [1.6.0] - 2026-09-10
 
 1.5.0 shipped six months of accumulated work, but it did not touch the thing people actually run into first: the scanner only understood the Claude Code layout of early 2026, it penalized the defenses it recommended, and it missed the broadest grants while flagging the narrow ones. 1.6.0 is the release that addresses that. It closes every issue that was open on the tracker, lands or supersedes every open pull request, moves the scanner to the September 2026 shape of Claude Code, Codex CLI, Hermes, Cursor, Gemini CLI, Copilot, OpenCode, Cline, and Roo, and adds a benchmark against the comparable scanners so the gaps are written down rather than guessed at.
