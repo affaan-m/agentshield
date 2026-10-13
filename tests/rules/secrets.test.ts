@@ -571,6 +571,39 @@ describe("secretRules", () => {
     });
   });
 
+  describe("Azure storage account keys", () => {
+    // 64 bytes in base64: 86 characters plus "==". Built programmatically to avoid
+    // GitHub push protection.
+    const key = "Zq3vT8xLm2Pa".repeat(8).slice(0, 86) + "==";
+
+    function azureFindings(content: string, type: ConfigFile["type"] = "settings-json") {
+      return runAllSecretRules(makeFile(content, type)).filter((f) => f.id.startsWith("secrets-azure-key-"));
+    }
+
+    it("detects a key in an Azure connection string", () => {
+      const findings = azureFindings(`DefaultEndpointsProtocol=https;AccountName=demo;AccountKey=${key};`);
+      expect(findings).toHaveLength(1);
+      expect(findings[0].severity).toBe("critical");
+    });
+
+    it("detects a key assigned to an environment variable or a JSON field", () => {
+      expect(azureFindings(`AZURE_STORAGE_KEY=${key}`)).toHaveLength(1);
+      expect(azureFindings(JSON.stringify({ storageKey: key }))).toHaveLength(1);
+    });
+
+    it("does not flag sha512 integrity hashes in package-lock.json (#152)", () => {
+      const lockfile = JSON.stringify({
+        lockfileVersion: 3,
+        packages: { "node_modules/a": { version: "1.0.0", integrity: `sha512-${key}` } },
+      });
+      expect(azureFindings(lockfile, "package-manager-config")).toHaveLength(0);
+    });
+
+    it("does not flag the tail of a longer base64 string", () => {
+      expect(azureFindings(`"blob": "QUJD${key}"`)).toHaveLength(0);
+    });
+  });
+
   describe("private key material", () => {
     it("detects RSA private key header", () => {
       const file = makeFile("-----BEGIN RSA PRIVATE KEY-----\nMIIBogIBAAJBALRi...\n-----END RSA PRIVATE KEY-----");

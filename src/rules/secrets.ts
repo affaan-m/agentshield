@@ -121,7 +121,11 @@ const SECRET_PATTERNS: ReadonlyArray<{
   },
   {
     name: "azure-key",
-    pattern: /[a-zA-Z0-9/+]{86}==/g,
+    // 64 random bytes in base64. A sha512 SRI hash, such as the "integrity" values of
+    // package-lock.json, has exactly the same shape, so a value right after "sha512-" is
+    // skipped (#152). The key must also start at a base64 boundary rather than inside a
+    // longer base64 string.
+    pattern: /(?<!sha512-)(?<![A-Za-z0-9+/])[A-Za-z0-9+/]{86}==/g,
     description: "Azure storage account key",
   },
   {
