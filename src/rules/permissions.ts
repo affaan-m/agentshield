@@ -2,6 +2,7 @@ import { statSync } from "node:fs";
 import { resolve, join } from "node:path";
 import { homedir } from "node:os";
 import type { ConfigFile, Finding, Rule } from "../types.js";
+import { isNonClaudeSettingsPath } from "../source-context.js";
 import {
   findCoveringEntries,
   normalizePermissionEntry,
@@ -907,6 +908,9 @@ export const permissionRules: ReadonlyArray<Rule> = [
     category: "permissions",
     check(file: ConfigFile): ReadonlyArray<Finding> {
       if (file.type !== "settings-json") return [];
+      // Editor files such as .vscode/settings.json share the type but are never read by
+      // Claude Code, so a missing permissions block means nothing there (#162).
+      if (isNonClaudeSettingsPath(file.path)) return [];
 
       try {
         const config = JSON.parse(file.content);

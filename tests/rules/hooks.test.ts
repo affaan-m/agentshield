@@ -380,6 +380,18 @@ describe("hookRules", () => {
       expect(findings.some((f) => f.id === "hooks-no-pretooluse")).toBe(false);
     });
 
+    it("does not flag editor settings that Claude Code never reads (#162)", () => {
+      for (const path of [".vscode/settings.json", ".vscode/tasks.json", ".zed/settings.json"]) {
+        const file: ConfigFile = {
+          path,
+          type: "settings-json",
+          content: JSON.stringify({ "editor.tabSize": 2 }),
+        };
+        const findings = runAllHookRules(file);
+        expect(findings.some((f) => f.id === "hooks-no-pretooluse")).toBe(false);
+      }
+    });
+
     it("does not flag when companion hooks/hooks.json defines PreToolUse hooks", () => {
       const settingsFile: ConfigFile = {
         path: ".claude/settings.local.json",

@@ -31,6 +31,12 @@ const STRONG_DOCUMENTATION_EXAMPLE_PATH_PATTERN = new RegExp(
   "i"
 );
 
+/**
+ * Editor and other-harness directories. A settings.json or tasks.json under one of them is
+ * not a Claude Code settings file: Claude Code never reads its permissions or hooks (#162).
+ */
+const NON_CLAUDE_SETTINGS_DIRS = [".vscode", ".zed", ".cursor", ".gemini"] as const;
+
 const CLAUDE_PLUGIN_CACHE_PATH_PATTERN = /(^|\/)\.claude\/plugins\/cache(\/|$)/i;
 const CLAUDE_SCAN_ROOT_PLUGIN_CACHE_PATH_PATTERN = /^plugins\/cache(\/|$)/i;
 
@@ -46,6 +52,13 @@ export function isExampleLikePath(path: string): boolean {
 export function isStrongDocumentationExamplePath(path: string): boolean {
   return (
     findAllMatches(path.replace(/\\/g, "/"), STRONG_DOCUMENTATION_EXAMPLE_PATH_PATTERN).length > 0
+  );
+}
+
+export function isNonClaudeSettingsPath(path: string): boolean {
+  const normalizedPath = path.replace(/\\/g, "/");
+  return NON_CLAUDE_SETTINGS_DIRS.some(
+    (dir) => normalizedPath.startsWith(`${dir}/`) || normalizedPath.includes(`/${dir}/`)
   );
 }
 

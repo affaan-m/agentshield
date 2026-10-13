@@ -844,6 +844,28 @@ describe("permissionRules", () => {
       expect(findings.some((f) => f.id === "permissions-no-block")).toBe(false);
     });
 
+    it("does not flag editor settings that Claude Code never reads (#162)", () => {
+      for (const path of [".vscode/settings.json", ".vscode/tasks.json", ".zed/settings.json"]) {
+        const file: ConfigFile = {
+          path,
+          type: "settings-json",
+          content: JSON.stringify({ "editor.tabSize": 2 }),
+        };
+        const findings = runAllPermRules(file);
+        expect(findings.some((f) => f.id === "permissions-no-block")).toBe(false);
+      }
+    });
+
+    it("still flags .claude/settings.json without a permissions section", () => {
+      const file: ConfigFile = {
+        path: ".claude/settings.json",
+        type: "settings-json",
+        content: JSON.stringify({ env: { DEBUG: "1" } }),
+      };
+      const findings = runAllPermRules(file);
+      expect(findings.some((f) => f.id === "permissions-no-block")).toBe(true);
+    });
+
     it("does not flag hook manifest json under hooks/ as missing permissions block", () => {
       const file: ConfigFile = {
         path: "hooks/hooks.json",

@@ -1,4 +1,5 @@
 import type { ConfigFile, Finding, Rule } from "../types.js";
+import { isNonClaudeSettingsPath } from "../source-context.js";
 import { hasDenySignalInBlock, isGuardPatternContext } from "./guard-context.js";
 
 /**
@@ -1018,6 +1019,8 @@ export const hookRules: ReadonlyArray<Rule> = [
     check(file: ConfigFile, allFiles?: ReadonlyArray<ConfigFile>): ReadonlyArray<Finding> {
       if (file.type !== "settings-json") return [];
       if (isPluginHookManifest(file)) return [];
+      // Claude Code never reads hooks from editor files such as .vscode/settings.json (#162).
+      if (isNonClaudeSettingsPath(file.path)) return [];
 
       try {
         const config = JSON.parse(file.content);

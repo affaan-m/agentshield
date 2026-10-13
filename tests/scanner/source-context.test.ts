@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   isExampleLikePath,
+  isNonClaudeSettingsPath,
   isStrongDocumentationExamplePath,
 } from "../../src/source-context.js";
 
@@ -20,4 +21,22 @@ describe("source context", () => {
   ])("recognizes strong documentation/example path %s", (path) => {
     expect(isStrongDocumentationExamplePath(path)).toBe(true);
   });
+
+  it.each([
+    ".vscode/settings.json",
+    ".vscode/tasks.json",
+    "packages/web/.vscode/settings.json",
+    ".zed\\settings.json",
+    ".cursor/settings.json",
+    ".gemini/settings.json",
+  ])("treats %s as an editor or other-harness settings file", (path) => {
+    expect(isNonClaudeSettingsPath(path)).toBe(true);
+  });
+
+  it.each(["settings.json", ".claude/settings.json", ".claude/settings.local.json", "vscode/settings.json"])(
+    "keeps %s as a possible Claude Code settings file",
+    (path) => {
+      expect(isNonClaudeSettingsPath(path)).toBe(false);
+    },
+  );
 });

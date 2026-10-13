@@ -6,6 +6,7 @@ import {
   parseTomlSafe,
   parseYamlSafe,
 } from "../scanner/parsers.js";
+import { isNonClaudeSettingsPath } from "../source-context.js";
 
 /**
  * Recognized defenses: protective configuration the scanner found while
@@ -112,7 +113,7 @@ function isHermesConfig(file: ConfigFile, name: string): boolean {
 }
 
 function isClaudeSettings(path: string, name: string): boolean {
-  if (underDir(path, ".gemini") || underDir(path, ".cursor") || underDir(path, ".zed") || underDir(path, ".vscode")) {
+  if (isNonClaudeSettingsPath(path)) {
     return false;
   }
   if (name === "settings.json" || name === "settings.local.json" || name === "managed-settings.json") {
