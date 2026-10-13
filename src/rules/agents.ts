@@ -1,4 +1,5 @@
 import type { ConfigFile, Finding, Rule } from "../types.js";
+import { clauseBefore, hasProhibitiveCue } from "./prohibition-context.js";
 
 function findLineNumber(content: string, matchIndex: number): number {
   return content.substring(0, matchIndex).split("\n").length;
@@ -2194,6 +2195,24 @@ export const agentRules: ReadonlyArray<Rule> = [
       for (const { pattern, desc } of destructiveToolPatterns) {
         const matches = findAllMatches(file.content, pattern);
         for (const match of matches) {
+          const idx = match.index ?? 0;
+          // "Never run git push --force" forbids the operation. Only the clause that leads
+          // to the match counts, so a negation in a previous sentence or clause does not
+          // hide an instruction that follows it (#163).
+          if (hasProhibitiveCue(clauseBefore(file.content, idx))) {
+            findings.push({
+              id: `agents-destructive-tool-prohibited-${idx}`,
+              severity: "info",
+              category: "injection",
+              title: "Prohibition of a destructive operation (good practice)",
+              description: `Found "${match[0].substring(0, 80)}" in a prohibitive context. The instruction forbids this operation rather than requesting it.`,
+              file: file.path,
+              line: findLineNumber(file.content, idx),
+              evidence: match[0].substring(0, 100),
+            });
+            continue;
+          }
+
           findings.push({
             id: `agents-destructive-tool-${match.index}`,
             severity: "high",

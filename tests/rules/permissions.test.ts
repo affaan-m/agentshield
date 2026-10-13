@@ -247,6 +247,28 @@ describe("permissionRules", () => {
       expect(noVerifyFindings[0].severity).toBe("critical");
     });
 
+    it.each([
+      "- Ne jamais contourner les hooks git : pas de `--no-verify`.",
+      "- Nunca uses `--no-verify` al hacer commit.",
+      "- Niemals `--no-verify` verwenden.",
+    ])("downgrades --no-verify after a non-English prohibition: %s (#163)", (content) => {
+      const file: ConfigFile = { path: "CLAUDE.md", type: "claude-md", content };
+      const noVerifyFindings = runAllPermRules(file).filter((f) => f.evidence === "--no-verify");
+      expect(noVerifyFindings).toHaveLength(1);
+      expect(noVerifyFindings[0].severity).toBe("info");
+    });
+
+    it.each([
+      "Don't hesitate to use --no-verify when CI is slow.",
+      "N'hésitez pas à utiliser --no-verify quand la CI est lente.",
+      "git commit --no-edit --no-verify",
+    ])("keeps --no-verify CRITICAL when the wording asks for it: %s", (content) => {
+      const noVerifyFindings = runAllPermRules(makeSettings(content)).filter(
+        (f) => f.evidence === "--no-verify"
+      );
+      expect(noVerifyFindings[0].severity).toBe("critical");
+    });
+
     it("downgrades --no-verify inside a permissions.deny rule (#102)", () => {
       const file = makeSettings(JSON.stringify({
         permissions: {

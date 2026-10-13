@@ -7,6 +7,7 @@ import {
   normalizePermissionEntry,
   parsePermissionEntry,
 } from "./permission-entries.js";
+import { hasProhibitiveCue } from "./prohibition-context.js";
 
 function isHookManifestConfig(file: ConfigFile, config: unknown): boolean {
   if (!/(^|[\\/])hooks[\\/][^\\/]+\.json$/i.test(file.path)) return false;
@@ -564,20 +565,6 @@ export const permissionRules: ReadonlyArray<Rule> = [
       // list — as CRITICAL (see #102).
       const prohibitiveSpans = prohibitivePermissionRuleSpans(file);
 
-      // Negation words that indicate the pattern is being PROHIBITED, not used
-      const negationPatterns = [
-        /\bnever\b/i,
-        /\bdon'?t\b/i,
-        /\bdo\s+not\b/i,
-        /\bnot\b/i,
-        /\bavoid\b/i,
-        /\bprohibit/i,
-        /\bforbid/i,
-        /\bdisable/i,
-        /\bban/i,
-        /\bblock/i,
-      ];
-
       // Indicators that the flag is being MENTIONED (printed to the user, in a
       // comment, or in help/guidance text) rather than passed to an executed
       // command. A hook that prints "to bypass these checks, use: git commit
@@ -622,11 +609,11 @@ export const permissionRules: ReadonlyArray<Rule> = [
             continue;
           }
 
-          // Check surrounding context (100 chars before) for negation
+          // Check surrounding context (100 chars before) for prohibitive wording
           const contextStart = Math.max(0, idx - 100);
           const context = file.content.substring(contextStart, idx).toLowerCase();
 
-          const isNegated = negationPatterns.some((neg) => neg.test(context));
+          const isNegated = hasProhibitiveCue(context);
 
           if (isNegated) {
             // This is a prohibition, not a usage — skip or downgrade to info

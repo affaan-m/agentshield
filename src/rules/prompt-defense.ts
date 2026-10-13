@@ -127,6 +127,59 @@ const DEFENSE_CHECKS: ReadonlyArray<DefenseCheck> = [
   },
 ];
 
+/**
+ * The defense patterns above only recognize English wording. A prompt written in
+ * another language can state every defense and still match none of them, so its
+ * missing defenses are reported as unverified, at info severity (#163).
+ *
+ * The language check needs positive evidence: enough function words of another
+ * language, outnumbering the English ones. A terse English file with few function
+ * words keeps the regular severities. Words shared with English (a, in, on, as,
+ * no, so, per, mit...) are left out of both lists.
+ */
+const ENGLISH_FUNCTION_WORDS: ReadonlySet<string> = new Set([
+  "the", "and", "to", "of", "is", "are", "for", "with", "that", "this", "be", "not",
+  "it", "you", "from", "by", "if", "when", "your", "should", "must", "never", "does",
+  "any", "can", "have", "has", "which", "they", "their", "these", "those", "only",
+  "into", "than", "then", "what", "would", "could", "each", "been", "being", "were",
+]);
+
+const OTHER_LANGUAGE_FUNCTION_WORDS: ReadonlySet<string> = new Set([
+  // French
+  "le", "la", "les", "de", "des", "du", "et", "est", "une", "un", "que", "qui", "dans",
+  "avec", "ce", "ces", "au", "aux", "sur", "pas", "ne", "sont", "leur", "à",
+  // Spanish and Portuguese
+  "el", "los", "las", "del", "es", "para", "una", "por", "con", "lo", "su", "sus",
+  "não", "uma", "dos", "das", "é", "ao", "pela", "pelo",
+  // Italian
+  "il", "gli", "della", "che", "è", "sono", "nel", "alla",
+  // German
+  "der", "und", "ist", "nicht", "für", "ein", "eine", "zu", "dem", "auf", "sich",
+  "wird", "werden",
+]);
+
+const MIN_WORDS_FOR_LANGUAGE_CHECK = 40;
+const MIN_OTHER_LANGUAGE_FUNCTION_WORDS = 8;
+
+/** Prose of a Markdown prompt, without frontmatter, code, link targets, or URLs. */
+function proseOf(content: string): string {
+  return content
+    .replace(/^---\r?\n[\s\S]*?\r?\n---(?:\r?\n|$)/, " ")
+    .replace(/(```|~~~)[\s\S]*?\1/g, " ")
+    .replace(/`[^`\n]*`/g, " ")
+    .replace(/\]\([^)]*\)/g, "] ")
+    .replace(/https?:\/\/\S+/g, " ");
+}
+
+function isMostlyNonEnglishProse(content: string): boolean {
+  const words = [...proseOf(content).matchAll(/\p{L}+/gu)].map((match) => match[0].toLowerCase());
+  if (words.length < MIN_WORDS_FOR_LANGUAGE_CHECK) return false;
+
+  const english = words.filter((word) => ENGLISH_FUNCTION_WORDS.has(word)).length;
+  const other = words.filter((word) => OTHER_LANGUAGE_FUNCTION_WORDS.has(word)).length;
+  return other >= MIN_OTHER_LANGUAGE_FUNCTION_WORDS && other >= 2 * english;
+}
+
 function normalizePath(filePath: string): string {
   return filePath.replace(/\\/g, "/").toLowerCase();
 }
@@ -155,11 +208,25 @@ export const promptDefenseRules: ReadonlyArray<Rule> = [
       if (!content) return [];
 
       const findings: Finding[] = [];
+      const nonEnglish = isMostlyNonEnglishProse(content);
 
       for (const defense of DEFENSE_CHECKS) {
         if (defense.pattern.test(content)) continue;
 
         const owaspNote = defense.owaspRef ? ` (OWASP LLM Top 10: ${defense.owaspRef})` : "";
+        if (nonEnglish) {
+          findings.push({
+            id: `prompt-defense-missing-${defense.id}-${file.path}`,
+            severity: "info",
+            category: "injection",
+            title: `Prompt defense not verified: ${defense.name}`,
+            description: `${defense.description}${owaspNote} This check only recognizes English wording and this file is written in another language, so verify this defense manually.`,
+            file: file.path,
+            evidence: `Unverified ${defense.id} defense in ${file.path} (non-English instructions)`,
+          });
+          continue;
+        }
+
         findings.push({
           id: `prompt-defense-missing-${defense.id}-${file.path}`,
           severity: defense.severity,
