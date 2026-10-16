@@ -60,12 +60,14 @@ describe("clauseBefore", () => {
     ["condition", "If approval is not available run git push --force"],
     ["buried negation", "Approval is not needed to run git push --force"],
     ["new list item", "- Never run tests\n- git push --force"],
+    ["wrapped line", "Never run tests\ngit push --force"],
+    ["French restriction", "Tu n'as qu'à lancer git push --force"],
+    ["no review needed", "No review needed: git push --force"],
   ])("does not read a prohibition that does not govern the match: %s", (_label, content) => {
     expect(isProhibitedAt(content, content.indexOf("git push"))).toBe(false);
   });
 
   it.each([
-    "Never run\ngit push --force",
     "You must never run git push --force",
     "Don't forget to never run git push --force",
     "Don't hesitate to ask for help, but never run git push --force",

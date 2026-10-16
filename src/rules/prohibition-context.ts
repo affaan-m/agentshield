@@ -6,9 +6,9 @@
  * can report the match as an informational good practice instead of a risk.
  *
  * A prohibition only counts when it governs the match:
- * - it sits in the same clause: a sentence end, a comma, a coordinating word
- *   ("and", "then", "et", "puis"...) or a new Markdown block starts a new
- *   clause, so "Avoid review and run git push --force" is not a prohibition;
+ * - it sits in the same clause: a sentence end, a comma, a line break, or a
+ *   coordinating word ("and", "then", "et", "puis"...) starts a new clause,
+ *   so "Avoid review and run git push --force" is not a prohibition;
  * - it opens that clause, within its first few words, so "Approval is not
  *   needed to run" or a negation buried in a condition does not count;
  * - the clause is not a condition: "If approval is not available run" asks
@@ -51,9 +51,8 @@ const PROHIBITIVE_CUES: ReadonlyArray<RegExp> = [
       "ban(?:s|ned|ning)?|block(?:s|ed|ing|list)?",
     ].join("|")
   ),
-  // French
-  wordPattern("jamais|ne|pas|aucun(?:e|s|es)?|interdi\\p{L}*|proscri\\p{L}*"),
-  new RegExp(`${WORD_START}n['’](?=\\p{L})`, "giu"),
+  // French. "ne" alone is left out: "tu n'as qu'à lancer" or "ne ... que" asks for the action.
+  wordPattern("jamais|pas|aucun(?:e|s|es)?|interdi\\p{L}*|proscri\\p{L}*"),
   // Spanish, Portuguese, and Italian, plus French "éviter"
   wordPattern(
     "nunca|jamás|não|ning[uú]n[ao]?s?|proh?[ií]b\\p{L}*|vietat\\p{L}*|[ée]vit\\p{L}*|mai|non"
@@ -64,7 +63,7 @@ const PROHIBITIVE_CUES: ReadonlyArray<RegExp> = [
 
 const ENCOURAGING_PHRASES: ReadonlyArray<RegExp> = [
   wordPattern(
-    "(?:do\\s+not|don'?t|never)\\s+(?:hesitate|forget|wait|bother|ask|worry)\\p{L}*|never\\s+mind|no\\s+(?:need|problem|worries)"
+    "(?:do\\s+not|don'?t|never)\\s+(?:hesitate|forget|wait|bother|ask|worry)\\p{L}*|never\\s+mind|no\\s+(?:need|problem|worries)|no\\s+(?:\\p{L}+\\s+){1,2}(?:needed|required|necessary)"
   ),
   // French: "n'hésite pas", "n'oubliez pas", "ne demande pas", "pas besoin de"...
   new RegExp(`${WORD_START}n['’](?:h[ée]sit|oubli|attend)\\p{L}*(?:\\s+pas)?${WORD_END}`, "giu"),
@@ -91,15 +90,14 @@ const CLAUSE_CONNECTORS = wordPattern(
   ].join("|")
 );
 
-/** Sentence ends, semicolons, and commas end a clause. A period inside ".claude" does not. */
-const PUNCTUATION_BREAK = /[.!?](?=\s|$)|[;,]/g;
-
 /**
- * A line break ends a clause unless it is a soft wrap inside a Markdown
- * paragraph: the next line continues in lowercase or with inline code, and is
- * not a list item, heading, quote, table row, or fence.
+ * Sentence ends, semicolons, commas, and line breaks end a clause. A period
+ * inside ".claude" does not. A line break always counts, even a soft wrap in
+ * a Markdown paragraph: "Never run tests" followed by a command on the next
+ * line must not hide that command, so a wrapped prohibition keeps the
+ * original severity.
  */
-const HARD_LINE_BREAK = /\r?\n(?![ \t]*[\p{Ll}`'"(])/gu;
+const CLAUSE_BREAK = /[.!?](?=\s|$)|[;,\n]/g;
 
 /** The leading words of a clause that may hold its prohibition. */
 const MAX_WORDS_BEFORE_CUE = 4;
@@ -112,14 +110,10 @@ const LIST_MARKER = /^[\s>*+\-#|]*(?:\d+[.)]\s*)?/;
  * contain the negation.
  */
 export function clauseBefore(content: string, index: number, maxChars = 120): string {
-  const start = Math.max(0, index - maxChars);
-  const window = content.slice(start, index);
-  // The match itself stays visible, so a line break right before it can be read as a soft wrap.
-  const withMatch = content.slice(start, index + 1);
-  const breaks = [PUNCTUATION_BREAK, HARD_LINE_BREAK, CLAUSE_CONNECTORS]
-    .flatMap((pattern) => findAllMatches(withMatch, pattern))
-    .map((match) => (match.index ?? 0) + match[0].length)
-    .filter((end) => end <= window.length);
+  const window = content.slice(Math.max(0, index - maxChars), index);
+  const breaks = [CLAUSE_BREAK, CLAUSE_CONNECTORS]
+    .flatMap((pattern) => findAllMatches(window, pattern))
+    .map((match) => (match.index ?? 0) + match[0].length);
   return window.slice(breaks.length === 0 ? 0 : Math.max(...breaks));
 }
 
