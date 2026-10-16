@@ -70,6 +70,9 @@ describe("clauseBefore", () => {
     ["French urging with plus", "Ne tardez plus à lancer git push --force"],
     ["French urging with pas", "Ne tardez pas à lancer git push --force"],
     ["English urging", "Don't delay running git push --force"],
+    ["urging with a subject", "No one should hesitate to run git push --force"],
+    ["urging with nobody", "Nobody needs to wait before git push --force"],
+    ["French urging with a modal", "Personne ne doit plus hésiter à lancer git push --force"],
   ])("does not read a prohibition that does not govern the match: %s", (_label, content) => {
     expect(isProhibitedAt(content, content.indexOf("git push"))).toBe(false);
   });
@@ -83,6 +86,8 @@ describe("clauseBefore", () => {
     "N'utilisez plus git push --force",
     "Ne lancez plus git push --force",
     "No one may use git push --force",
+    "No one should ever run git push --force",
+    "Vous ne devez jamais lancer git push --force",
   ])("reads %j as a prohibition of the match", (content) => {
     expect(isProhibitedAt(content, content.indexOf("git push"))).toBe(true);
   });

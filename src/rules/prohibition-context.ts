@@ -65,11 +65,14 @@ const PROHIBITIVE_CUES: ReadonlyArray<RegExp> = [
 
 const ENCOURAGING_PHRASES: ReadonlyArray<RegExp> = [
   wordPattern(
-    "(?:do\\s+not|don'?t|never)\\s+(?:hesitate|forget|wait|delay|hold\\s+off|bother|ask|worry)\\p{L}*|never\\s+mind|no\\s+(?:need|problem|worries)|no\\s+one\\s+(?:needs?|has|have)\\s+to|no\\s+(?:\\p{L}+\\s+){1,2}(?:needed|required|necessary)"
+    // A negation that governs an urging verb, up to two words away: "don't hesitate to",
+    // "no one should hesitate to", "nobody needs to wait before".
+    "(?:do\\s+not|don'?t|never|no\\s+one|nobody)\\s+(?:\\p{L}+\\s+){0,2}(?:hesitate|forget|wait|delay|hold\\s+off|bother|ask|worry)\\p{L}*|never\\s+mind|no\\s+(?:need|problem|worries)|no\\s+one\\s+(?:needs?|has|have)\\s+to|no\\s+(?:\\p{L}+\\s+){1,2}(?:needed|required|necessary)"
   ),
-  // French: "n'hésite pas", "n'oubliez pas", "ne tardez plus", "ne vous inquiétez pas"...
+  // French: "n'hésite pas", "n'oubliez pas", "ne tardez plus", "ne vous inquiétez pas",
+  // "personne ne doit plus hésiter"...
   wordPattern(
-    "(?:ne\\s+|n['’])(?:te\\s+|t['’]|vous\\s+)?(?:h[ée]sit|oubli|attend|tard|tra[iî]n|perd|demand|inqui[eèé]t|g[eêé]n)\\p{L}*(?:\\s+(?:pas|plus))?"
+    "(?:ne\\s+|n['’])(?:\\p{L}+\\s+)?(?:(?:pas|plus)\\s+)?(?:te\\s+|t['’]|vous\\s+)?(?:h[ée]sit|oubli|attend|tard|tra[iî]n|perd|demand|inqui[eèé]t|g[eêé]n)\\p{L}*(?:\\s+(?:pas|plus))?"
   ),
   wordPattern("(?:il\\s+)?n['’]y\\s+a\\s+pas\\s+de\\s+(?:probl[eè]me|souci)|pas\\s+(?:besoin|de\\s+(?:probl[eè]me|souci))"),
   // Spanish, Portuguese, Italian, German
