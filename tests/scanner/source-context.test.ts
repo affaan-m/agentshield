@@ -31,6 +31,7 @@ describe("source context", () => {
     ".gemini/settings.json",
     ".VSCode/settings.json",
     "packages/web/.Zed/tasks.json",
+    ".gemini/extensions/review/settings.json",
   ])("treats %s as an editor or other-harness settings file", (path) => {
     expect(isNonClaudeSettingsPath(path)).toBe(true);
   });
@@ -41,7 +42,6 @@ describe("source context", () => {
     ".claude/settings.local.json",
     "vscode/settings.json",
     ".vscode/app/.claude/settings.json",
-    ".zed/project/settings.json",
   ])(
     "keeps %s as a possible Claude Code settings file",
     (path) => {

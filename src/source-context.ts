@@ -35,7 +35,7 @@ const STRONG_DOCUMENTATION_EXAMPLE_PATH_PATTERN = new RegExp(
  * Editor and other-harness directories. A settings.json or tasks.json under one of them is
  * not a Claude Code settings file: Claude Code never reads its permissions or hooks (#162).
  */
-const NON_CLAUDE_SETTINGS_DIRS = [".vscode", ".zed", ".cursor", ".gemini"] as const;
+const NON_CLAUDE_SETTINGS_DIRS: ReadonlyArray<string> = [".vscode", ".zed", ".cursor", ".gemini"];
 
 const CLAUDE_PLUGIN_CACHE_PATH_PATTERN = /(^|\/)\.claude\/plugins\/cache(\/|$)/i;
 const CLAUDE_SCAN_ROOT_PLUGIN_CACHE_PATH_PATTERN = /^plugins\/cache(\/|$)/i;
@@ -56,14 +56,17 @@ export function isStrongDocumentationExamplePath(path: string): boolean {
 }
 
 /**
- * True when the file sits directly in an editor or other-harness directory. Only the owning
- * directory counts, so a Claude project nested under one (.vscode/app/.claude/settings.json)
- * keeps its settings checks. Case is ignored, as on case-insensitive file systems.
+ * True when the closest configuration directory above the file is an editor or other-harness
+ * one. A Claude project nested under it (.vscode/app/.claude/settings.json) keeps its settings
+ * checks, while .gemini/extensions/x/settings.json stays a Gemini file. Case is ignored, as on
+ * case-insensitive file systems.
  */
 export function isNonClaudeSettingsPath(path: string): boolean {
-  const segments = path.replace(/\\/g, "/").toLowerCase().split("/");
-  const owningDir = segments.length >= 2 ? segments[segments.length - 2] : "";
-  return NON_CLAUDE_SETTINGS_DIRS.some((dir) => owningDir === dir);
+  const dirs = path.replace(/\\/g, "/").toLowerCase().split("/").slice(0, -1);
+  const closest = [...dirs]
+    .reverse()
+    .find((dir) => dir === ".claude" || NON_CLAUDE_SETTINGS_DIRS.includes(dir));
+  return closest !== undefined && closest !== ".claude";
 }
 
 export function isPluginCachePath(path: string, scanRoot?: string): boolean {
