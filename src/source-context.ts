@@ -63,9 +63,11 @@ export function isStrongDocumentationExamplePath(path: string): boolean {
  */
 export function isNonClaudeSettingsPath(path: string): boolean {
   const dirs = path.replace(/\\/g, "/").toLowerCase().split("/").slice(0, -1);
-  const closest = [...dirs]
-    .reverse()
-    .find((dir) => dir === ".claude" || NON_CLAUDE_SETTINGS_DIRS.includes(dir));
+  // The last matching directory is the closest one to the file.
+  const closest = dirs.reduce<string | undefined>(
+    (found, dir) => (dir === ".claude" || NON_CLAUDE_SETTINGS_DIRS.includes(dir) ? dir : found),
+    undefined
+  );
   return closest !== undefined && closest !== ".claude";
 }
 
