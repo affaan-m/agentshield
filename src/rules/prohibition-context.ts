@@ -65,11 +65,12 @@ const PROHIBITIVE_CUES: ReadonlyArray<RegExp> = [
 
 const ENCOURAGING_PHRASES: ReadonlyArray<RegExp> = [
   wordPattern(
-    "(?:do\\s+not|don'?t|never)\\s+(?:hesitate|forget|wait|bother|ask|worry)\\p{L}*|never\\s+mind|no\\s+(?:need|problem|worries|one)|no\\s+(?:\\p{L}+\\s+){1,2}(?:needed|required|necessary)"
+    "(?:do\\s+not|don'?t|never)\\s+(?:hesitate|forget|wait|delay|hold\\s+off|bother|ask|worry)\\p{L}*|never\\s+mind|no\\s+(?:need|problem|worries)|no\\s+one\\s+(?:needs?|has|have)\\s+to|no\\s+(?:\\p{L}+\\s+){1,2}(?:needed|required|necessary)"
   ),
-  // French: "n'hésite pas", "n'oubliez pas", "ne demande pas", "pas besoin de"...
-  new RegExp(`${WORD_START}n['’](?:h[ée]sit|oubli|attend)\\p{L}*(?:\\s+pas)?${WORD_END}`, "giu"),
-  wordPattern("ne\\s+(?:demand|attend|t['’]inqui[eè]t|vous\\s+inqui[eé]t)\\p{L}*\\s+pas"),
+  // French: "n'hésite pas", "n'oubliez pas", "ne tardez plus", "ne vous inquiétez pas"...
+  wordPattern(
+    "(?:ne\\s+|n['’])(?:te\\s+|t['’]|vous\\s+)?(?:h[ée]sit|oubli|attend|tard|tra[iî]n|perd|demand|inqui[eèé]t|g[eêé]n)\\p{L}*(?:\\s+(?:pas|plus))?"
+  ),
   wordPattern("(?:il\\s+)?n['’]y\\s+a\\s+pas\\s+de\\s+(?:probl[eè]me|souci)|pas\\s+(?:besoin|de\\s+(?:probl[eè]me|souci))"),
   // Spanish, Portuguese, Italian, German
   wordPattern("no\\s+(?:dudes|olvides|esperes|hace\\s+falta|hay\\s+problema)|não\\s+(?:hesite|esqueça)"),
