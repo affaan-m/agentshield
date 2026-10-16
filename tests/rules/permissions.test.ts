@@ -251,7 +251,10 @@ describe("permissionRules", () => {
       "- Ne jamais contourner les hooks git : pas de `--no-verify`.",
       "- Nunca uses `--no-verify` al hacer commit.",
       "- Niemals `--no-verify` verwenden.",
-    ])("downgrades --no-verify after a non-English prohibition: %s (#163)", (content) => {
+      "- No uses `--no-verify` al hacer commit.",
+      "Don't hesitate to ask for help, but never use --no-verify.",
+      "Don't forget to never use --no-verify.",
+    ])("downgrades --no-verify after a prohibition: %s (#163)", (content) => {
       const file: ConfigFile = { path: "CLAUDE.md", type: "claude-md", content };
       const noVerifyFindings = runAllPermRules(file).filter((f) => f.evidence === "--no-verify");
       expect(noVerifyFindings).toHaveLength(1);
@@ -267,6 +270,17 @@ describe("permissionRules", () => {
         (f) => f.evidence === "--no-verify"
       );
       expect(noVerifyFindings[0].severity).toBe("critical");
+    });
+
+    it.each([
+      "Ne jamais utiliser --no-verify.\ngit commit --no-verify",
+      "Never use --no-verify.\ngit commit --no-verify",
+    ])("does not let a prohibition cover the next sentence: %j", (content) => {
+      const file: ConfigFile = { path: "CLAUDE.md", type: "claude-md", content };
+      const severities = runAllPermRules(file)
+        .filter((f) => f.evidence === "--no-verify")
+        .map((f) => f.severity);
+      expect(severities).toEqual(["info", "critical"]);
     });
 
     it("downgrades --no-verify inside a permissions.deny rule (#102)", () => {

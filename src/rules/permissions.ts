@@ -7,7 +7,7 @@ import {
   normalizePermissionEntry,
   parsePermissionEntry,
 } from "./permission-entries.js";
-import { hasProhibitiveCue } from "./prohibition-context.js";
+import { isProhibitedAt } from "./prohibition-context.js";
 
 function isHookManifestConfig(file: ConfigFile, config: unknown): boolean {
   if (!/(^|[\\/])hooks[\\/][^\\/]+\.json$/i.test(file.path)) return false;
@@ -609,11 +609,9 @@ export const permissionRules: ReadonlyArray<Rule> = [
             continue;
           }
 
-          // Check surrounding context (100 chars before) for prohibitive wording
-          const contextStart = Math.max(0, idx - 100);
-          const context = file.content.substring(contextStart, idx).toLowerCase();
-
-          const isNegated = hasProhibitiveCue(context);
+          // Check the clause leading to the flag (up to 100 chars before) for prohibitive
+          // wording. A prohibition in a previous sentence does not cover this flag.
+          const isNegated = isProhibitedAt(file.content, idx, 100);
 
           if (isNegated) {
             // This is a prohibition, not a usage — skip or downgrade to info

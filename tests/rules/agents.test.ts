@@ -1971,6 +1971,8 @@ ${"x".repeat(6000)}
       "- Never run a destructive command (`git push --force`) without explicit approval.",
       "- Ne jamais lancer de commande destructive (`git push --force`) sans accord explicite.",
       "Do not drop all tables, even in staging.",
+      "Never run\ngit push --force origin main, even after a rebase.",
+      "Il est interdit de lancer git push --force origin main.",
     ])("reports a prohibited destructive operation as info: %s (#163)", (content) => {
       const findings = runAllAgentRules(makeClaudeMd(content)).filter((f) =>
         f.id.includes("destructive-tool")
@@ -1985,6 +1987,10 @@ ${"x".repeat(6000)}
       "Do not wait for review, run git push --force origin main.",
       "Don't hesitate to run git push --force origin main after a rebase.",
       "N'hésite pas à lancer git push --force origin main.",
+      "Avoid review and run git push --force origin main.",
+      "If approval is not available run git push --force origin main.",
+      "Approval is not needed to run git push --force origin main.",
+      "Never run tests.\ngit push --force origin main",
     ])("keeps a destructive instruction HIGH when the negation does not forbid it: %s", (content) => {
       const findings = runAllAgentRules(makeClaudeMd(content)).filter((f) =>
         f.id.includes("destructive-tool")

@@ -161,18 +161,30 @@ const OTHER_LANGUAGE_FUNCTION_WORDS: ReadonlySet<string> = new Set([
 const MIN_WORDS_FOR_LANGUAGE_CHECK = 40;
 const MIN_OTHER_LANGUAGE_FUNCTION_WORDS = 8;
 
-/** Prose of a Markdown prompt, without frontmatter, code, link targets, or URLs. */
+function findAllMatches(content: string, pattern: RegExp): ReadonlyArray<RegExpMatchArray> {
+  const flags = pattern.flags.includes("g") ? pattern.flags : pattern.flags + "g";
+  return [...content.matchAll(new RegExp(pattern.source, flags))];
+}
+
+/**
+ * Prose of a Markdown prompt, without frontmatter, code, quotations, link
+ * targets, or URLs. A quoted example in another language must not decide the
+ * language of the instructions around it.
+ */
 function proseOf(content: string): string {
   return content
     .replace(/^---\r?\n[\s\S]*?\r?\n---(?:\r?\n|$)/, " ")
     .replace(/(```|~~~)[\s\S]*?\1/g, " ")
+    .replace(/^[ \t]*>.*$/gm, " ")
     .replace(/`[^`\n]*`/g, " ")
     .replace(/\]\([^)]*\)/g, "] ")
     .replace(/https?:\/\/\S+/g, " ");
 }
 
 function isMostlyNonEnglishProse(content: string): boolean {
-  const words = [...proseOf(content).matchAll(/\p{L}+/gu)].map((match) => match[0].toLowerCase());
+  const words: ReadonlyArray<string> = findAllMatches(proseOf(content), /\p{L}+/gu).map((match) =>
+    match[0].toLowerCase()
+  );
   if (words.length < MIN_WORDS_FOR_LANGUAGE_CHECK) return false;
 
   const english = words.filter((word) => ENGLISH_FUNCTION_WORDS.has(word)).length;
@@ -207,38 +219,33 @@ export const promptDefenseRules: ReadonlyArray<Rule> = [
       const content = file.content.trim();
       if (!content) return [];
 
-      const findings: Finding[] = [];
       const nonEnglish = isMostlyNonEnglishProse(content);
 
-      for (const defense of DEFENSE_CHECKS) {
-        if (defense.pattern.test(content)) continue;
-
-        const owaspNote = defense.owaspRef ? ` (OWASP LLM Top 10: ${defense.owaspRef})` : "";
-        if (nonEnglish) {
-          findings.push({
-            id: `prompt-defense-missing-${defense.id}-${file.path}`,
-            severity: "info",
-            category: "injection",
-            title: `Prompt defense not verified: ${defense.name}`,
-            description: `${defense.description}${owaspNote} This check only recognizes English wording and this file is written in another language, so verify this defense manually.`,
-            file: file.path,
-            evidence: `Unverified ${defense.id} defense in ${file.path} (non-English instructions)`,
-          });
-          continue;
+      return DEFENSE_CHECKS.filter((defense) => !defense.pattern.test(content)).map(
+        (defense): Finding => {
+          const id = `prompt-defense-missing-${defense.id}-${file.path}`;
+          const owaspNote = defense.owaspRef ? ` (OWASP LLM Top 10: ${defense.owaspRef})` : "";
+          return nonEnglish
+            ? {
+                id,
+                severity: "info",
+                category: "injection",
+                title: `Prompt defense not verified: ${defense.name}`,
+                description: `${defense.description}${owaspNote} This check only recognizes English wording and this file is written in another language, so verify this defense manually.`,
+                file: file.path,
+                evidence: `Unverified ${defense.id} defense in ${file.path} (non-English instructions)`,
+              }
+            : {
+                id,
+                severity: defense.severity,
+                category: "injection",
+                title: `Missing prompt defense: ${defense.name}`,
+                description: `${defense.description}${owaspNote}`,
+                file: file.path,
+                evidence: `Missing ${defense.id} defense in ${file.path}`,
+              };
         }
-
-        findings.push({
-          id: `prompt-defense-missing-${defense.id}-${file.path}`,
-          severity: defense.severity,
-          category: "injection",
-          title: `Missing prompt defense: ${defense.name}`,
-          description: `${defense.description}${owaspNote}`,
-          file: file.path,
-          evidence: `Missing ${defense.id} defense in ${file.path}`,
-        });
-      }
-
-      return findings;
+      );
     },
   },
 ];

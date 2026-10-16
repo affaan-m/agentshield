@@ -1,5 +1,5 @@
 import type { ConfigFile, Finding, Rule } from "../types.js";
-import { clauseBefore, hasProhibitiveCue } from "./prohibition-context.js";
+import { isProhibitedAt } from "./prohibition-context.js";
 
 function findLineNumber(content: string, matchIndex: number): number {
   return content.substring(0, matchIndex).split("\n").length;
@@ -2196,10 +2196,10 @@ export const agentRules: ReadonlyArray<Rule> = [
         const matches = findAllMatches(file.content, pattern);
         for (const match of matches) {
           const idx = match.index ?? 0;
-          // "Never run git push --force" forbids the operation. Only the clause that leads
-          // to the match counts, so a negation in a previous sentence or clause does not
-          // hide an instruction that follows it (#163).
-          if (hasProhibitiveCue(clauseBefore(file.content, idx))) {
+          // "Never run git push --force" forbids the operation. The prohibition must open
+          // the clause that leads to the match, so "Avoid review and run git push --force"
+          // or "If approval is not available run ..." keeps the high finding (#163).
+          if (isProhibitedAt(file.content, idx)) {
             findings.push({
               id: `agents-destructive-tool-prohibited-${idx}`,
               severity: "info",

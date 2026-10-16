@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { clauseBefore, hasProhibitiveCue } from "../../src/rules/prohibition-context.js";
+import { clauseBefore, hasProhibitiveCue, isProhibitedAt } from "../../src/rules/prohibition-context.js";
 
 describe("hasProhibitiveCue", () => {
   it.each([
@@ -53,6 +53,26 @@ describe("clauseBefore", () => {
   ])("stops at a %s break", (_label, content) => {
     const clause = clauseBefore(content, content.search(/use the bash/i));
     expect(hasProhibitiveCue(clause)).toBe(false);
+  });
+
+  it.each([
+    ["coordinating word", "Avoid review and run git push --force"],
+    ["condition", "If approval is not available run git push --force"],
+    ["buried negation", "Approval is not needed to run git push --force"],
+    ["new list item", "- Never run tests\n- git push --force"],
+  ])("does not read a prohibition that does not govern the match: %s", (_label, content) => {
+    expect(isProhibitedAt(content, content.indexOf("git push"))).toBe(false);
+  });
+
+  it.each([
+    "Never run\ngit push --force",
+    "You must never run git push --force",
+    "Don't forget to never run git push --force",
+    "Don't hesitate to ask for help, but never run git push --force",
+    "No uses git push --force",
+    "Se prohíbe ejecutar git push --force",
+  ])("reads %j as a prohibition of the match", (content) => {
+    expect(isProhibitedAt(content, content.indexOf("git push"))).toBe(true);
   });
 
   it("is limited to maxChars characters", () => {

@@ -97,6 +97,19 @@ React with a small design system that lives in the packages folder.`;
       expect(findings.find((finding) => finding.id.includes("instruction-override"))?.severity).toBe("critical");
     });
 
+    it("does not let a quoted example in another language decide the language", () => {
+      const englishWithQuote = `# Project guide
+
+Use the shared scripts from the root of the repository.
+
+${frenchPrompt
+  .split("\n")
+  .map((line) => `> ${line}`)
+  .join("\n")}`;
+      const findings = runPromptDefense({ path: "CLAUDE.md", type: "claude-md", content: englishWithQuote });
+      expect(findings.find((finding) => finding.id.includes("instruction-override"))?.severity).toBe("critical");
+    });
+
     it("keeps the regular severities for a terse English file with few function words", () => {
       const terseEnglish = [
         "Build: npm run build.", "Test: npm test.", "Lint: npm run lint.", "Format: npm run format.",
