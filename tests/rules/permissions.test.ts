@@ -856,15 +856,28 @@ describe("permissionRules", () => {
       }
     });
 
-    it("still flags .claude/settings.json without a permissions section", () => {
+    it("does not flag editor settings in a differently cased directory (#162)", () => {
       const file: ConfigFile = {
-        path: ".claude/settings.json",
+        path: ".VSCode/settings.json",
         type: "settings-json",
-        content: JSON.stringify({ env: { DEBUG: "1" } }),
+        content: JSON.stringify({ "editor.tabSize": 2 }),
       };
       const findings = runAllPermRules(file);
-      expect(findings.some((f) => f.id === "permissions-no-block")).toBe(true);
+      expect(findings.some((f) => f.id === "permissions-no-block")).toBe(false);
     });
+
+    it.each([".claude/settings.json", ".vscode/app/.claude/settings.json"])(
+      "still flags %s without a permissions section",
+      (path) => {
+        const file: ConfigFile = {
+          path,
+          type: "settings-json",
+          content: JSON.stringify({ env: { DEBUG: "1" } }),
+        };
+        const findings = runAllPermRules(file);
+        expect(findings.some((f) => f.id === "permissions-no-block")).toBe(true);
+      }
+    );
 
     it("does not flag hook manifest json under hooks/ as missing permissions block", () => {
       const file: ConfigFile = {

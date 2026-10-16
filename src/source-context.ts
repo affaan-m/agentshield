@@ -55,11 +55,15 @@ export function isStrongDocumentationExamplePath(path: string): boolean {
   );
 }
 
+/**
+ * True when the file sits directly in an editor or other-harness directory. Only the owning
+ * directory counts, so a Claude project nested under one (.vscode/app/.claude/settings.json)
+ * keeps its settings checks. Case is ignored, as on case-insensitive file systems.
+ */
 export function isNonClaudeSettingsPath(path: string): boolean {
-  const normalizedPath = path.replace(/\\/g, "/");
-  return NON_CLAUDE_SETTINGS_DIRS.some(
-    (dir) => normalizedPath.startsWith(`${dir}/`) || normalizedPath.includes(`/${dir}/`)
-  );
+  const segments = path.replace(/\\/g, "/").toLowerCase().split("/");
+  const owningDir = segments.length >= 2 ? segments[segments.length - 2] : "";
+  return NON_CLAUDE_SETTINGS_DIRS.some((dir) => owningDir === dir);
 }
 
 export function isPluginCachePath(path: string, scanRoot?: string): boolean {

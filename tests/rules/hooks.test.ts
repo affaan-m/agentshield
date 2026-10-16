@@ -381,7 +381,7 @@ describe("hookRules", () => {
     });
 
     it("does not flag editor settings that Claude Code never reads (#162)", () => {
-      for (const path of [".vscode/settings.json", ".vscode/tasks.json", ".zed/settings.json"]) {
+      for (const path of [".vscode/settings.json", ".vscode/tasks.json", ".zed/settings.json", ".VSCode/settings.json"]) {
         const file: ConfigFile = {
           path,
           type: "settings-json",

@@ -29,11 +29,20 @@ describe("source context", () => {
     ".zed\\settings.json",
     ".cursor/settings.json",
     ".gemini/settings.json",
+    ".VSCode/settings.json",
+    "packages/web/.Zed/tasks.json",
   ])("treats %s as an editor or other-harness settings file", (path) => {
     expect(isNonClaudeSettingsPath(path)).toBe(true);
   });
 
-  it.each(["settings.json", ".claude/settings.json", ".claude/settings.local.json", "vscode/settings.json"])(
+  it.each([
+    "settings.json",
+    ".claude/settings.json",
+    ".claude/settings.local.json",
+    "vscode/settings.json",
+    ".vscode/app/.claude/settings.json",
+    ".zed/project/settings.json",
+  ])(
     "keeps %s as a possible Claude Code settings file",
     (path) => {
       expect(isNonClaudeSettingsPath(path)).toBe(false);
