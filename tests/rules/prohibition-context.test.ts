@@ -63,6 +63,10 @@ describe("clauseBefore", () => {
     ["wrapped line", "Never run tests\ngit push --force"],
     ["French restriction", "Tu n'as qu'à lancer git push --force"],
     ["no review needed", "No review needed: git push --force"],
+    ["approval not needed", "No approval is needed to run git push --force"],
+    ["nobody approves", "No one needs to approve before git push --force"],
+    ["code fence", "Never run the test server\n```bash\ngit push --force"],
+    ["French restriction with plus", "Tu n'as plus qu'à lancer git push --force"],
   ])("does not read a prohibition that does not govern the match: %s", (_label, content) => {
     expect(isProhibitedAt(content, content.indexOf("git push"))).toBe(false);
   });
@@ -73,6 +77,8 @@ describe("clauseBefore", () => {
     "Don't hesitate to ask for help, but never run git push --force",
     "No uses git push --force",
     "Se prohíbe ejecutar git push --force",
+    "N'utilisez plus git push --force",
+    "Ne lancez plus git push --force",
   ])("reads %j as a prohibition of the match", (content) => {
     expect(isProhibitedAt(content, content.indexOf("git push"))).toBe(true);
   });

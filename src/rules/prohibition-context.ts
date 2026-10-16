@@ -53,6 +53,8 @@ const PROHIBITIVE_CUES: ReadonlyArray<RegExp> = [
   ),
   // French. "ne" alone is left out: "tu n'as qu'à lancer" or "ne ... que" asks for the action.
   wordPattern("jamais|pas|aucun(?:e|s|es)?|interdi\\p{L}*|proscri\\p{L}*"),
+  // "ne plus", "n'utilisez plus", "ne lancez plus", but not "n'as plus qu'à"
+  wordPattern("(?:ne|n['’]\\p{L}+|ne\\s+\\p{L}+)\\s+plus(?!\\s+qu)"),
   // Spanish, Portuguese, and Italian, plus French "éviter"
   wordPattern(
     "nunca|jamás|não|ning[uú]n[ao]?s?|proh?[ií]b\\p{L}*|vietat\\p{L}*|[ée]vit\\p{L}*|mai|non"
@@ -63,7 +65,7 @@ const PROHIBITIVE_CUES: ReadonlyArray<RegExp> = [
 
 const ENCOURAGING_PHRASES: ReadonlyArray<RegExp> = [
   wordPattern(
-    "(?:do\\s+not|don'?t|never)\\s+(?:hesitate|forget|wait|bother|ask|worry)\\p{L}*|never\\s+mind|no\\s+(?:need|problem|worries)|no\\s+(?:\\p{L}+\\s+){1,2}(?:needed|required|necessary)"
+    "(?:do\\s+not|don'?t|never)\\s+(?:hesitate|forget|wait|bother|ask|worry)\\p{L}*|never\\s+mind|no\\s+(?:need|problem|worries|one)|no\\s+(?:\\p{L}+\\s+){1,2}(?:needed|required|necessary)"
   ),
   // French: "n'hésite pas", "n'oubliez pas", "ne demande pas", "pas besoin de"...
   new RegExp(`${WORD_START}n['’](?:h[ée]sit|oubli|attend)\\p{L}*(?:\\s+pas)?${WORD_END}`, "giu"),
