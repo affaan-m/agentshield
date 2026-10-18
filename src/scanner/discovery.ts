@@ -1,6 +1,14 @@
-import { readFileSync, existsSync, readdirSync, readlinkSync, statSync, lstatSync } from "node:fs";
+import {
+  readFileSync,
+  existsSync,
+  readdirSync,
+  readlinkSync,
+  statSync,
+  lstatSync,
+  realpathSync,
+} from "node:fs";
 import type { Stats } from "node:fs";
-import { join, basename, extname, relative } from "node:path";
+import { join, basename, extname, relative, isAbsolute, sep } from "node:path";
 import type { ConfigFile, ConfigFileType, DanglingSymlink, ScanTarget } from "../types.js";
 import { isExampleLikePath } from "../source-context.js";
 import { toPosixPath } from "./paths.js";
@@ -94,7 +102,7 @@ export function discoverConfigFiles(rootPath: string): ScanTarget {
   const claudeRoots = new Set<string>([rootPath]);
   const exampleClaudeFiles = new Set<string>();
 
-  walkForClaudeRoots(rootPath, rootPath, claudeRoots, exampleClaudeFiles);
+  walkForClaudeRoots(rootPath, rootPath, claudeRoots, exampleClaudeFiles, new Set());
 
   for (const exampleClaudeFile of [...exampleClaudeFiles].sort()) {
     addDiscoveredFile(rootPath, exampleClaudeFile, "claude-md", files, seenFiles);
@@ -135,17 +143,75 @@ function readSymlinkTarget(path: string): string {
   }
 }
 
+function isWithinScanRoot(scanRoot: string, targetPath: string): boolean {
+  const relativePath = relative(scanRoot, targetPath);
+  return relativePath === "" ||
+    (relativePath !== ".." && !relativePath.startsWith(`..${sep}`) && !isAbsolute(relativePath));
+}
+
+function isSupportedExternalPluginMarketplace(
+  scanRoot: string,
+  linkPath: string,
+  targetPath: string
+): boolean {
+  if (toPosixPath(relative(scanRoot, linkPath)) !== "plugins") return false;
+
+  const segments = targetPath
+    .split(/[\\/]/)
+    .filter(Boolean)
+    .map((segment) => segment.toLowerCase());
+  return (
+    segments.length >= 2 &&
+    segments[segments.length - 2] === ".claude" &&
+    segments[segments.length - 1] === "plugins"
+  );
+}
+
 function walkForClaudeRoots(
   scanRoot: string,
   dirPath: string,
   claudeRoots: Set<string>,
-  exampleClaudeFiles: Set<string>
+  exampleClaudeFiles: Set<string>,
+  visitedRealPaths: Set<string>
 ): void {
   if (!statOrNull(dirPath)?.isDirectory()) return;
 
+  let realDirPath: string;
+  try {
+    realDirPath = realpathSync(dirPath);
+  } catch {
+    return;
+  }
+  if (visitedRealPaths.has(realDirPath)) return;
+  visitedRealPaths.add(realDirPath);
+  let realScanRoot: string;
+  try {
+    realScanRoot = realpathSync(scanRoot);
+  } catch {
+    return;
+  }
+
   const entries = readdirSync(dirPath, { withFileTypes: true });
   for (const entry of entries) {
-    if (entry.isDirectory()) {
+    const entryPath = join(dirPath, entry.name);
+    const isDirectory =
+      entry.isDirectory() ||
+      (entry.isSymbolicLink() && statOrNull(entryPath)?.isDirectory() === true);
+    if (isDirectory) {
+      if (entry.isSymbolicLink()) {
+        let realTargetPath: string;
+        try {
+          realTargetPath = realpathSync(entryPath);
+        } catch {
+          continue;
+        }
+        if (
+          !isWithinScanRoot(realScanRoot, realTargetPath) &&
+          !isSupportedExternalPluginMarketplace(scanRoot, entryPath, realTargetPath)
+        ) {
+          continue;
+        }
+      }
       if (IGNORED_DIRS.has(entry.name)) continue;
       if (HARNESS_ROOT_DIRS.has(entry.name)) {
         claudeRoots.add(dirPath);
@@ -154,7 +220,13 @@ function walkForClaudeRoots(
         claudeRoots.add(dirPath);
         continue;
       }
-      walkForClaudeRoots(scanRoot, join(dirPath, entry.name), claudeRoots, exampleClaudeFiles);
+      walkForClaudeRoots(
+        scanRoot,
+        entryPath,
+        claudeRoots,
+        exampleClaudeFiles,
+        visitedRealPaths
+      );
       continue;
     }
 

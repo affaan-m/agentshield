@@ -609,4 +609,40 @@ describe("discoverConfigFiles", () => {
       expect(result.files.some((f) => f.type === "settings-json")).toBe(true);
     }
   );
+
+  it.skipIf(process.platform === "win32")("discovers Claude roots under symlinked plugin directories", () => {
+    const dir = createTempDir();
+    const target = createTempDir();
+    const marketplace = join(target, ".claude", "plugins");
+    mkdirSync(join(marketplace, "plugin"), { recursive: true });
+    writeFileSync(join(marketplace, "plugin", "CLAUDE.md"), "# Plugin instructions");
+    symlinkSync(marketplace, join(dir, "plugins"), "dir");
+    symlinkSync(dir, join(marketplace, "cycle"), "dir");
+
+    const result = discoverConfigFiles(dir);
+    expect(result.files.some((file) => file.content === "# Plugin instructions")).toBe(true);
+  });
+
+  it.skipIf(process.platform === "win32")("does not follow external directory symlinks outside the scan root", () => {
+    const dir = createTempDir();
+    const outside = createTempDir();
+    mkdirSync(join(outside, "plugin"));
+    writeFileSync(join(outside, "plugin", "CLAUDE.md"), "# Out of scope");
+    symlinkSync(outside, join(dir, "external"), "dir");
+
+    const result = discoverConfigFiles(dir);
+    expect(result.files.some((file) => file.content === "# Out of scope")).toBe(false);
+  });
+
+  it.skipIf(process.platform === "win32")("visits an in-root directory symlink target only once", () => {
+    const dir = createTempDir();
+    const shared = join(dir, "shared");
+    mkdirSync(join(shared, "plugin"), { recursive: true });
+    writeFileSync(join(shared, "plugin", "CLAUDE.md"), "# Shared instructions");
+    symlinkSync(shared, join(dir, "alias-a"), "dir");
+    symlinkSync(shared, join(dir, "alias-b"), "dir");
+
+    const result = discoverConfigFiles(dir);
+    expect(result.files.filter((file) => file.content === "# Shared instructions")).toHaveLength(1);
+  });
 });
