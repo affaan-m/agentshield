@@ -377,6 +377,23 @@ describe("discoverConfigFiles", () => {
     expect(result.files.some((f) => f.type === "skill-md")).toBe(true);
   });
 
+  it("discovers SKILL.md inside skill directories (skills/<name>/SKILL.md)", () => {
+    const dir = createTempDir();
+    mkdirSync(join(dir, ".claude", "skills", "deploy"), { recursive: true });
+    mkdirSync(join(dir, "skills", "review"), { recursive: true });
+    writeFileSync(join(dir, ".claude", "skills", "deploy", "SKILL.md"), "# Deploy skill");
+    writeFileSync(join(dir, ".claude", "skills", "deploy", "reference.md"), "Notes");
+    writeFileSync(join(dir, "skills", "review", "SKILL.md"), "# Review skill");
+
+    const result = discoverConfigFiles(dir);
+    const deploy = result.files.find((f) => f.path === ".claude/skills/deploy/SKILL.md");
+    const review = result.files.find((f) => f.path === "skills/review/SKILL.md");
+    expect(deploy?.type).toBe("skill-md");
+    expect(deploy?.content).toBe("# Deploy skill");
+    expect(review?.type).toBe("skill-md");
+    expect(result.files.some((f) => f.path.endsWith("reference.md"))).toBe(false);
+  });
+
   it("discovers command files in commands/ subdirectory", () => {
     const dir = createTempDir();
     mkdirSync(join(dir, "commands"));
@@ -579,6 +596,43 @@ describe("discoverConfigFiles", () => {
       expect(linked?.type).toBe("skill-md");
       expect(linked?.content).toBe("# Linked skill");
       expect(result.danglingSymlinks).toEqual([]);
+    }
+  );
+
+  it.skipIf(process.platform === "win32")(
+    "follows a symlinked skill directory to its SKILL.md",
+    () => {
+      const dir = createTempDir();
+      mkdirSync(join(dir, "shared", "commit"), { recursive: true });
+      mkdirSync(join(dir, ".claude", "skills"), { recursive: true });
+      writeFileSync(join(dir, "shared", "commit", "SKILL.md"), "# Commit skill");
+      symlinkSync(join(dir, "shared", "commit"), join(dir, ".claude", "skills", "commit"));
+
+      const result = discoverConfigFiles(dir);
+      const linked = result.files.find((f) => f.path === ".claude/skills/commit/SKILL.md");
+      expect(linked?.type).toBe("skill-md");
+      expect(linked?.content).toBe("# Commit skill");
+    }
+  );
+
+  it.skipIf(process.platform === "win32")(
+    "records a dangling SKILL.md symlink inside a skill directory",
+    () => {
+      const dir = createTempDir();
+      mkdirSync(join(dir, "skills", "broken"), { recursive: true });
+      mkdirSync(join(dir, "skills", "empty"), { recursive: true });
+      symlinkSync(join(dir, "nonexistent", "SKILL.md"), join(dir, "skills", "broken", "SKILL.md"));
+
+      const result = discoverConfigFiles(dir);
+
+      expect(result.files.some((f) => f.path.startsWith("skills/"))).toBe(false);
+      expect(result.danglingSymlinks).toEqual([
+        {
+          path: "skills/broken/SKILL.md",
+          target: join(dir, "nonexistent", "SKILL.md"),
+          type: "skill-md",
+        },
+      ]);
     }
   );
 
