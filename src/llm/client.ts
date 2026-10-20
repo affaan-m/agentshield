@@ -14,11 +14,23 @@ import Anthropic from "@anthropic-ai/sdk";
 //              gateway rejects bare `claude-*` ids
 //
 // See https://www.orcarouter.ai
+//
+// Atlas Cloud (https://www.atlascloud.ai) is also supported. It exposes the same
+// Messages API shape at its root URL:
+//
+//   - baseURL: https://api.atlascloud.ai  (SDK appends /v1/messages)
+//   - auth:    ATLASCLOUD_API_KEY, sent as `Authorization: Bearer`
+//   - model:   namespaced ids from https://api.atlascloud.ai/v1/models
+//              (`deepseek-ai/deepseek-v4-pro`, …); bare `claude-*` ids are not
+//              served, so the default models are mapped below
 
-export type LLMProvider = "anthropic" | "orcarouter";
+export type LLMProvider = "anthropic" | "orcarouter" | "atlascloud";
 
 export const ORCAROUTER_BASE_URL = "https://api.orcarouter.ai";
 export const ORCAROUTER_ENV_KEY = "ORCAROUTER_API_KEY";
+
+export const ATLASCLOUD_BASE_URL = "https://api.atlascloud.ai";
+export const ATLASCLOUD_ENV_KEY = "ATLASCLOUD_API_KEY";
 
 /** Model ids the OrcaRouter gateway exposes for the same Anthropic models
  * AgentShield uses by default. The gateway requires the `anthropic/` prefix. */
@@ -28,6 +40,14 @@ const ORCAROUTER_MODELS: Readonly<Record<string, string>> = {
   "claude-opus-4-6": "anthropic/claude-opus-4.6",
   "claude-sonnet-4-5-20250929": "anthropic/claude-sonnet-4.5",
 };
+
+/** Atlas Cloud model ids used in place of AgentShield's default Claude models.
+ * Both support tool use, which the Opus pipeline and injection tester require. */
+const ATLASCLOUD_MODELS: Readonly<Record<string, string>> = {
+  "claude-opus-5": "deepseek-ai/deepseek-v4-pro",
+  "claude-sonnet-5": "deepseek-ai/deepseek-v4-flash",
+};
+const ATLASCLOUD_FALLBACK_MODEL = "deepseek-ai/deepseek-v4-flash";
 
 /** Resolve the model id to send for a given provider. */
 export function resolveModel(
@@ -41,6 +61,13 @@ export function resolveModel(
     // Anthropic model unless the caller already supplied a namespace.
     return defaultModel.includes("/") ? defaultModel : `anthropic/${defaultModel}`;
   }
+  if (provider === "atlascloud") {
+    const mapped = ATLASCLOUD_MODELS[defaultModel];
+    if (mapped) return mapped;
+    // Atlas Cloud ids are namespaced; keep a caller-supplied namespaced id and
+    // otherwise fall back to the default analysis model.
+    return defaultModel.includes("/") ? defaultModel : ATLASCLOUD_FALLBACK_MODEL;
+  }
   return defaultModel;
 }
 
@@ -50,13 +77,20 @@ export function resolveModel(
  * The default Anthropic provider uses the SDK's standard behavior
  * (ANTHROPIC_API_KEY / ANTHROPIC_BASE_URL). The OrcaRouter provider points the
  * client at the OrcaRouter Messages endpoint and authenticates with
- * ORCAROUTER_API_KEY.
+ * ORCAROUTER_API_KEY. The Atlas Cloud provider does the same with
+ * ATLASCLOUD_API_KEY.
  */
 export function createLLMClient(provider: LLMProvider): Anthropic {
   if (provider === "orcarouter") {
     return new Anthropic({
       baseURL: ORCAROUTER_BASE_URL,
       apiKey: process.env[ORCAROUTER_ENV_KEY] ?? "",
+    });
+  }
+  if (provider === "atlascloud") {
+    return new Anthropic({
+      baseURL: ATLASCLOUD_BASE_URL,
+      apiKey: process.env[ATLASCLOUD_ENV_KEY] ?? "",
     });
   }
   return new Anthropic();

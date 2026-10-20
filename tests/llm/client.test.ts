@@ -4,6 +4,8 @@ import {
   createLLMClient,
   ORCAROUTER_BASE_URL,
   ORCAROUTER_ENV_KEY,
+  ATLASCLOUD_BASE_URL,
+  ATLASCLOUD_ENV_KEY,
 } from "../../src/llm/client.js";
 
 afterEach(() => {
@@ -54,5 +56,24 @@ describe("createLLMClient", () => {
     vi.stubEnv(ORCAROUTER_ENV_KEY, "sk-orca-test-123");
     const client = createLLMClient("orcarouter") as any;
     expect(client.apiKey).toBe("sk-orca-test-123");
+  });
+});
+
+describe("atlascloud provider", () => {
+  it("maps the default models to Atlas Cloud ids", () => {
+    expect(resolveModel("atlascloud", "claude-opus-5")).toBe("deepseek-ai/deepseek-v4-pro");
+    expect(resolveModel("atlascloud", "claude-sonnet-5")).toBe("deepseek-ai/deepseek-v4-flash");
+  });
+
+  it("keeps a namespaced id and falls back for bare unmapped ids", () => {
+    expect(resolveModel("atlascloud", "qwen/qwen3.7-plus")).toBe("qwen/qwen3.7-plus");
+    expect(resolveModel("atlascloud", "claude-custom-model")).toBe("deepseek-ai/deepseek-v4-flash");
+  });
+
+  it("points the client at the Atlas Cloud base URL with ATLASCLOUD_API_KEY", () => {
+    vi.stubEnv(ATLASCLOUD_ENV_KEY, "test-key-123");
+    const client = createLLMClient("atlascloud") as any;
+    expect(client.baseURL).toBe(ATLASCLOUD_BASE_URL);
+    expect(client.apiKey).toBe("test-key-123");
   });
 });
