@@ -609,4 +609,24 @@ describe("discoverConfigFiles", () => {
       expect(result.files.some((f) => f.type === "settings-json")).toBe(true);
     }
   );
+
+  it("handles .clinerules as a directory without crashing (#147)", () => {
+    const dir = createTempDir();
+    writeFileSync(join(dir, "CLAUDE.md"), "# Instructions");
+    mkdirSync(join(dir, ".clinerules"));
+    writeFileSync(join(dir, ".clinerules", "rules.md"), "# Cline rules");
+
+    const result = discoverConfigFiles(dir);
+    expect(result.files.some((f) => f.path === ".clinerules/rules.md")).toBe(true);
+    expect(result.files.some((f) => f.path === ".clinerules")).toBe(false);
+  });
+
+  it("still discovers .clinerules as a single file", () => {
+    const dir = createTempDir();
+    writeFileSync(join(dir, "CLAUDE.md"), "# Instructions");
+    writeFileSync(join(dir, ".clinerules"), "# Cline rules");
+
+    const result = discoverConfigFiles(dir);
+    expect(result.files.some((f) => f.path === ".clinerules" && f.type === "agents-md")).toBe(true);
+  });
 });
