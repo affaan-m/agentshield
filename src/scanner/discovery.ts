@@ -270,7 +270,7 @@ function scanClaudeRoot(
 
   for (const [relativePath, type] of directFiles) {
     const fullPath = join(claudeRoot, relativePath);
-    if (existsSync(fullPath)) {
+    if (statOrNull(fullPath)?.isFile()) {
       addDiscoveredFile(scanRoot, fullPath, type, files, seenFiles);
     }
   }
