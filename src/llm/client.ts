@@ -14,11 +14,24 @@ import Anthropic from "@anthropic-ai/sdk";
 //              gateway rejects bare `claude-*` ids
 //
 // See https://www.orcarouter.ai
+//
+// Cheaper Inference, an OpenAI-compatible LLM gateway, also serves the
+// Anthropic Messages API:
+//
+//   - baseURL: https://api.cheaperinference.com  (SDK appends /v1/messages)
+//   - auth:    CHEAPER_INFERENCE_API_KEY, sent as `x-api-key`
+//   - model:   bare ids (`claude-opus-5`, `claude-sonnet-5`), so the default
+//              models are sent unchanged
+//
+// See https://cheaperinference.com/docs
 
-export type LLMProvider = "anthropic" | "orcarouter";
+export type LLMProvider = "anthropic" | "orcarouter" | "cheaperinference";
 
 export const ORCAROUTER_BASE_URL = "https://api.orcarouter.ai";
 export const ORCAROUTER_ENV_KEY = "ORCAROUTER_API_KEY";
+
+export const CHEAPERINFERENCE_BASE_URL = "https://api.cheaperinference.com";
+export const CHEAPERINFERENCE_ENV_KEY = "CHEAPER_INFERENCE_API_KEY";
 
 /** Model ids the OrcaRouter gateway exposes for the same Anthropic models
  * AgentShield uses by default. The gateway requires the `anthropic/` prefix. */
@@ -50,13 +63,20 @@ export function resolveModel(
  * The default Anthropic provider uses the SDK's standard behavior
  * (ANTHROPIC_API_KEY / ANTHROPIC_BASE_URL). The OrcaRouter provider points the
  * client at the OrcaRouter Messages endpoint and authenticates with
- * ORCAROUTER_API_KEY.
+ * ORCAROUTER_API_KEY. The Cheaper Inference provider does the same with
+ * CHEAPER_INFERENCE_API_KEY.
  */
 export function createLLMClient(provider: LLMProvider): Anthropic {
   if (provider === "orcarouter") {
     return new Anthropic({
       baseURL: ORCAROUTER_BASE_URL,
       apiKey: process.env[ORCAROUTER_ENV_KEY] ?? "",
+    });
+  }
+  if (provider === "cheaperinference") {
+    return new Anthropic({
+      baseURL: CHEAPERINFERENCE_BASE_URL,
+      apiKey: process.env[CHEAPERINFERENCE_ENV_KEY] ?? "",
     });
   }
   return new Anthropic();
