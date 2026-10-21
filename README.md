@@ -465,6 +465,26 @@ With `--provider orcarouter` the scanned configuration contents are sent to
 OrcaRouter's API instead of Anthropic's, so do not use it on configs containing
 secrets you have not redacted.
 
+#### Cheaper Inference provider
+
+The `--opus` and `--injection` analysis modes can also run through
+[Cheaper Inference](https://cheaperinference.com), an OpenAI-compatible LLM
+gateway that also serves the Anthropic Messages API:
+
+```bash
+export CHEAPER_INFERENCE_API_KEY=your-key-here
+agentshield scan --opus --provider cheaperinference
+agentshield scan --injection --provider cheaperinference
+```
+
+The provider points the Anthropic client at `https://api.cheaperinference.com`
+and sends the default model ids unchanged (`claude-opus-5`, `claude-sonnet-5`).
+Get a key at https://cheaperinference.com/signup.
+
+With `--provider cheaperinference` the scanned configuration contents are sent
+to Cheaper Inference's API instead of Anthropic's, so do not use it on configs
+containing secrets you have not redacted.
+
 ### Compliance Mapping (`--compliance`)
 
 Map findings to audit-framework control IDs so GRC teams get an auditor-ready coverage artifact instead of a raw findings list:
@@ -699,7 +719,7 @@ agentshield scan [options]         Scan configuration directory
   -o, --output <path>              Write the primary report output to a file
   --fix                            Auto-apply safe fixes
   --opus                           Enable Claude Opus multi-agent analysis
-  --provider <provider>            LLM provider for --opus/--injection: anthropic or orcarouter
+  --provider <provider>            LLM provider for --opus/--injection: anthropic, orcarouter or cheaperinference
   --stream                         Stream Opus analysis in real-time
   --injection                      Run active prompt injection testing
   --sandbox                        Execute hooks in a sandbox and observe behavior

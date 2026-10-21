@@ -4,6 +4,8 @@ import {
   createLLMClient,
   ORCAROUTER_BASE_URL,
   ORCAROUTER_ENV_KEY,
+  CHEAPERINFERENCE_BASE_URL,
+  CHEAPERINFERENCE_ENV_KEY,
 } from "../../src/llm/client.js";
 
 afterEach(() => {
@@ -38,6 +40,11 @@ describe("resolveModel", () => {
     );
   });
 
+  it("sends the default models unchanged on cheaperinference", () => {
+    expect(resolveModel("cheaperinference", "claude-opus-5")).toBe("claude-opus-5");
+    expect(resolveModel("cheaperinference", "claude-sonnet-5")).toBe("claude-sonnet-5");
+  });
+
   it("keeps an already namespaced model id on orcarouter", () => {
     expect(resolveModel("orcarouter", "openai/gpt-5")).toBe("openai/gpt-5");
   });
@@ -54,5 +61,17 @@ describe("createLLMClient", () => {
     vi.stubEnv(ORCAROUTER_ENV_KEY, "sk-orca-test-123");
     const client = createLLMClient("orcarouter") as any;
     expect(client.apiKey).toBe("sk-orca-test-123");
+  });
+
+  it("points the client at the Cheaper Inference base URL for the cheaperinference provider", () => {
+    vi.stubEnv(CHEAPERINFERENCE_ENV_KEY, "ci_live_test_123");
+    const client = createLLMClient("cheaperinference") as any;
+    expect(client.baseURL).toBe(CHEAPERINFERENCE_BASE_URL);
+  });
+
+  it("uses the CHEAPER_INFERENCE_API_KEY for the cheaperinference provider", () => {
+    vi.stubEnv(CHEAPERINFERENCE_ENV_KEY, "ci_live_test_123");
+    const client = createLLMClient("cheaperinference") as any;
+    expect(client.apiKey).toBe("ci_live_test_123");
   });
 });
