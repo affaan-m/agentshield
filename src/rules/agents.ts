@@ -2080,7 +2080,7 @@ export const agentRules: ReadonlyArray<Rule> = [
           desc: "Uses 'educational purposes' framing to justify bypassing safety — common jailbreak wrapper",
         },
         {
-          pattern: /(?:this\s+is\s+(?:just|only)\s+a\s+)?(?:test|experiment|simulation|drill|exercise)\s*[,;:]\s*(?:so\s+)?(?:you\s+can|please|go\s+ahead)/gi,
+          pattern: /this\s+is\s+(?:just|only)\s+(?:an?\s+)?(?:test|experiment|simulation|drill|exercise)\s*[,;:]\s*(?:so\s+)?(?:you\s+can|please|go\s+ahead)/gi,
           desc: "Frames request as a 'test' to reduce the agent's resistance to unsafe actions",
         },
         {
