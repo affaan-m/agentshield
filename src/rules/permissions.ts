@@ -379,6 +379,9 @@ export const permissionRules: ReadonlyArray<Rule> = [
 
       const findings: Finding[] = [];
 
+      // A deny of bare `Bash` or `Bash(*)` removes the tool, so no allow rule can grant it.
+      const shellDenied = perms.deny.some((d) => normalizePermissionEntry(d) === "Bash(*)");
+
       // Only check patterns against the ALLOW list, not the deny list
       for (const entry of perms.allow) {
         if (
@@ -390,6 +393,7 @@ export const permissionRules: ReadonlyArray<Rule> = [
         }
 
         const normalizedEntry = normalizePermissionEntry(entry);
+        if (normalizedEntry === "Bash(*)" && shellDenied) continue;
         for (const check of OVERLY_PERMISSIVE) {
           if (check.pattern.test(normalizedEntry)) {
             findings.push({

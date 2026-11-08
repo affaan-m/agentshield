@@ -65,6 +65,7 @@ export function parsePermissionEntry(entry: string): ParsedPermissionEntry | nul
  * `Bash(/opt/homebrew/bin/node -e:*)` becomes `Bash(node -e *)`.
  */
 export function normalizePermissionEntry(entry: string): string {
+  if (entry === "Bash") return "Bash(*)";
   const parsed = parsePermissionEntry(entry);
   if (!parsed) return entry;
   if (parsed.prefix === "" && parsed.wildcard) return `${parsed.tool}(*)`;
