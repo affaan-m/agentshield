@@ -15,6 +15,32 @@ function runAllPermRules(file: ConfigFile) {
 
 describe("permissionRules", () => {
   describe("overly permissive access", () => {
+    const permissiveFor = (permissions: object) =>
+      runAllPermRules(makeSettings(JSON.stringify({ permissions }))).filter((f) => f.id.startsWith("permissions-permissive-Bash"));
+
+    it("flags bare Bash in the allow list like Bash(*)", () => {
+      const [finding] = permissiveFor({ allow: ["Bash"], deny: [] });
+      expect(finding?.evidence).toBe("Bash");
+      expect(finding?.severity).toBe("critical");
+    });
+
+    it.each([
+      [["Bash"], ["Bash"]],
+      [["Bash"], ["Bash(*)"]],
+      [["Bash(*)"], ["Bash"]],
+      [["Bash(*)"], ["Bash(*)"]],
+    ])("does not flag allow %j when deny %j removes the tool", (allow, deny) => {
+      expect(permissiveFor({ allow, deny })).toHaveLength(0);
+    });
+
+    it("still flags bare Bash when deny only scopes a pattern", () => {
+      expect(permissiveFor({ allow: ["Bash"], deny: ["Bash(rm *)"] })).toHaveLength(1);
+    });
+
+    it("does not treat other tool names as Bash", () => {
+      expect(permissiveFor({ allow: ["BashOutput", "bash"], deny: [] })).toHaveLength(0);
+    });
+
     it("flags Bash(*) in the allow list", () => {
       const file = makeSettings(JSON.stringify({
         permissions: { allow: ["Bash(*)"], deny: [] },
