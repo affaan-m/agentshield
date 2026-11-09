@@ -379,8 +379,9 @@ export const permissionRules: ReadonlyArray<Rule> = [
 
       const findings: Finding[] = [];
 
-      // A deny of bare `Bash` or `Bash(*)` removes the tool, so no allow rule can grant it.
-      const shellDenied = perms.deny.some((d) => normalizePermissionEntry(d) === "Bash(*)");
+      // Only an exact `Bash` or `Bash(*)` deny removes the tool. Compare the raw rule:
+      // normalization reduces path-scoped rules such as `Bash(/usr/bin/*)` to `Bash(*)`.
+      const shellDenied = perms.deny.some((d) => d === "Bash" || d === "Bash(*)");
 
       // Only check patterns against the ALLOW list, not the deny list
       for (const entry of perms.allow) {
