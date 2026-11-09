@@ -379,6 +379,10 @@ export const permissionRules: ReadonlyArray<Rule> = [
 
       const findings: Finding[] = [];
 
+      // Only an exact `Bash` or `Bash(*)` deny removes the tool. Compare the raw rule:
+      // normalization reduces path-scoped rules such as `Bash(/usr/bin/*)` to `Bash(*)`.
+      const shellDenied = perms.deny.some((d) => d === "Bash" || d === "Bash(*)");
+
       // Only check patterns against the ALLOW list, not the deny list
       for (const entry of perms.allow) {
         if (
@@ -390,6 +394,7 @@ export const permissionRules: ReadonlyArray<Rule> = [
         }
 
         const normalizedEntry = normalizePermissionEntry(entry);
+        if (normalizedEntry === "Bash(*)" && shellDenied) continue;
         for (const check of OVERLY_PERMISSIVE) {
           if (check.pattern.test(normalizedEntry)) {
             findings.push({
