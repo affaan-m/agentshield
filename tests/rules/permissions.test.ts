@@ -37,6 +37,25 @@ describe("permissionRules", () => {
       expect(permissiveFor({ allow: ["Bash"], deny: ["Bash(rm *)"] })).toHaveLength(1);
     });
 
+    it.each([
+      ["scoped", "Bash(rm *)"],
+      ["scoped prefix", "Bash(rm:*)"],
+      ["path-scoped", "Bash(/usr/bin/*)"],
+      ["relative path-scoped", "Bash(./*)"],
+      ["directory-scoped", "Bash(bin/*)"],
+      ["path-scoped command", "Bash(/usr/bin/rm *)"],
+      ["Windows path-scoped", "Bash(C:\\tools\\*)"],
+      ["malformed", "Bash("],
+      ["empty", "Bash()"],
+      ["spaced wildcard", "Bash( * )"],
+      ["prefix-only wildcard", "Bash(:*)"],
+      ["lowercase", "bash(*)"],
+      ["other tool", "BashOutput(*)"],
+    ])("keeps the finding for %s deny %s", (_kind, deny) => {
+      expect(permissiveFor({ allow: ["Bash(*)"], deny: [deny] })).toHaveLength(1);
+      expect(permissiveFor({ allow: ["Bash"], deny: [deny] })).toHaveLength(1);
+    });
+
     it("does not treat other tool names as Bash", () => {
       expect(permissiveFor({ allow: ["BashOutput", "bash"], deny: [] })).toHaveLength(0);
     });
