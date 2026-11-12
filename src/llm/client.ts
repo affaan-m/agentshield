@@ -49,6 +49,13 @@ const ATLASCLOUD_MODELS: Readonly<Record<string, string>> = {
 };
 const ATLASCLOUD_FALLBACK_MODEL = "deepseek-ai/deepseek-v4-flash";
 
+/** Name of the environment variable that holds the API key for a provider. */
+export function requiredApiKeyEnv(provider: LLMProvider): string {
+  if (provider === "orcarouter") return ORCAROUTER_ENV_KEY;
+  if (provider === "atlascloud") return ATLASCLOUD_ENV_KEY;
+  return "ANTHROPIC_API_KEY";
+}
+
 /** Resolve the model id to send for a given provider. */
 export function resolveModel(
   provider: LLMProvider,

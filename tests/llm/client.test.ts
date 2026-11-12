@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import {
   resolveModel,
+  requiredApiKeyEnv,
   createLLMClient,
   ORCAROUTER_BASE_URL,
   ORCAROUTER_ENV_KEY,
@@ -75,5 +76,13 @@ describe("atlascloud provider", () => {
     const client = createLLMClient("atlascloud") as any;
     expect(client.baseURL).toBe(ATLASCLOUD_BASE_URL);
     expect(client.apiKey).toBe("test-key-123");
+  });
+});
+
+describe("requiredApiKeyEnv", () => {
+  it("returns the env var that holds each provider's key", () => {
+    expect(requiredApiKeyEnv("anthropic")).toBe("ANTHROPIC_API_KEY");
+    expect(requiredApiKeyEnv("orcarouter")).toBe(ORCAROUTER_ENV_KEY);
+    expect(requiredApiKeyEnv("atlascloud")).toBe(ATLASCLOUD_ENV_KEY);
   });
 });
