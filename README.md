@@ -465,6 +465,24 @@ With `--provider orcarouter` the scanned configuration contents are sent to
 OrcaRouter's API instead of Anthropic's, so do not use it on configs containing
 secrets you have not redacted.
 
+#### Atlas Cloud provider
+
+The same modes can also run through [Atlas Cloud](https://www.atlascloud.ai), an
+OpenAI/Anthropic-compatible API that serves open-weight and hosted models:
+
+```bash
+export ATLASCLOUD_API_KEY=your-key-here
+agentshield scan --opus --provider atlascloud
+agentshield scan --injection --provider atlascloud
+```
+
+The provider points the Anthropic client at `https://api.atlascloud.ai` and maps
+the default models to Atlas Cloud ids (`deepseek-ai/deepseek-v4-pro` for
+`--opus`, `deepseek-ai/deepseek-v4-flash` for `--injection`). Results come from
+these models, not Claude, so findings can differ from the default provider. As
+with OrcaRouter, the scanned configuration contents are sent to Atlas Cloud's
+API, so do not use it on configs containing secrets you have not redacted.
+
 ### Compliance Mapping (`--compliance`)
 
 Map findings to audit-framework control IDs so GRC teams get an auditor-ready coverage artifact instead of a raw findings list:
@@ -699,7 +717,7 @@ agentshield scan [options]         Scan configuration directory
   -o, --output <path>              Write the primary report output to a file
   --fix                            Auto-apply safe fixes
   --opus                           Enable Claude Opus multi-agent analysis
-  --provider <provider>            LLM provider for --opus/--injection: anthropic or orcarouter
+  --provider <provider>            LLM provider for --opus/--injection: anthropic, orcarouter or atlascloud
   --stream                         Stream Opus analysis in real-time
   --injection                      Run active prompt injection testing
   --sandbox                        Execute hooks in a sandbox and observe behavior

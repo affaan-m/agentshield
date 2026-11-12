@@ -19,6 +19,7 @@ import {
 } from "./evidence-pack/index.js";
 import { runOpusPipeline, renderOpusAnalysis } from "./opus/index.js";
 import type { LLMProvider } from "./llm/client.js";
+import { requiredApiKeyEnv } from "./llm/client.js";
 import { applyFixesVerified, renderFixVerification } from "./fixer/index.js";
 import { mapFindingsToControls, parseFrameworks, renderComplianceReport } from "./compliance/index.js";
 import { runInit, renderInitSummary } from "./init/index.js";
@@ -286,7 +287,7 @@ program
   .option("-o, --output <path>", "Write the primary report output to a file")
   .option("--fix", "Auto-apply safe fixes", false)
   .option("--opus", "Enable Claude Opus multi-agent deep analysis", false)
-  .option("--provider <provider>", "LLM provider for --opus/--injection analysis: anthropic (default) or orcarouter", "anthropic")
+  .option("--provider <provider>", "LLM provider for --opus/--injection analysis: anthropic (default), orcarouter or atlascloud", "anthropic")
   .option("--stream", "Stream Opus analysis in real-time", false)
   .option("--injection", "Run active prompt injection testing against the config", false)
   .option("--sandbox", "Execute hooks in sandbox and observe behavior", false)
@@ -331,9 +332,13 @@ program
     const enableSandbox = options.deep || options.sandbox;
     const enableTaint = options.deep || options.taint;
     const enableOpus = options.deep || options.opus;
-    if (options.provider !== "anthropic" && options.provider !== "orcarouter") {
+    if (
+      options.provider !== "anthropic" &&
+      options.provider !== "orcarouter" &&
+      options.provider !== "atlascloud"
+    ) {
       console.error(
-        `Error: unknown --provider "${options.provider}". Expected "anthropic" or "orcarouter".`
+        `Error: unknown --provider "${options.provider}". Expected "anthropic", "orcarouter" or "atlascloud".`
       );
       process.exit(1);
     }
@@ -619,7 +624,18 @@ program
 
     // ── Phase 4: Active injection testing ───────────────────
     let injectionResult: InjectionSuiteResult | null = null;
-    if (enableInjection) {
+    const injectionKey = requiredApiKeyEnv(provider);
+    if (enableInjection && provider !== "anthropic" && !process.env[injectionKey]) {
+      // Without a key every evaluator call fails and is reported as
+      // "not vulnerable", which would look like a clean injection run.
+      console.error(
+        `\nError: ${injectionKey} environment variable required for --injection mode.\n` +
+          `Set it with: export ${injectionKey}=your-key-here\n`
+      );
+      if (!options.deep) {
+        process.exit(1);
+      }
+    } else if (enableInjection) {
       logger.log({ level: "info", phase: "injection", message: "Running injection tests" });
       injectionResult = await runInjectionTests(targetPath, provider);
       if (injectionResult) {
@@ -651,8 +667,7 @@ program
 
     // ── Phase 6: Opus multi-agent analysis (if enabled) ─────
     if (enableOpus) {
-      const requiredKey =
-        provider === "orcarouter" ? "ORCAROUTER_API_KEY" : "ANTHROPIC_API_KEY";
+      const requiredKey = requiredApiKeyEnv(provider);
       if (!process.env[requiredKey]) {
         console.error(
           `\nError: ${requiredKey} environment variable required for --opus mode.\n` +
